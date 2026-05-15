@@ -12,6 +12,7 @@ import {
   ensureSuperAdminRole,
   linkUserToBusiness,
 } from 'src/tenant-db/helpers/tenant-business-bootstrap.helper';
+import { seedDefaultChartOfAccountsForBusiness } from 'src/tenant-db/helpers/chart-of-account-bootstrap.helper';
 import { CreateTenantBusinessDto } from '../dto/business/create-tenant-business.dto';
 import { AssignBusinessMemberDto } from '../dto/business/assign-business-member.dto';
 import { ActivityLogService } from './activity-log.service';
@@ -77,6 +78,10 @@ export class TenantBusinessService {
         }),
       );
 
+      const chartOfAccounts = await seedDefaultChartOfAccountsForBusiness(
+        manager,
+        business.id,
+      );
       const superAdminRole = await ensureSuperAdminRole(manager);
       const membership = await linkUserToBusiness(
         manager,
@@ -85,7 +90,7 @@ export class TenantBusinessService {
         superAdminRole.id,
       );
 
-      return { business, superAdminRole, membership };
+      return { business, chartOfAccounts, superAdminRole, membership };
     });
 
     await this.activityLogService.recordActivityLog(tenantDb, {
@@ -94,6 +99,7 @@ export class TenantBusinessService {
       description: `Business ${saved.business.name} created`,
       metadata: {
         businessId: saved.business.id,
+        chartOfAccountCount: saved.chartOfAccounts.length,
         roleId: saved.superAdminRole.id,
         userBusinessId: saved.membership.id,
       },

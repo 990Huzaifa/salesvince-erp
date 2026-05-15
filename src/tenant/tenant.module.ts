@@ -8,9 +8,13 @@ import { TenantAuthController } from './controller/tenant-auth.controller';
 import { TenantUserController } from './controller/tenant-user.controller';
 import { TenantBusinessController } from './controller/tenant-business.controller';
 import { TenantRoleController } from './controller/tenant-role.controller';
+import { ChartOfAccountController } from './controller/chart-of-account.controller';
+import { PartyController } from './controller/party.controller';
 import { UserService } from './service/user.service';
 import { TenantBusinessService } from './service/tenant-business.service';
 import { TenantRoleService } from './service/tenant-role.service';
+import { ChartOfAccountService } from './service/chart-of-account.service';
+import { PartyService } from './service/party.service';
 import { ActivityLogService } from './service/activity-log.service';
 import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
 import { MailModule } from 'src/common/mail/mail.module';
@@ -31,12 +35,16 @@ import { TenantAuthService } from 'src/tenant/service/tenant-auth.service';
     TenantUserController,
     TenantBusinessController,
     TenantRoleController,
+    ChartOfAccountController,
+    PartyController,
   ],
   providers: [
     TenantAuthService,
     UserService,
     TenantBusinessService,
     TenantRoleService,
+    ChartOfAccountService,
+    PartyService,
     ActivityLogService,
     TenantPermissionGuard,
     PusherService,

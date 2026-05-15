@@ -19,6 +19,8 @@ export const TENANT_PERMISSIONS = [
   { key: 'CREATE_OPENING_STOCK', name: 'Create Opening Stock' },
   { key: 'CREATE_PURCHASE_STOCK', name: 'Create Purchase Stock' },
   { key: 'CREATE_TRANSFER_STOCK', name: 'Create Transfer Stock' },
+  { key: 'CREATE_CHART_OF_ACCOUNT', name: 'Create Chart of Account' },
+  { key: 'CREATE_PARTY', name: 'Create Party' },
 
   { key: 'LIST_USER', name: 'List Users' },
   { key: 'LIST_ROLE', name: 'List Role' },
@@ -35,6 +37,8 @@ export const TENANT_PERMISSIONS = [
   { key: 'LIST_OPENING_STOCK', name: 'List Opening Stock' },
   { key: 'LIST_PURCHASE_STOCK', name: 'List Purchase Stock' },
   { key: 'LIST_TRANSFER_STOCK', name: 'List Transfer Stock' },
+  { key: 'LIST_CHART_OF_ACCOUNT', name: 'List Chart of Account' },
+  { key: 'LIST_PARTY', name: 'List Party' },
 
   { key: 'UPDATE_USER', name: 'Update Users' },
   { key: 'UPDATE_ROLE', name: 'Update Role' },
@@ -51,6 +55,8 @@ export const TENANT_PERMISSIONS = [
   { key: 'UPDATE_OPENING_STOCK', name: 'Update Opening Stock' },
   { key: 'UPDATE_PURCHASE_STOCK', name: 'Update Purchase Stock' },
   { key: 'UPDATE_TRANSFER_STOCK', name: 'Update Transfer Stock' },
+  { key: 'UPDATE_CHART_OF_ACCOUNT', name: 'Update Chart of Account' },
+  { key: 'UPDATE_PARTY', name: 'Update Party' },
 
   { key: 'VIEW_USER', name: 'View Users' },
   { key: 'VIEW_ROLE', name: 'View Role' },
@@ -67,6 +73,8 @@ export const TENANT_PERMISSIONS = [
   { key: 'VIEW_OPENING_STOCK', name: 'View Opening Stock' },
   { key: 'VIEW_PURCHASE_STOCK', name: 'View Purchase Stock' },
   { key: 'VIEW_TRANSFER_STOCK', name: 'View Transfer Stock' },
+  { key: 'VIEW_CHART_OF_ACCOUNT', name: 'View Chart of Account' },
+  { key: 'VIEW_PARTY', name: 'View Party' },
 
   { key: 'DELETE_USER', name: 'Delete Users' },
   { key: 'DELETE_ROLE', name: 'Delete Role' },
@@ -81,6 +89,8 @@ export const TENANT_PERMISSIONS = [
   { key: 'DELETE_OPENING_STOCK', name: 'Delete Opening Stock' },
   { key: 'DELETE_PURCHASE_STOCK', name: 'Delete Purchase Stock' },
   { key: 'DELETE_TRANSFER_STOCK', name: 'Delete Transfer Stock' },
+  { key: 'DELETE_CHART_OF_ACCOUNT', name: 'Delete Chart of Account' },
+  { key: 'DELETE_PARTY', name: 'Delete Party' },
 
 ];
 
