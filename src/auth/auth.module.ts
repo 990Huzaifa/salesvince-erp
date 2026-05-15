@@ -20,6 +20,8 @@ import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
 import { TenantJwtStrategy } from './tenant-jwt.strategy';
 import { TenantJwtAuthGuard } from './tenant-jwt-auth.guard';
+import { TenantBusinessAccessGuard } from './tenant-business-access.guard';
+import { TenantLoginOnlyGuard } from './tenant-login-only.guard';
 
 @Module({
     imports: [
@@ -47,6 +49,8 @@ import { TenantJwtAuthGuard } from './tenant-jwt-auth.guard';
         TenantJwtAuthGuard,
         TenantJwtGuard,
         TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+        TenantLoginOnlyGuard,
         MailService,
         PusherService,
     ],
@@ -56,6 +60,8 @@ import { TenantJwtAuthGuard } from './tenant-jwt-auth.guard';
         TenantJwtAuthGuard,
         TenantJwtGuard,
         TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+        TenantLoginOnlyGuard,
         TenantRuntimeModule,
     ],
     controllers: [AuthController],

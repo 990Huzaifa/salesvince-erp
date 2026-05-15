@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
+import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
 import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
@@ -12,7 +13,13 @@ import { InviteTenantUserDto } from '../dto/user/invite-tenant-user.dto';
 import { UserService } from '../service/user.service';
 
 @Controller('tenant/users')
-@UseGuards(TenantJwtAuthGuard, TenantJwtGuard, TenantConnectionGuard, TenantPermissionGuard)
+@UseGuards(
+  TenantJwtAuthGuard,
+  TenantJwtGuard,
+  TenantConnectionGuard,
+  TenantBusinessAccessGuard,
+  TenantPermissionGuard,
+)
 export class TenantUserController {
   constructor(private readonly userService: UserService) { }
 
@@ -50,14 +57,33 @@ export class TenantUserController {
 
   @Get('')
   @RequirePermissions('LIST_USER')
-  list(@TenantConnection() tenantDb: DataSource, @Query('page') page: number = 1, @Query('limit') limit: number = 10, @Query('search') search: string = '', @Query('sort') sort: string = 'createdAt', @Query('sortDirection') sortDirection: string = 'DESC', @Query('roleId') roleId: string = null, @Query('designationId') designationId: string = null, @Req() req: Request) {
-    return this.userService.listUsers(tenantDb, page, limit, search, sort, sortDirection, roleId, designationId, req.user);
+  list(
+    @TenantConnection() tenantDb: DataSource,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
+    @Query('search') search: string = '',
+    @Query('sort') sort: string = 'createdAt',
+    @Query('sortDirection') sortDirection: string = 'DESC',
+    @Query('roleId') roleId: string = null,
+    @Req() req: Request,
+  ) {
+    return this.userService.listUsers(
+      tenantDb,
+      page,
+      limit,
+      search,
+      sort,
+      sortDirection,
+      roleId,
+      null,
+      req.user as { userId: string },
+    );
   }
 
   @Get(':id')
   @RequirePermissions('VIEW_USER')
   getById(@TenantConnection() tenantDb: DataSource, @Param('id') id: string, @Req() req: Request) {
-    return this.userService.getUserById(tenantDb, id, req.user);
+    return this.userService.getUserById(tenantDb, id, req.user as { userId: string });
   }
 
   @Post('')
@@ -68,7 +94,7 @@ export class TenantUserController {
     @Body() dto: CreateTenantUserDto,
     @Req() req: Request,
   ) {
-    return this.userService.createUser(tenantDb, tenantCode, dto, req.user);
+    return this.userService.createUser(tenantDb, tenantCode, dto, req.user as { userId: string });
   }
 
   @Patch(':id/avatar')
@@ -77,16 +103,22 @@ export class TenantUserController {
     @TenantConnection() tenantDb: DataSource,
     @TenantCode() tenantCode: string,
     @Param('id') id: string,
-    @Body('assetId') assetId: string | null,
+    @Body('avatar') avatar: string | null,
     @Req() req: Request,
   ) {
-    return this.userService.updateUserAvatar(tenantDb, tenantCode, id, assetId, req.user as { userId: string });
+    return this.userService.updateUserAvatar(
+      tenantDb,
+      tenantCode,
+      id,
+      avatar,
+      req.user as { userId: string },
+    );
   }
 
   @Put('update/:id/status')
   @RequirePermissions('UPDATE_USER')
   updateStatus(@TenantConnection() tenantDb: DataSource, @Param('id') id: string, @Query('status') status: boolean, @Req() req: Request) {
-    return this.userService.updateUserStatus(tenantDb, id, status, req.user);
+    return this.userService.updateUserStatus(tenantDb, id, status, req.user as { userId: string });
   }
 
   
@@ -108,14 +140,7 @@ export class TenantUserController {
       authUser?.tenantCode,
       authUser?.tenantName,
       this.buildSetupBaseUrl(req, authUser?.tenantCode),
-      req.user,
+      req.user as { userId: string },
     );
   }
-
-  @Post('assign-distributors/:id')
-  @RequirePermissions('UPDATE_USER')
-  assignDistributors(@TenantConnection() tenantDb: DataSource, @Param('id') id: string, @Body() distributorIds: string[], @Req() req: Request) {
-    return this.userService.assignDistributorsToUser(tenantDb, id, distributorIds, req.user);
-  } 
-
 }

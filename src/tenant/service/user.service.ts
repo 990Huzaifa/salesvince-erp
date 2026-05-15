@@ -1,29 +1,22 @@
 import {
-  BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { DataSource, In, Like, Not, Repository } from 'typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { MailService } from 'src/common/mail/mail.service';
-import { SalesmanDistributor, User } from 'src/tenant-db/entities/user.entity';
+import { User, UserStatus } from 'src/tenant-db/entities/user.entity';
 import { Role } from 'src/tenant-db/entities/role.entity';
-import { Designation } from 'src/tenant-db/entities/user.entity';
-import { Asset, AssetStatus } from 'src/tenant-db/entities/asset.entity';
+import { Business } from 'src/tenant-db/entities/business.entity';
+import {
+  UserBusiness,
+  UserBusinessStatus,
+} from 'src/tenant-db/entities/user-business.entity';
 import { CreateTenantUserDto } from '../dto/user/create-tenant-user.dto';
 import { InviteTenantUserDto } from '../dto/user/invite-tenant-user.dto';
 import { ActivityLogService } from './activity-log.service';
-import { MasterGeoHelperService } from './master-geo-helper.service';
-import {
-  ASSET_RULES,
-  AssetEntityType,
-  AssetPurpose,
-} from '../config/asset-rules.config';
-import { Distributor } from 'src/tenant-db/entities/distributor.entity';
-import { S3Service } from 'src/common/s3/s3.service';
 
 @Injectable()
 export class UserService {
@@ -31,8 +24,6 @@ export class UserService {
     private readonly mailService: MailService,
     private readonly jwtService: JwtService,
     private readonly activityLogService: ActivityLogService,
-    private readonly masterGeoHelperService: MasterGeoHelperService,
-    private readonly s3Service: S3Service,
   ) {}
 
   private async generateUniqueUserCode(userRepo: Repository<User>): Promise<string> {
@@ -51,9 +42,8 @@ export class UserService {
     tenantCode?: string,
     requestBaseUrl?: string,
   ) {
-    const baseUrl =
-      (requestBaseUrl || process.env.TENANT_SETUP_BASE_URL || '')
-        .replace(/\/+$/, '');
+    const baseUrl = (requestBaseUrl || process.env.TENANT_SETUP_BASE_URL || '')
+      .replace(/\/+$/, '');
     const query = new URLSearchParams();
     query.set('token', token);
     if (tenantCode) {
@@ -62,148 +52,72 @@ export class UserService {
     return `${baseUrl}/user/${userCode}/setup?${query.toString()}`;
   }
 
-  private async attachGeoNames<T extends { countryId?: string | null; stateId?: string | null; cityId?: string | null }>(
-    data: T,
-  ): Promise<T & { countryName: string | null; stateName: string | null; cityName: string | null }> {
-    const [countryName, stateName, cityName] = await Promise.all([
-      this.masterGeoHelperService.getCountryNameById(data.countryId),
-      this.masterGeoHelperService.getStateNameById(data.stateId),
-      this.masterGeoHelperService.getCityNameById(data.cityId),
-    ]);
-
-    return {
-      ...data,
-      countryName,
-      stateName,
-      cityName,
-    };
-  }
-
-  private async resolveAvatarAsset(
+  async listUsers(
     tenantDb: DataSource,
-    tenantCode: string,
-    assetId: string,
+    page: number,
+    limit: number,
+    search: string,
+    sort: string,
+    sortDirection: string,
+    roleId: string | null,
+    _designationId: string | null,
     user: { userId: string },
-  ): Promise<string> {
-    const assetRepo = tenantDb.getRepository(Asset);
-    const asset = await assetRepo.findOne({ where: { id: assetId } });
-
-    if (!asset) {
-      throw new NotFoundException(`Asset ${assetId} not found`);
-    }
-    if (asset.uploadedById !== user.userId) {
-      throw new ForbiddenException(`Not allowed to use asset ${assetId}`);
-    }
-    if (asset.status !== AssetStatus.APPROVED) {
-      throw new BadRequestException(
-        `Asset ${assetId} must be confirmed (APPROVED) before use as avatar`,
-      );
-    }
-    if (asset.purpose !== AssetPurpose.USER_AVATAR) {
-      throw new BadRequestException(`Asset ${assetId} is not a user avatar`);
-    }
-    if (asset.entityId != null || asset.attachedAt != null) {
-      throw new BadRequestException(`Asset ${assetId} is already linked to an entity`);
-    }
-
-    const avatarRules = ASSET_RULES[AssetPurpose.USER_AVATAR];
-    const tempPrefix = `tenants/${tenantCode}/temp/uploads/${asset.id}.`;
-    const finalPrefix = `tenants/${tenantCode}/${avatarRules.folder}/${asset.id}.`;
-    if (!asset.s3Key.startsWith(tempPrefix) && !asset.s3Key.startsWith(finalPrefix)) {
-      throw new BadRequestException(`Asset ${assetId} has an unexpected storage key`);
-    }
-
-    return this.s3Service.getObjectUrl(asset.s3Key);
-  }
-
-  async updateUserAvatar(
-    tenantDb: DataSource,
-    tenantCode: string,
-    userId: string,
-    assetId: string | null,
-    authUser: { userId: string },
   ) {
     const userRepo = tenantDb.getRepository(User);
-    const user = await userRepo.findOne({ where: { id: userId } });
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
 
-    let avatarUrl: string | null = null;
+    const qb = userRepo
+      .createQueryBuilder('u')
+      .leftJoinAndSelect('u.userBusinesses', 'ub', 'ub.deletedAt IS NULL')
+      .leftJoinAndSelect('ub.business', 'b')
+      .leftJoinAndSelect('ub.role', 'r')
+      .where('u.deletedAt IS NULL')
+      .andWhere('u.id != :currentId', { currentId: user.userId })
+      .andWhere('u.name ILIKE :search', { search: `%${search}%` });
 
-    if (assetId) {
-      avatarUrl = await this.resolveAvatarAsset(tenantDb, tenantCode, assetId, authUser);
-
-      const assetRepo = tenantDb.getRepository(Asset);
-      await assetRepo.update(
-        { id: assetId },
-        {
-          entityType: AssetEntityType.USER,
-          entityId: userId,
-          attachedAt: new Date(),
-        },
+    if (roleId) {
+      qb.andWhere(
+        `EXISTS (SELECT 1 FROM user_businesses ub2 WHERE ub2."userId" = u.id AND ub2."deletedAt" IS NULL AND ub2."roleId" = :roleId)`,
+        { roleId },
       );
     }
 
-    user.avatar = avatarUrl;
-    await userRepo.save(user);
+    const orderCol = ['name', 'email', 'createdAt'].includes(sort) ? sort : 'createdAt';
+    const dir = sortDirection?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+    qb.orderBy(`u.${orderCol}`, dir);
 
-    await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: authUser.userId,
-      action: 'USER_AVATAR_UPDATED',
-      description: `User ${user.email} avatar updated`,
-      metadata: { userId: user.id, assetId },
-    });
-
-    delete user.password;
-    return user;
-  }
-
-  async listUsers(tenantDb: DataSource, page: number, limit: number, search: string, sort: string, sortDirection: string, roleId: string, designationId: string, user: any) {
-    const userRepo = tenantDb.getRepository(User);
-    const roleRepo = tenantDb.getRepository(Role);
-    const designationRepo = tenantDb.getRepository(Designation);
-    const totalUsers = await userRepo.count({
-      where: {
-        isDeleted: false,
-      },
-    });
+    const totalUsers = await userRepo.count({ where: { deletedAt: IsNull() } });
     const totalActiveUsers = await userRepo.count({
-      where: {
-        isDeleted: false,
-        isActive: true,
-      },
+      where: { deletedAt: IsNull(), status: UserStatus.ACTIVE },
     });
     const totalInactiveUsers = await userRepo.count({
-      where: {
-        isDeleted: false,
-        isActive: false,
-      },
-    });
-    const [users, total] = await userRepo.findAndCount({
-      relations: ['role', 'designation', 'assignedDistributors'],
-      where: {
-        name: Like(`%${search}%`),
-        id: Not(user.userId),
-        role: roleId ? await roleRepo.findOne({ where: { id: roleId } }) : undefined,
-        designation: designationId ? await designationRepo.findOne({ where: { id: Number(designationId) } }) : undefined,
-        isDeleted: false,
-      },
-      order: { [sort]: sortDirection },
-      skip: (page - 1) * limit,
-      take: limit,
-    });
-    users.forEach(user => {
-      delete user.password;
+      where: { deletedAt: IsNull(), status: UserStatus.INACTIVE },
     });
 
-    // remove admin role user from the list
-    // const filteredusers = users.filter(user => user.role.code !== 'SUPER_ADMIN');
-    
+    const skip = (Math.max(1, Number(page)) - 1) * Math.max(1, Number(limit));
+    qb.skip(skip).take(Math.max(1, Number(limit)));
+
+    const countQb = userRepo
+      .createQueryBuilder('u')
+      .where('u.deletedAt IS NULL')
+      .andWhere('u.id != :currentId', { currentId: user.userId })
+      .andWhere('u.name ILIKE :search', { search: `%${search}%` });
+    if (roleId) {
+      countQb.innerJoin('u.userBusinesses', 'ubc', 'ubc.deletedAt IS NULL AND ubc.roleId = :roleId', {
+        roleId,
+      });
+    }
+    const total = await countQb.getCount();
+
+    const users = await qb.getMany();
+
+    users.forEach((u) => {
+      delete (u as { password?: string }).password;
+    });
+
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: user.userId,
       action: 'USER_LISTED',
-      description: `Users listed`,
+      description: 'Users listed',
       metadata: { total, page, limit },
     });
 
@@ -212,81 +126,65 @@ export class UserService {
       totalUsers,
       totalActiveUsers,
       totalInactiveUsers,
-      meta: {
-        total: total,
-        page,
-        limit,
-      },
+      meta: { total, page: Number(page), limit: Number(limit) },
     };
   }
 
-  async getUserById(tenantDb: DataSource, id: string, Authuser: any) {
+  async getUserById(tenantDb: DataSource, id: string, authUser: { userId: string }) {
     const userRepo = tenantDb.getRepository(User);
-    const user = await userRepo.findOne({
-      where: { id },
-      relations: ['role', 'designation'],
+    const found = await userRepo.findOne({
+      where: { id, deletedAt: IsNull() },
+      relations: ['userBusinesses', 'userBusinesses.business', 'userBusinesses.role'],
     });
-    if (!user) {
+    if (!found) {
       throw new NotFoundException('User not found');
     }
-    const userWithGeoNames = await this.attachGeoNames(user);
+
     await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: Authuser.userId,
+      actorId: authUser.userId,
       action: 'USER_VIEWED',
-      description: `User ${user.email} viewed`,
-      metadata: { userId: user.id },
+      description: `User ${found.email} viewed`,
+      metadata: { userId: found.id },
     });
-    return userWithGeoNames;
+
+    delete (found as { password?: string }).password;
+    return found;
   }
 
-  async createUser(tenantDb: DataSource, tenantCode: string, dto: CreateTenantUserDto, Authuser: any) {
+  async createUser(
+    tenantDb: DataSource,
+    tenantCode: string,
+    dto: CreateTenantUserDto,
+    authUser: { userId: string },
+  ) {
     const userRepo = tenantDb.getRepository(User);
     const roleRepo = tenantDb.getRepository(Role);
-    const designationRepo = tenantDb.getRepository(Designation);
+    const businessRepo = tenantDb.getRepository(Business);
+    const ubRepo = tenantDb.getRepository(UserBusiness);
+
     const code = await this.generateUniqueUserCode(userRepo);
     const email = dto.email.trim().toLowerCase();
 
     const existingByEmail = await userRepo.findOne({
-      where: { email },
+      where: { email, deletedAt: IsNull() },
       select: ['id'],
     });
     if (existingByEmail) {
       throw new ConflictException('User with this email already exists');
     }
 
-    const existingByCode = await userRepo.findOne({
-      where: { code },
-      select: ['id'],
+    const business = await businessRepo.findOne({
+      where: { id: dto.businessId, deletedAt: IsNull() },
     });
-    if (existingByCode) {
-      throw new ConflictException('User with this code already exists');
+    if (!business) {
+      throw new NotFoundException('Business not found');
     }
 
     const role = await roleRepo.findOne({
-      where: { id: dto.roleId },
+      where: { id: dto.roleId, deletedAt: IsNull() },
     });
     if (!role) {
       throw new NotFoundException('Role not found');
-    }
-
-    let designation: Designation | null = null;
-    if (dto.designationId !== undefined && dto.designationId !== null) {
-      designation = await designationRepo.findOne({
-        where: { id: dto.designationId },
-      });
-      if (!designation) {
-        throw new NotFoundException('Designation not found');
-      }
-    }
-
-    let avatarUrl: string | null = null;
-    if (dto.avatarAssetId) {
-      avatarUrl = await this.resolveAvatarAsset(
-        tenantDb,
-        tenantCode,
-        dto.avatarAssetId,
-        Authuser,
-      );
     }
 
     const user = userRepo.create({
@@ -295,105 +193,117 @@ export class UserService {
       email,
       password: await bcrypt.hash(dto.password, 10),
       phone: dto.phone?.trim(),
-      role,
-      designation,
-      avatar: avatarUrl,
-      joiningDate: dto.joiningDate ?? new Date(),
-      leavingDate: dto.leavingDate ?? null,
+      avatar: dto.avatar?.trim() ?? null,
       cnic: dto.cnic?.trim() ?? null,
       address: dto.address ?? null,
-      countryId: dto.countryId ?? null,
-      stateId: dto.stateId ?? null,
-      cityId: dto.cityId ?? null,
-      deviceId: dto.deviceId ?? null,
       fcmToken: dto.fcmToken ?? null,
-      locationTitle: dto.locationTitle?.trim() ?? null,
-      latitude: dto.latitude ?? dto.lat ?? null,
-      longitude: dto.longitude ?? dto.lng ?? null,
-      maxRadius: dto.maxRadius ?? dto.radius ?? null,
-      isActive: dto.isActive ?? true,
-      isDeleted: false,
+      deviceId: dto.deviceId ?? null,
+      status: dto.isActive === false ? UserStatus.INACTIVE : UserStatus.ACTIVE,
     });
 
     const createdUser = await userRepo.save(user);
 
-    if (dto.avatarAssetId) {
-      const assetRepo = tenantDb.getRepository(Asset);
-      await assetRepo.update(
-        { id: dto.avatarAssetId },
-        {
-          entityType: AssetEntityType.USER,
-          entityId: createdUser.id,
-          attachedAt: new Date(),
-        },
-      );
-    }
+    const ub = ubRepo.create({
+      userId: createdUser.id,
+      businessId: dto.businessId,
+      roleId: dto.roleId,
+      status: UserBusinessStatus.ACTIVE,
+    });
+    await ubRepo.save(ub);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: Authuser.userId,
+      actorId: authUser.userId,
       action: 'USER_CREATED',
       description: `User ${createdUser.email} created`,
-      metadata: { userId: createdUser.id, roleId: role.id },
+      metadata: { userId: createdUser.id, businessId: dto.businessId, roleId: dto.roleId },
     });
 
-    delete createdUser.password;
-
+    delete (createdUser as { password?: string }).password;
     return createdUser;
   }
 
-  async updateUserStatus(tenantDb: DataSource, id: string, status: boolean, Authuser: any) {
+  async updateUserStatus(
+    tenantDb: DataSource,
+    id: string,
+    active: boolean,
+    authUser: { userId: string },
+  ) {
     const userRepo = tenantDb.getRepository(User);
-    const user = await userRepo.findOne({ where: { id } });
+    const found = await userRepo.findOne({ where: { id, deletedAt: IsNull() } });
+    if (!found) {
+      throw new NotFoundException('User not found');
+    }
+    found.status = active ? UserStatus.ACTIVE : UserStatus.INACTIVE;
+    await userRepo.save(found);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: authUser.userId,
+      action: 'USER_STATUS_UPDATED',
+      description: `User ${found.email} status updated`,
+      metadata: { userId: found.id, status: found.status },
+    });
+
+    return { message: 'User status updated successfully', user: found };
+  }
+
+  async updateUserAvatar(
+    tenantDb: DataSource,
+    _tenantCode: string,
+    userId: string,
+    avatar: string | null,
+    authUser: { userId: string },
+  ) {
+    const userRepo = tenantDb.getRepository(User);
+    const user = await userRepo.findOne({ where: { id: userId, deletedAt: IsNull() } });
     if (!user) {
       throw new NotFoundException('User not found');
     }
-    user.isActive = status;
+
+    user.avatar = avatar?.trim() ?? null;
     await userRepo.save(user);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: Authuser.userId,
-      action: 'USER_STATUS_UPDATED',
-      description: `User ${user.email} status updated`,
-      metadata: { userId: user.id, isActive: user.isActive },
+      actorId: authUser.userId,
+      action: 'USER_AVATAR_UPDATED',
+      description: `User ${user.email} avatar updated`,
+      metadata: { userId: user.id },
     });
 
-    return {
-      message: 'User status updated successfully',
-      user,
-    };
+    delete (user as { password?: string }).password;
+    return user;
   }
-  
+
   async inviteUser(
     tenantDb: DataSource,
     dto: InviteTenantUserDto,
     tenantCode?: string,
     tenantName?: string,
     requestBaseUrl?: string,
-    Authuser?: any,
+    authUser?: { userId: string },
   ) {
     const userRepo = tenantDb.getRepository(User);
     const roleRepo = tenantDb.getRepository(Role);
-    const designationRepo = tenantDb.getRepository(Designation);
+    const businessRepo = tenantDb.getRepository(Business);
+    const ubRepo = tenantDb.getRepository(UserBusiness);
+
     const email = dto.email.trim().toLowerCase();
 
-    const role = await roleRepo.findOne({ where: { id: dto.roleId } });
+    const business = await businessRepo.findOne({
+      where: { id: dto.businessId, deletedAt: IsNull() },
+    });
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    const role = await roleRepo.findOne({
+      where: { id: dto.roleId, deletedAt: IsNull() },
+    });
     if (!role) {
       throw new NotFoundException('Role not found');
     }
 
-    let designation: Designation | null = null;
-    if (dto.designationId !== undefined && dto.designationId !== null) {
-      designation = await designationRepo.findOne({
-        where: { id: dto.designationId },
-      });
-      if (!designation) {
-        throw new NotFoundException('Designation not found');
-      }
-    }
-
     let user = await userRepo.findOne({
-      where: { email },
-      relations: ['role', 'designation'],
+      where: { email, deletedAt: IsNull() },
     });
 
     if (!user) {
@@ -402,38 +312,41 @@ export class UserService {
         name: email.split('@')[0],
         email,
         password: null,
-        role,
-        designation: designation ?? undefined,
-        isActive: true,
-        isDeleted: false,
+        status: UserStatus.ACTIVE,
       });
-    } else {
-      if (user.password) {
-        throw new ConflictException('User already has an active account');
-      }
-      user.role = role;
-      user.designation = designation ?? undefined;
-      user.isActive = true;
-      user.isDeleted = false;
+      user = await userRepo.save(user);
+    } else if (user.password) {
+      throw new ConflictException('User already has an active account');
     }
 
-    const savedUser = await userRepo.save(user);
+    let ub = await ubRepo.findOne({
+      where: { userId: user.id, businessId: dto.businessId, deletedAt: IsNull() },
+    });
+    if (ub) {
+      ub.roleId = dto.roleId;
+      ub.status = UserBusinessStatus.ACTIVE;
+      await ubRepo.save(ub);
+    } else {
+      ub = ubRepo.create({
+        userId: user.id,
+        businessId: dto.businessId,
+        roleId: dto.roleId,
+        status: UserBusinessStatus.ACTIVE,
+      });
+      await ubRepo.save(ub);
+    }
+
     const token = this.jwtService.sign(
       {
         type: 'tenant_user_invite',
-        userId: savedUser.id,
-        userCode: savedUser.code,
-        email: savedUser.email,
+        userId: user.id,
+        userCode: user.code,
+        email: user.email,
       },
       { expiresIn: '7d' },
     );
 
-    const setupUrl = this.buildUserSetupUrl(
-      savedUser.code,
-      token,
-      tenantCode,
-      requestBaseUrl,
-    );
+    const setupUrl = this.buildUserSetupUrl(user.code, token, tenantCode, requestBaseUrl);
     const emailHtml = this.mailService.renderTenantUserInviteTemplate({
       logoUrl: process.env.APP_LOGO_URL || 'https://snd.com/logo.png',
       invitedByName: 'your administrator',
@@ -443,64 +356,24 @@ export class UserService {
     });
 
     await this.mailService.sendEmail(
-      savedUser.email,
+      user.email,
       `You're invited to ${tenantName || 'SalesVince'}`,
       emailHtml,
       'noreply@salesvince.com',
     );
 
     await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: Authuser?.userId ?? null,
+      actorId: authUser?.userId ?? null,
       action: 'USER_INVITED',
-      description: `Invitation sent to ${savedUser.email}`,
-      metadata: { userId: savedUser.id, email: savedUser.email, roleId: role.id },
+      description: `Invitation sent to ${user.email}`,
+      metadata: { userId: user.id, email: user.email, businessId: dto.businessId },
     });
 
     return {
       message: 'Invitation sent successfully',
-      userCode: savedUser.code,
-      email: savedUser.email,
+      userCode: user.code,
+      email: user.email,
       setupUrl,
     };
   }
-
-  async assignDistributorsToUser(tenantDb: DataSource, userId: string, distributorIds: string[], Authuser: any) {
-    const userRepo = tenantDb.getRepository(User);
-    const distributorRepo = tenantDb.getRepository(Distributor);
-    const user = await userRepo.findOne({ where: { id: userId } });
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-    const salesmanDistributorRepo = tenantDb.getRepository(SalesmanDistributor);
-    const salesmanDistributors = await salesmanDistributorRepo.find({ where: { userId } });
-    if (salesmanDistributors.length > 0) {
-      for (const salesmanDistributor of salesmanDistributors) {
-        await salesmanDistributorRepo.remove(salesmanDistributor);
-      }
-    }
-    const distributors = await distributorRepo.find({ where: { id: In(distributorIds) } });
-    if (distributors.length !== distributorIds.length) {
-      throw new NotFoundException('Some distributors not found');
-    }
-    for (const distributor of distributors) {
-      const salesmanDistributor = salesmanDistributorRepo.create({
-        userId,
-        distributorId: distributor.id,
-      });
-      await salesmanDistributorRepo.save(salesmanDistributor);
-    }
-
-    await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: Authuser.userId,
-      action: 'DISTRIBUTORS_ASSIGNED_TO_USER',
-      description: `Distributors ${distributorIds.join(', ')} assigned to user ${userId}`,
-      metadata: { userId: userId, distributorIds: distributorIds },
-    });
-    return {
-      message: 'Distributors assigned to user successfully',
-      user,
-      distributors,
-    };
-  }
 }
-

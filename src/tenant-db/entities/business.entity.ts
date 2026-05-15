@@ -48,9 +48,6 @@ export class Business {
     @OneToMany(() => UserBusiness, (userBusiness) => userBusiness.business)
     userBusinesses: UserBusiness[];
 
-    @OneToMany(() => Role, (role) => role.business)
-    roles: Role[];
-
     @CreateDateColumn()
     createdAt: Date;
 

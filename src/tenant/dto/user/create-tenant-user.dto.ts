@@ -1,15 +1,13 @@
 import {
   IsBoolean,
-  IsDate,
   IsEmail,
-  IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   MinLength,
 } from 'class-validator';
 
 export class CreateTenantUserDto {
-
   @IsString()
   @MinLength(1)
   name: string;
@@ -21,12 +19,11 @@ export class CreateTenantUserDto {
   @MinLength(8)
   password: string;
 
-  @IsString()
-  @MinLength(1)
-  roleId: string;
+  @IsUUID()
+  businessId: string;
 
-  @IsInt()
-  designationId?: number;
+  @IsUUID()
+  roleId: string;
 
   @IsOptional()
   @IsString()
@@ -42,31 +39,7 @@ export class CreateTenantUserDto {
 
   @IsOptional()
   @IsString()
-  avatarAssetId?: string;
-
-  @IsOptional()
-  @IsString()
   address?: string;
-
-  @IsOptional()
-  @IsString()
-  countryId?: string;
-
-  @IsOptional()
-  @IsString()
-  stateId?: string;
-
-  @IsOptional()
-  @IsString()
-  cityId?: string;
-
-  @IsOptional()
-  @IsString()
-  joiningDate?: string;
-
-  @IsOptional()
-  @IsString()
-  leavingDate?: string;
 
   @IsOptional()
   @IsString()
@@ -75,34 +48,6 @@ export class CreateTenantUserDto {
   @IsOptional()
   @IsString()
   fcmToken?: string;
-
-  @IsOptional()
-  @IsString()
-  locationTitle?: string;
-
-  @IsOptional()
-  @IsString()
-  latitude?: string;
-
-  @IsOptional()
-  @IsString()
-  longitude?: string;
-
-  @IsOptional()
-  @IsString()
-  maxRadius?: string;
-
-  @IsOptional()
-  @IsString()
-  lat?: string;
-
-  @IsOptional()
-  @IsString()
-  lng?: string;
-
-  @IsOptional()
-  @IsString()
-  radius?: string;
 
   @IsOptional()
   @IsBoolean()

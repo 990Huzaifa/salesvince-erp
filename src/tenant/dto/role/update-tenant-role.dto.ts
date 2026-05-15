@@ -1,19 +1,27 @@
-import { IsArray, IsBoolean, IsOptional, IsString } from 'class-validator';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsEnum,
+  IsOptional,
+  IsString,
+} from 'class-validator';
+import { RoleStatus } from 'src/tenant-db/entities/role.entity';
 
 export class UpdateTenantRoleDto {
   @IsString()
   @IsOptional()
-  code?: string;
+  name?: string;
 
   @IsString()
   @IsOptional()
-  name?: string;
+  description?: string;
 
-  @IsBoolean()
+  @IsEnum(RoleStatus)
   @IsOptional()
-  is_active?: boolean;
+  status?: RoleStatus;
 
   @IsArray()
+  @ArrayMinSize(1)
   @IsOptional()
   @IsString({ each: true })
   permissions?: string[];

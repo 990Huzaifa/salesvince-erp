@@ -1,14 +1,12 @@
-import { IsEmail, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsUUID } from 'class-validator';
 
 export class InviteTenantUserDto {
   @IsEmail()
   email: string;
 
-  @IsString()
-  @MinLength(1)
-  roleId: string;
+  @IsUUID()
+  businessId: string;
 
-  @IsOptional()
-  @IsInt()
-  designationId?: number;
+  @IsUUID()
+  roleId: string;
 }

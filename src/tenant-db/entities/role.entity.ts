@@ -1,69 +1,55 @@
 import {
-    Column,
-    CreateDateColumn,
-    DeleteDateColumn,
-    Entity,
-    Index,
-    JoinColumn,
-    ManyToOne,
-    OneToMany,
-    PrimaryGeneratedColumn,
-    UpdateDateColumn,
-  } from 'typeorm';
-  import { Business } from './business.entity';
-  import { RolePermission } from './role-permission.entity';
-  import { UserBusiness } from './user-business.entity';
-  
-  
-  export enum RoleStatus {
-    ACTIVE = 'ACTIVE',
-    INACTIVE = 'INACTIVE',
-  }
-  
-  @Entity('roles')
-  @Index(['businessId', 'name'], { unique: true })
-  export class Role {
-    @PrimaryGeneratedColumn('uuid')
-    id: string;
-  
-    @Column({ type: 'uuid', nullable: true })
-    businessId: string | null;
-  
-    @Column({ type: 'varchar', length: 100 })
-    name: string;
-  
-    @Column({ type: 'varchar', length: 255, nullable: true })
-    description: string | null;
-  
-    @Column({ type: 'boolean', default: false })
-    isSystemRole: boolean;
-  
-    @Column({
-      type: 'enum',
-      enum: RoleStatus,
-      default: RoleStatus.ACTIVE,
-    })
-    status: RoleStatus;
-  
-    @ManyToOne(() => Business, (business) => business.roles, {
-      nullable: true,
-      onDelete: 'CASCADE',
-    })
-    @JoinColumn({ name: 'businessId' })
-    business: Business | null;
-  
-    @OneToMany(() => RolePermission, (rolePermission) => rolePermission.role)
-    rolePermissions: RolePermission[];
+  Column,
+  CreateDateColumn,
+  DeleteDateColumn,
+  Entity,
+  Index,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
+import { RolePermission } from './role-permission.entity';
+import { UserBusiness } from './user-business.entity';
 
-    @OneToMany(() => UserBusiness, (userBusiness) => userBusiness.role)
-    userBusinesses: UserBusiness[];
-  
-    @CreateDateColumn()
-    createdAt: Date;
-  
-    @UpdateDateColumn()
-    updatedAt: Date;
-  
-    @DeleteDateColumn({ nullable: true })
-    deletedAt: Date | null;
-  }
+export enum RoleStatus {
+  ACTIVE = 'ACTIVE',
+  INACTIVE = 'INACTIVE',
+}
+
+@Entity('roles')
+@Index(['name'], { unique: true })
+export class Role {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ type: 'varchar', length: 100 })
+  name: string;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  description: string | null;
+
+  @Column({ type: 'boolean', default: false })
+  isSystemRole: boolean;
+
+  @Column({
+    type: 'enum',
+    enum: RoleStatus,
+    default: RoleStatus.ACTIVE,
+  })
+  status: RoleStatus;
+
+  @OneToMany(() => RolePermission, (rolePermission) => rolePermission.role)
+  rolePermissions: RolePermission[];
+
+  @OneToMany(() => UserBusiness, (userBusiness) => userBusiness.role)
+  userBusinesses: UserBusiness[];
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+
+  @DeleteDateColumn({ nullable: true })
+  deletedAt: Date | null;
+}

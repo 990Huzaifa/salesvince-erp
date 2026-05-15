@@ -2,16 +2,37 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { TenantStatus } from 'src/master-db/entities/tenant.entity';
+import {
+  BUSINESS_ACCESS_TOKEN,
+  TENANT_LOGIN_TOKEN,
+} from './tenant-jwt.constants';
 
 export type TenantJwtPayload = {
   sub?: string;
   userId?: string;
   tenantId: string;
-  role: string;
+  /** @deprecated use tokenType + business-scoped RBAC */
+  role?: string;
   tenantStatus?: TenantStatus;
   tenantCode?: string;
   tenantName?: string;
   type?: string;
+  tokenType?: typeof TENANT_LOGIN_TOKEN | typeof BUSINESS_ACCESS_TOKEN;
+  businessId?: string;
+  userBusinessId?: string;
+  roleId?: string;
+};
+
+export type TenantRequestUser = {
+  userId: string;
+  tenantId: string;
+  tenantCode?: string;
+  tenantName?: string;
+  tenantStatus?: TenantStatus;
+  tokenType: typeof TENANT_LOGIN_TOKEN | typeof BUSINESS_ACCESS_TOKEN;
+  businessId?: string;
+  userBusinessId?: string;
+  roleId?: string;
 };
 
 @Injectable()
@@ -24,21 +45,42 @@ export class TenantJwtStrategy extends PassportStrategy(Strategy, 'tenant-jwt') 
     });
   }
 
-  validate(payload: TenantJwtPayload) {
-    if (payload.type !== 'tenant') {
-      throw new UnauthorizedException();
-    }
+  validate(payload: TenantJwtPayload): TenantRequestUser {
     const userId = payload.userId ?? payload.sub;
     if (!userId || !payload.tenantId) {
       throw new UnauthorizedException();
     }
-    return {
-      userId,
-      tenantId: payload.tenantId,
-      role: payload.role,
-      tenantStatus: payload.tenantStatus,
-      tenantCode: payload.tenantCode,
-      tenantName: payload.tenantName,
-    };
+
+    const tokenType = payload.tokenType;
+
+    if (tokenType === TENANT_LOGIN_TOKEN) {
+      return {
+        userId,
+        tenantId: payload.tenantId,
+        tenantCode: payload.tenantCode,
+        tenantName: payload.tenantName,
+        tenantStatus: payload.tenantStatus,
+        tokenType: TENANT_LOGIN_TOKEN,
+      };
+    }
+
+    if (tokenType === BUSINESS_ACCESS_TOKEN) {
+      if (!payload.businessId || !payload.userBusinessId || !payload.roleId) {
+        throw new UnauthorizedException();
+      }
+      return {
+        userId,
+        tenantId: payload.tenantId,
+        tenantCode: payload.tenantCode,
+        tenantName: payload.tenantName,
+        tenantStatus: payload.tenantStatus,
+        tokenType: BUSINESS_ACCESS_TOKEN,
+        businessId: payload.businessId,
+        userBusinessId: payload.userBusinessId,
+        roleId: payload.roleId,
+      };
+    }
+
+    throw new UnauthorizedException();
   }
 }

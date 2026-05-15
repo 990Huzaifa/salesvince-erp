@@ -1,80 +1,55 @@
 import * as bcrypt from 'bcrypt';
-import { DataSource } from 'typeorm';
-import { Role } from '../entities/role.entity';
-import { Designation, User } from '../entities/user.entity';
+import { DataSource, IsNull } from 'typeorm';
+import { User, UserStatus } from '../entities/user.entity';
 
 export const TENANT_SUPER_ADMIN_USER = {
-  code: 'SND-TENANT-ADMIN',
-  name: 'Tenant Super Admin',
-  email: 'tenant.admin@snd.com',
+  code: 'ERP-SYSTEM-ADMIN',
+  name: 'System Admin',
+  email: 'tenant.admin@erp.com',
+  /** Override with TENANT_SUPER_ADMIN_PASSWORD in environment for provisioning. */
   password: 'demo9090',
 };
 
-export async function seedTenantSuperAdminUser(dataSource: DataSource) {
+export async function seedTenantSuperAdminUser(dataSource: DataSource): Promise<void> {
   const userRepo = dataSource.getRepository(User);
-  const roleRepo = dataSource.getRepository(Role);
-  const designationRepo = dataSource.getRepository(Designation);
 
   console.log('🌱 Seeding tenant super admin user...');
 
-  const superAdminRole = await roleRepo.findOne({
-    where: { name: 'Super Admin' },
-  });
-
-  if (!superAdminRole) {
-    throw new Error('Super Admin role not found. Run role seeder first.');
-  }
-  const superAdminDesignation = await designationRepo.findOne({
-    where: { slug: 'ceo' },
-  });
-  if (!superAdminDesignation) {
-    throw new Error(
-      'Super Admin designation not found. Run designation seeder first.',
-    );
-  }
-
   const email = TENANT_SUPER_ADMIN_USER.email.trim().toLowerCase();
-  const existing = await userRepo.findOne({
-    where: { email },
-    relations: ['role'],
+  const passwordPlain =
+    process.env.TENANT_SUPER_ADMIN_PASSWORD ?? TENANT_SUPER_ADMIN_USER.password;
+
+  let user = await userRepo.findOne({
+    where: { email, deletedAt: IsNull() },
   });
 
-  if (!existing) {
-    const user = userRepo.create({
+  if (!user) {
+    user = userRepo.create({
       code: TENANT_SUPER_ADMIN_USER.code,
       name: TENANT_SUPER_ADMIN_USER.name,
       email,
-      password: await bcrypt.hash(TENANT_SUPER_ADMIN_USER.password, 10),
-      role: superAdminRole,
-      designation: superAdminDesignation,
-      isActive: true,
-      isDeleted: false,
+      password: await bcrypt.hash(passwordPlain, 10),
+      status: UserStatus.ACTIVE,
+      isSuperAdmin: true,
     });
-
-    await userRepo.save(user);
+    user = await userRepo.save(user);
     console.log(`✅ Tenant super admin user created: ${email}`);
   } else {
     let shouldUpdate = false;
-
-    if (existing.roleId !== superAdminRole.id) {
-      existing.role = superAdminRole;
+    if (!user.isSuperAdmin) {
+      user.isSuperAdmin = true;
       shouldUpdate = true;
     }
-    if (existing.designationId !== superAdminDesignation.id) {
-      existing.designation = superAdminDesignation;
+    if (user.status !== UserStatus.ACTIVE) {
+      user.status = UserStatus.ACTIVE;
       shouldUpdate = true;
     }
-    if (!existing.isActive) {
-      existing.isActive = true;
+    if (user.deletedAt != null) {
+      user.deletedAt = null;
       shouldUpdate = true;
     }
-    if (existing.isDeleted) {
-      existing.isDeleted = false;
-      shouldUpdate = true;
-    }
-
     if (shouldUpdate) {
-      await userRepo.save(existing);
+      await userRepo.save(user);
     }
     console.log(`⏭ Tenant super admin already exists: ${email}`);
   }

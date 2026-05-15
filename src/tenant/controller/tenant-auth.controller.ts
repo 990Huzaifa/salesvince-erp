@@ -1,10 +1,22 @@
-import { Body, Controller, Post, Req, Res, UseGuards } from '@nestjs/common';
-import type { Request } from 'express';
+import {
+  Body,
+  Controller,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
-import { TenantAuthService } from '../service/tenant-auth.service';
+import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
+import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
+import { TenantLoginOnlyGuard } from 'src/auth/tenant-login-only.guard';
 import { TenantLoginDto } from '../dto/tenant-login.dto';
 import { SetupTenantUserPasswordDto } from '../dto/user/setup-tenant-user-password.dto';
+import { SelectBusinessDto } from '../dto/select-business.dto';
 import { PusherService } from 'src/common/pusher/pusher.service';
+import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
+import { TenantAuthService } from 'src/tenant/service/tenant-auth.service';
 
 const getRequestHeader = (req: Request, names: string[]): string | undefined => {
   for (const name of names) {
@@ -45,24 +57,40 @@ export class TenantAuthController {
   ) {}
 
   @Post('login')
-  login(
-    @Body() dto: TenantLoginDto,
-    @Req() req: Request,
-  ): Promise<{ access_token: string }> {
+  login(@Body() dto: TenantLoginDto, @Req() req: Request) {
     const origin = getRequestHeader(req, ['origin', 'x-forwarded-origin']);
     const referer = getRequestHeader(req, ['referer']);
-    const host = getRequestHeader(req, ['x-original-host', 'x-forwarded-host', 'host']);
-    return this.tenantAuthService.login(dto, resolveTenantHost(origin, referer, host));
+    const host = getRequestHeader(req, [
+      'x-original-host',
+      'x-forwarded-host',
+      'host',
+    ]);
+    return this.tenantAuthService.login(
+      dto,
+      resolveTenantHost(origin, referer, host),
+    );
+  }
+
+  @UseGuards(TenantJwtAuthGuard, TenantJwtGuard, TenantConnectionGuard, TenantLoginOnlyGuard)
+  @Post('select-business')
+  selectBusiness(@Body() dto: SelectBusinessDto, @Req() req: Request) {
+    const user = req.user as TenantRequestUser;
+    return this.tenantAuthService.selectBusiness(dto, {
+      userId: user.userId,
+      tenantId: user.tenantId,
+      tokenType: user.tokenType,
+    });
   }
 
   @Post('setup-password')
-  setupPassword(
-    @Body() dto: SetupTenantUserPasswordDto,
-    @Req() req: Request,
-  ) {
+  setupPassword(@Body() dto: SetupTenantUserPasswordDto, @Req() req: Request) {
     const origin = getRequestHeader(req, ['origin', 'x-forwarded-origin']);
     const referer = getRequestHeader(req, ['referer']);
-    const host = getRequestHeader(req, ['x-original-host', 'x-forwarded-host', 'host']);
+    const host = getRequestHeader(req, [
+      'x-original-host',
+      'x-forwarded-host',
+      'host',
+    ]);
     return this.tenantAuthService.setupInvitedUserPassword(
       dto,
       resolveTenantHost(origin, referer, host),
@@ -71,18 +99,29 @@ export class TenantAuthController {
 
   @UseGuards(TenantJwtAuthGuard)
   @Post('pusher')
-  async pusherAuth(@Req() req: Request, @Res() res: any) {
-    
+  async pusherAuth(@Req() req: Request, @Res() res: Response) {
     const socketId = (req.body as { socket_id?: string }).socket_id;
     const channel = (req.body as { channel_name?: string }).channel_name;
-    const user = req.user as { userId?: string; sub?: string; tenantCode?: string };
-    const userId = user.userId ?? user.sub;
+    const user = req.user as TenantRequestUser;
+    const userId = user.userId;
 
-    if (!channel?.includes(`private-tenant-${user.tenantCode}-user-${userId}`)) {
+    const baseChannel = `private-tenant-${user.tenantCode}-user-${userId}`;
+    const withBusiness = user.businessId
+      ? `${baseChannel}-business-${user.businessId}`
+      : null;
+
+    const allowed =
+      channel === baseChannel ||
+      (withBusiness != null && channel === withBusiness);
+
+    if (!allowed) {
       return res.status(403).json({ message: 'Unauthorized' });
     }
 
-    const auth = this.pusherService.authorizeChannel(socketId as string, channel);
+    const auth = this.pusherService.authorizeChannel(
+      socketId as string,
+      channel as string,
+    );
     return res.status(200).json(auth);
   }
 }

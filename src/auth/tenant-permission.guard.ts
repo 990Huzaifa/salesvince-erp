@@ -9,11 +9,9 @@ import { Request } from 'express';
 import { DataSource } from 'typeorm';
 import { PERMISSION_KEY } from './require-permission.decorator';
 import { User } from 'src/tenant-db/entities/user.entity';
-
-type TenantRequestUser = {
-  userId?: string;
-  role?: string;
-};
+import { UserBusiness, UserBusinessStatus } from 'src/tenant-db/entities/user-business.entity';
+import { RoleStatus } from 'src/tenant-db/entities/role.entity';
+import type { TenantRequestUser } from './tenant-jwt.strategy';
 
 type TenantPermissionRequest = Request & {
   user?: TenantRequestUser;
@@ -47,37 +45,53 @@ export class TenantPermissionGuard implements CanActivate {
       throw new ForbiddenException('Tenant database connection missing');
     }
 
-    if (user.role === 'SUPER_ADMIN') {
-      return true;
-    }
-
     const tenantUser = await tenantDb.getRepository(User).findOne({
       where: { id: user.userId },
-      relations: ['role', 'role.permissions'],
     });
 
-    if (!tenantUser?.role) {
-      throw new ForbiddenException('Tenant role not assigned');
+    if (!tenantUser) {
+      throw new ForbiddenException('User not found');
     }
 
-    if (tenantUser.role.code === 'SUPER_ADMIN') {
+    if (tenantUser.isSuperAdmin) {
       return true;
     }
 
-    const rolePermissions = tenantUser.role.permissions ?? [];
-    if (rolePermissions.length === 0) {
-      throw new ForbiddenException('Tenant role has no permissions assigned');
+    if (!user.userBusinessId || !user.businessId) {
+      throw new ForbiddenException('Business context required for this action');
     }
 
-    const userPermissionCodes = rolePermissions.map((permission) =>
-      permission.code.toUpperCase(),
-    );
-    const normalizedRequired = requiredPermissions.map((permission) =>
-      permission.toUpperCase(),
-    );
+    const userBusiness = await tenantDb.getRepository(UserBusiness).findOne({
+      where: {
+        id: user.userBusinessId,
+        userId: user.userId,
+        businessId: user.businessId,
+      },
+      relations: ['role', 'role.rolePermissions', 'role.rolePermissions.permission'],
+    });
 
-    const hasPermission = normalizedRequired.some((permission) =>
-      userPermissionCodes.includes(permission),
+    if (!userBusiness || userBusiness.status !== UserBusinessStatus.ACTIVE) {
+      throw new ForbiddenException('Business access is not active');
+    }
+
+    if (!userBusiness.role || userBusiness.role.status !== RoleStatus.ACTIVE) {
+      throw new ForbiddenException('Role is not active');
+    }
+
+    const rolePermissions = userBusiness.role.rolePermissions ?? [];
+    const keys = rolePermissions
+      .map((rp) => rp.permission?.key)
+      .filter((k): k is string => Boolean(k));
+
+    if (keys.length === 0) {
+      throw new ForbiddenException('Role has no permissions assigned');
+    }
+
+    const userPermissionKeys = keys.map((k) => k.toUpperCase());
+    const normalizedRequired = requiredPermissions.map((p) => p.toUpperCase());
+
+    const hasPermission = normalizedRequired.some((p) =>
+      userPermissionKeys.includes(p),
     );
 
     if (!hasPermission) {
