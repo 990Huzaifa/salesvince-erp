@@ -18,6 +18,12 @@ export enum PartyType {
   BOTH = 'BOTH',
 }
 
+export enum PartyClass {
+  A = 'A',
+  B = 'B',
+  C = 'C',
+}
+
 @Entity('parties')
 @Index(['businessId', 'code'], { unique: true })
 export class Party {
@@ -56,6 +62,9 @@ export class Party {
   @Column({ type: 'enum', enum: PartyType })
   type: PartyType;
 
+  @Column({ type: 'enum', enum: PartyClass, nullable: true })
+  partyClass: PartyClass | null;
+
   @Column({ type: 'varchar', length: 150, nullable: true })
   email: string | null;
 
@@ -82,6 +91,24 @@ export class Party {
 
   @Column({ type: 'text', nullable: true })
   address: string | null;
+
+  @Column({nullable: true})
+  countryId: string | null;
+
+  @Column({nullable: true})
+  stateId: string | null;
+
+  @Column({nullable: true})
+  cityId: string | null;
+
+  @Column({ type: 'decimal', precision: 18, scale: 2, nullable: true })
+  creditLimit: number | null;
+
+  @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
+  payableOpeningBalance: number;
+
+  @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
+  receivableOpeningBalance: number;
 
   @CreateDateColumn()
   createdAt: Date;

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource, IsNull } from 'typeorm';
-import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
+import { Party, PartyClass, PartyType } from 'src/tenant-db/entities/party.entity';
 import { seedDefaultChartOfAccountsForBusiness } from 'src/tenant-db/helpers/chart-of-account-bootstrap.helper';
 import {
   createChartOfAccountsForParty,
@@ -14,16 +14,72 @@ import {
 import { CreatePartyDto } from '../dto/party/create-party.dto';
 import { UpdatePartyDto } from '../dto/party/update-party.dto';
 import { ActivityLogService } from './activity-log.service';
+import { TransactionService } from './transaction.service';
 
 @Injectable()
 export class PartyService {
-  constructor(private readonly activityLogService: ActivityLogService) {}
+  constructor(
+    private readonly activityLogService: ActivityLogService,
+    private readonly transactionService: TransactionService,
+  ) {}
 
   private assertBusinessId(businessId?: string): string {
     if (!businessId) {
       throw new BadRequestException('Business context is required');
     }
     return businessId;
+  }
+
+  private isCustomerParty(type: PartyType): boolean {
+    return type === PartyType.CUSTOMER || type === PartyType.BOTH;
+  }
+
+  private assertCustomerOnlyFields(
+    type: PartyType,
+    fields: { partyClass?: PartyClass; creditLimit?: number },
+  ): void {
+    if (this.isCustomerParty(type)) {
+      return;
+    }
+    if (fields.partyClass !== undefined || fields.creditLimit !== undefined) {
+      throw new BadRequestException(
+        'partyClass and creditLimit are only allowed for CUSTOMER or BOTH parties',
+      );
+    }
+  }
+
+  private assertOpeningBalanceByType(
+    type: PartyType,
+    payableOpeningBalance?: number,
+    receivableOpeningBalance?: number,
+  ): void {
+    const payable = payableOpeningBalance ?? 0;
+    const receivable = receivableOpeningBalance ?? 0;
+
+    if (type === PartyType.CUSTOMER && payable !== 0) {
+      throw new BadRequestException(
+        'payableOpeningBalance is not allowed for CUSTOMER parties',
+      );
+    }
+    if (type === PartyType.VENDOR && receivable !== 0) {
+      throw new BadRequestException(
+        'receivableOpeningBalance is not allowed for VENDOR parties',
+      );
+    }
+  }
+
+  private resolveCustomerFields(
+    type: PartyType,
+    partyClass?: PartyClass,
+    creditLimit?: number,
+  ): { partyClass: PartyClass | null; creditLimit: number | null } {
+    if (!this.isCustomerParty(type)) {
+      return { partyClass: null, creditLimit: null };
+    }
+    return {
+      partyClass: partyClass ?? null,
+      creditLimit: creditLimit ?? null,
+    };
   }
 
   private mapParty(party: Party) {
@@ -33,6 +89,11 @@ export class PartyService {
       code: party.code,
       name: party.name,
       type: party.type,
+      partyClass: party.partyClass,
+      creditLimit:
+        party.creditLimit != null ? Number(party.creditLimit) : null,
+      payableOpeningBalance: Number(party.payableOpeningBalance ?? 0),
+      receivableOpeningBalance: Number(party.receivableOpeningBalance ?? 0),
       receivableAccountId: party.receivableAccountId,
       payableAccountId: party.payableAccountId,
       receivableAccount: party.receivableAccount
@@ -209,7 +270,26 @@ export class PartyService {
       throw new ConflictException('Party code already exists for this business');
     }
 
+    this.assertCustomerOnlyFields(dto.type, {
+      partyClass: dto.partyClass,
+      creditLimit: dto.creditLimit,
+    });
+
+    const customerFields = this.resolveCustomerFields(
+      dto.type,
+      dto.partyClass,
+      dto.creditLimit,
+    );
+
+    this.assertOpeningBalanceByType(
+      dto.type,
+      dto.payableOpeningBalance,
+      dto.receivableOpeningBalance,
+    );
+
     await seedDefaultChartOfAccountsForBusiness(tenantDb, scopedBusinessId);
+
+    let openingBalanceTransactionCount = 0;
 
     const saved = await tenantDb.transaction(async (manager) => {
       let party = await manager.save(
@@ -218,6 +298,10 @@ export class PartyService {
           code,
           name,
           type: dto.type,
+          partyClass: customerFields.partyClass,
+          creditLimit: customerFields.creditLimit,
+          payableOpeningBalance: dto.payableOpeningBalance ?? 0,
+          receivableOpeningBalance: dto.receivableOpeningBalance ?? 0,
           email: dto.email?.trim().toLowerCase() ?? null,
           phone: dto.phone?.trim() ?? null,
           whatsAppNumber: dto.whatsAppNumber?.trim() ?? null,
@@ -225,6 +309,9 @@ export class PartyService {
           ntnNumber: dto.ntnNumber?.trim() ?? null,
           strnNumber: dto.strnNumber?.trim() ?? null,
           cnic: dto.cnic?.trim() ?? null,
+          countryId: dto.countryId?.trim() ?? null,
+          stateId: dto.stateId?.trim() ?? null,
+          cityId: dto.cityId?.trim() ?? null,
           taxNumber: dto.taxNumber?.trim() ?? null,
           address: dto.address?.trim() ?? null,
         }),
@@ -236,6 +323,15 @@ export class PartyService {
       party.receivableAccountId = receivableAccount?.id ?? null;
       party.payableAccountId = payableAccount?.id ?? null;
       party = await manager.save(party);
+
+      const openingTransactions =
+        await this.transactionService.postPartyOpeningBalances(manager, {
+          businessId: scopedBusinessId,
+          party,
+          receivableOpeningBalance: dto.receivableOpeningBalance ?? 0,
+          payableOpeningBalance: dto.payableOpeningBalance ?? 0,
+        });
+      openingBalanceTransactionCount = openingTransactions.length;
 
       return manager.findOne(Party, {
         where: { id: party.id },
@@ -252,6 +348,7 @@ export class PartyService {
         partyId: saved!.id,
         receivableAccountId: saved!.receivableAccountId,
         payableAccountId: saved!.payableAccountId,
+        openingBalanceTransactionCount,
       },
     });
 
@@ -272,13 +369,21 @@ export class PartyService {
       partyId,
     );
 
-    if (dto.type !== undefined && dto.type !== party.type) {
-      throw new ConflictException(
-        'Party type cannot be changed after creation. Create a new party instead.',
-      );
-    }
+    this.assertCustomerOnlyFields(party.type, {
+      partyClass: dto.partyClass,
+      creditLimit: dto.creditLimit,
+    });
 
     if (dto.name !== undefined) party.name = dto.name.trim();
+
+    if (this.isCustomerParty(party.type)) {
+      if (dto.partyClass !== undefined) {
+        party.partyClass = dto.partyClass;
+      }
+      if (dto.creditLimit !== undefined) {
+        party.creditLimit = dto.creditLimit;
+      }
+    }
     if (dto.email !== undefined)
       party.email = dto.email?.trim().toLowerCase() ?? null;
     if (dto.phone !== undefined) party.phone = dto.phone?.trim() ?? null;
@@ -295,6 +400,12 @@ export class PartyService {
       party.taxNumber = dto.taxNumber?.trim() ?? null;
     if (dto.address !== undefined)
       party.address = dto.address?.trim() ?? null;
+    if (dto.countryId !== undefined)
+      party.countryId = dto.countryId?.trim() ?? null;
+    if (dto.stateId !== undefined)
+      party.stateId = dto.stateId?.trim() ?? null;
+    if (dto.cityId !== undefined)
+      party.cityId = dto.cityId?.trim() ?? null;
 
     const saved = await tenantDb.getRepository(Party).save(party);
 

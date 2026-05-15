@@ -2,11 +2,15 @@ import {
   IsEmail,
   IsEnum,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   MaxLength,
+  Min,
+  ValidateIf,
 } from 'class-validator';
-import { PartyType } from 'src/tenant-db/entities/party.entity';
+import { Type } from 'class-transformer';
+import { PartyClass, PartyType } from 'src/tenant-db/entities/party.entity';
 
 export class CreatePartyDto {
   @IsString()
@@ -21,6 +25,42 @@ export class CreatePartyDto {
 
   @IsEnum(PartyType)
   type: PartyType;
+
+  @ValidateIf(
+    (o: CreatePartyDto) =>
+      o.type === PartyType.CUSTOMER || o.type === PartyType.BOTH,
+  )
+  @IsEnum(PartyClass)
+  @IsOptional()
+  partyClass?: PartyClass;
+
+  @ValidateIf(
+    (o: CreatePartyDto) =>
+      o.type === PartyType.CUSTOMER || o.type === PartyType.BOTH,
+  )
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  creditLimit?: number;
+
+  @ValidateIf(
+    (o: CreatePartyDto) =>
+      o.type === PartyType.VENDOR || o.type === PartyType.BOTH,
+  )
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  payableOpeningBalance?: number;
+
+  @ValidateIf(
+    (o: CreatePartyDto) =>
+      o.type === PartyType.CUSTOMER || o.type === PartyType.BOTH,
+  )
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  receivableOpeningBalance?: number;
 
   @IsEmail()
   @IsOptional()
@@ -64,4 +104,16 @@ export class CreatePartyDto {
   @IsString()
   @IsOptional()
   address?: string;
+
+  @IsString()
+  @IsOptional()
+  countryId?: string;
+
+  @IsString()
+  @IsOptional()
+  stateId?: string;
+
+  @IsString()
+  @IsOptional()
+  cityId?: string;
 }

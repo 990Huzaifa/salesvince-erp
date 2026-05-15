@@ -14,6 +14,7 @@ import { Role } from './role.entity';
 import { Party } from './party.entity';
 import { ChartOfAccount } from './chart-of-account.entity';
 import { Transaction as TransactionEntity } from './transaction.entity';
+import { ProductBrand, Product, ProductCategory, ProductPricing, ProductPricingJob } from './product.entity';
 export enum BusinessStatus {
     ACTIVE = 'ACTIVE',
     INACTIVE = 'INACTIVE',
@@ -69,4 +70,19 @@ export class Business {
 
     @OneToMany(() => TransactionEntity, (transaction) => transaction.business)
     transactions: TransactionEntity[];
+
+    @OneToMany(() => ProductCategory, (productCategory) => productCategory.business)
+    productCategories: ProductCategory[];
+
+    @OneToMany(() => ProductBrand, (productBrand) => productBrand.business)
+    productBrands: ProductBrand[];
+
+    @OneToMany(() => Product, (product) => product.business)
+    products: Product[];
+
+    @OneToMany(() => ProductPricing, (productPricing) => productPricing.product)
+    productPricings: ProductPricing[];   
+
+    @OneToMany(() => ProductPricingJob, (productPricingJob) => productPricingJob.business)
+    productPricingJobs: ProductPricingJob[];   
 }

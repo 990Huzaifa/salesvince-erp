@@ -1,11 +1,14 @@
 import {
   IsEmail,
   IsEnum,
+  IsNumber,
   IsOptional,
   IsString,
   MaxLength,
+  Min,
 } from 'class-validator';
-import { PartyType } from 'src/tenant-db/entities/party.entity';
+import { Type } from 'class-transformer';
+import { PartyClass } from 'src/tenant-db/entities/party.entity';
 
 export class UpdatePartyDto {
   @IsString()
@@ -13,9 +16,15 @@ export class UpdatePartyDto {
   @MaxLength(200)
   name?: string;
 
-  @IsEnum(PartyType)
+  @IsEnum(PartyClass)
   @IsOptional()
-  type?: PartyType;
+  partyClass?: PartyClass;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  @Type(() => Number)
+  creditLimit?: number;
 
   @IsEmail()
   @IsOptional()
@@ -59,4 +68,16 @@ export class UpdatePartyDto {
   @IsString()
   @IsOptional()
   address?: string;
+
+  @IsString()
+  @IsOptional()
+  countryId?: string;
+
+  @IsString()
+  @IsOptional()
+  stateId?: string;
+
+  @IsString()
+  @IsOptional()
+  cityId?: string;
 }
