@@ -27,7 +27,7 @@ export async function seedPlatformAdminUser(dataSource: DataSource) {
     if (!user) {
         user = userRepo.create({
             email,
-            fullName: 'SND Super Admin',
+            fullName: 'ERP Super Admin',
             passwordHash: await bcrypt.hash('demo9090', 10),
             role: superAdminRole,
         });
