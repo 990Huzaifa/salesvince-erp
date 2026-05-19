@@ -1,41 +1,15 @@
 import { NotFoundException } from '@nestjs/common';
-import { EntityManager, IsNull, Repository } from 'typeorm';
+import { EntityManager, IsNull } from 'typeorm';
 import {
   ChartOfAccount,
   ChartOfAccountKind,
 } from '../entities/chart-of-account.entity';
 import { Party, PartyType } from '../entities/party.entity';
 import { COA_PARENT_CODES } from '../chart-of-accounts/constants/coa-parent-codes';
-import { parseAccountCodeLevels } from './chart-of-account-bootstrap.helper';
-
-export async function nextChildAccountCode(
-  coaRepo: Repository<ChartOfAccount>,
-  businessId: string,
-  parentCode: string,
-): Promise<string> {
-  const prefix = `${parentCode}-`;
-  const siblings = await coaRepo
-    .createQueryBuilder('coa')
-    .select(['coa.code'])
-    .where('coa.businessId = :businessId', { businessId })
-    .andWhere('coa.parentCode = :parentCode', { parentCode })
-    .andWhere('coa.deletedAt IS NULL')
-    .getMany();
-
-  let maxSuffix = 0;
-  for (const row of siblings) {
-    if (!row.code.startsWith(prefix)) {
-      continue;
-    }
-    const suffix = row.code.slice(prefix.length);
-    const num = parseInt(suffix, 10);
-    if (!Number.isNaN(num) && num > maxSuffix) {
-      maxSuffix = num;
-    }
-  }
-
-  return `${prefix}${maxSuffix + 1}`;
-}
+import {
+  nextChildAccountCode,
+  parseAccountCodeLevels,
+} from './chart-of-account-bootstrap.helper';
 
 async function createPartyLinkedAccount(
   manager: EntityManager,

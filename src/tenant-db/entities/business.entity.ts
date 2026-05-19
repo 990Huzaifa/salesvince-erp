@@ -6,11 +6,9 @@ import {
     Index,
     OneToMany,
     PrimaryGeneratedColumn,
-    Transaction,
     UpdateDateColumn,
 } from 'typeorm';
 import { UserBusiness } from './user-business.entity';
-import { Role } from './role.entity';
 import { Party } from './party.entity';
 import { ChartOfAccount } from './chart-of-account.entity';
 import { Transaction as TransactionEntity } from './transaction.entity';

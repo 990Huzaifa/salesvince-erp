@@ -153,6 +153,7 @@ export class TenantRoleService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
+      businessId: null,
       action: 'ROLE_LISTED',
       description: 'Roles listed',
       metadata: { count: roles.length },
@@ -173,6 +174,7 @@ export class TenantRoleService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
+      businessId: null,
       action: 'ROLE_VIEWED',
       description: `Role ${role.name} viewed`,
       metadata: { roleId: role.id },
@@ -225,6 +227,7 @@ export class TenantRoleService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
+      businessId: null,
       action: 'ROLE_CREATED',
       description: `Role ${name} created`,
       metadata: {
@@ -290,6 +293,7 @@ export class TenantRoleService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
+      businessId: null,
       action: 'ROLE_UPDATED',
       description: `Role ${updated!.name} updated`,
       metadata: {
@@ -324,6 +328,7 @@ export class TenantRoleService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
+      businessId: null,
       action: 'ROLE_DELETED',
       description: `Role ${role.name} deleted`,
       metadata: { roleId: role.id },

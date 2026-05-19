@@ -1,57 +1,88 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
-import { Role, RoleStatus } from 'src/tenant-db/entities/role.entity';
+import { Role } from 'src/tenant-db/entities/role.entity';
+import { Flavour, Product, ProductBrand, ProductCategory, Uom } from 'src/tenant-db/entities/product.entity';
 import { Permission } from 'src/tenant-db/entities/permission.entity';
-import { User, UserStatus } from 'src/tenant-db/entities/user.entity';
 
 @Injectable()
 export class TenantUtilityService {
-  private async getUsersByRoleCode(tenantDb: DataSource, roleCode: string) {
-    const users = await tenantDb.getRepository(User).find({
-      where: {
-        status: UserStatus.ACTIVE,
-      },
-      relations: { userBusinesses: true },
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        email: true,
-        userBusinesses: { role: { id: true, name: true } }
-      },
-      order: { name: 'ASC' },
-    });
-
-    return { result: users };
-  }
-
-  async getSalesmanUsers(tenantDb: DataSource) {
-    return this.getUsersByRoleCode(tenantDb, 'SALESMAN');
-  }
-
-  async getMerchandiserUsers(tenantDb: DataSource) {
-    return this.getUsersByRoleCode(tenantDb, 'MERCHANDISER');
-  }
 
   async getRoles(tenantDb: DataSource) {
-    const roles = await tenantDb.getRepository(Role).find({
-      where: { status: RoleStatus.ACTIVE },
-      select: {
-        id: true,
-        name: true,
-      },
-      order: { name: 'ASC' },
-    });
-    return { result: roles };
-    }
+  const roles = await tenantDb.getRepository(Role).find({
+    where: { deletedAt: null },
+    select: {
+      id: true,
+      name: true,
+    },
+    order: { name: 'ASC' },
+  });
+  // remove permissions array from roles
+  return { result: roles };
+  }
 
   async getPermissions(tenantDb: DataSource) {
     const permissions = await tenantDb.getRepository(Permission).find({
-      select: ['id', 'name'],
+      select: ['id', 'key', 'name'],
       order: { name: 'ASC' },
     });
 
     return { result: permissions };
+  }
+
+  async getProductCategories(tenantDb: DataSource) {
+    const productCategories = await tenantDb.getRepository(ProductCategory).find({
+      select: ['id', 'name', 'slug'],
+      order: { name: 'ASC' },
+    });
+
+    return { result: productCategories };
+  }
+
+  async getProductBrands(tenantDb: DataSource) {
+    const productBrands = await tenantDb.getRepository(ProductBrand).find({
+      select: ['id', 'name'],
+      order: { name: 'ASC' },
+    });
+
+    return { result: productBrands };
+  }
+
+  async getProductList(tenantDb: DataSource) {
+    const productList = await tenantDb.getRepository(Product).find({
+      select: {
+        id: true,
+        name: true,
+        skuCode: true,
+      },
+      relations: {
+        pricing: {
+          uom: true,
+        },
+        flavours: true,
+      },
+      order: { name: 'ASC' },
+    });
+
+    return { result: productList };
+  }
+
+  async getFlavours(tenantDb: DataSource) {
+    const flavours = await tenantDb.getRepository(Flavour).find({
+      select: ['id', 'name'],
+      order: { name: 'ASC' },
+    });
+
+    return { result: flavours };
+  }
+
+  async uoms(tenantDb: DataSource) {
+    const uoms = await tenantDb.getRepository(Uom).find({
+      select: ['id', 'name', 'isBase'],
+      where: { isBase: false },
+      order: { name: 'ASC' },
+    });
+
+    return { result: uoms };
   }
 
 }

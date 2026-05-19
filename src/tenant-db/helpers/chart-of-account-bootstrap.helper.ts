@@ -1,4 +1,4 @@
-import { DataSource, EntityManager, IsNull } from 'typeorm';
+import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
 import {
   ChartOfAccount,
   ChartOfAccountKind,
@@ -6,6 +6,35 @@ import {
 import { DEFAULT_CHART_OF_ACCOUNTS } from '../chart-of-accounts/constants/default-chart-of-accounts';
 
 type TenantDb = DataSource | EntityManager;
+
+export async function nextChildAccountCode(
+  coaRepo: Repository<ChartOfAccount>,
+  businessId: string,
+  parentCode: string,
+): Promise<string> {
+  const prefix = `${parentCode}-`;
+  const siblings = await coaRepo
+    .createQueryBuilder('coa')
+    .select(['coa.code'])
+    .where('coa.businessId = :businessId', { businessId })
+    .andWhere('coa.parentCode = :parentCode', { parentCode })
+    .andWhere('coa.deletedAt IS NULL')
+    .getMany();
+
+  let maxSuffix = 0;
+  for (const row of siblings) {
+    if (!row.code.startsWith(prefix)) {
+      continue;
+    }
+    const suffix = row.code.slice(prefix.length);
+    const num = parseInt(suffix, 10);
+    if (!Number.isNaN(num) && num > maxSuffix) {
+      maxSuffix = num;
+    }
+  }
+
+  return `${prefix}${maxSuffix + 1}`;
+}
 
 export function parseAccountCodeLevels(code: string): {
   level1: number;

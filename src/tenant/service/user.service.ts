@@ -61,7 +61,7 @@ export class UserService {
     sortDirection: string,
     roleId: string | null,
     _designationId: string | null,
-    user: { userId: string },
+    user: { userId: string, businessId: string },
   ) {
     const userRepo = tenantDb.getRepository(User);
 
@@ -116,6 +116,7 @@ export class UserService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: user.userId,
+      businessId: user.businessId,
       action: 'USER_LISTED',
       description: 'Users listed',
       metadata: { total, page, limit },
@@ -130,7 +131,7 @@ export class UserService {
     };
   }
 
-  async getUserById(tenantDb: DataSource, id: string, authUser: { userId: string }) {
+  async getUserById(tenantDb: DataSource, id: string, authUser: { userId: string, businessId: string }) {
     const userRepo = tenantDb.getRepository(User);
     const found = await userRepo.findOne({
       where: { id, deletedAt: IsNull() },
@@ -142,6 +143,7 @@ export class UserService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: authUser.userId,
+      businessId: authUser.businessId,
       action: 'USER_VIEWED',
       description: `User ${found.email} viewed`,
       metadata: { userId: found.id },
@@ -155,7 +157,7 @@ export class UserService {
     tenantDb: DataSource,
     tenantCode: string,
     dto: CreateTenantUserDto,
-    authUser: { userId: string },
+    authUser: { userId: string, businessId: string },
   ) {
     const userRepo = tenantDb.getRepository(User);
     const roleRepo = tenantDb.getRepository(Role);
@@ -213,6 +215,7 @@ export class UserService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: authUser.userId,
+      businessId: authUser.businessId,
       action: 'USER_CREATED',
       description: `User ${createdUser.email} created`,
       metadata: { userId: createdUser.id, businessId: dto.businessId, roleId: dto.roleId },
@@ -226,7 +229,7 @@ export class UserService {
     tenantDb: DataSource,
     id: string,
     active: boolean,
-    authUser: { userId: string },
+    authUser: { userId: string, businessId: string },
   ) {
     const userRepo = tenantDb.getRepository(User);
     const found = await userRepo.findOne({ where: { id, deletedAt: IsNull() } });
@@ -238,6 +241,7 @@ export class UserService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: authUser.userId,
+      businessId: authUser.businessId,
       action: 'USER_STATUS_UPDATED',
       description: `User ${found.email} status updated`,
       metadata: { userId: found.id, status: found.status },
@@ -251,7 +255,7 @@ export class UserService {
     _tenantCode: string,
     userId: string,
     avatar: string | null,
-    authUser: { userId: string },
+    authUser: { userId: string, businessId: string },
   ) {
     const userRepo = tenantDb.getRepository(User);
     const user = await userRepo.findOne({ where: { id: userId, deletedAt: IsNull() } });
@@ -264,6 +268,7 @@ export class UserService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: authUser.userId,
+      businessId: authUser.businessId,
       action: 'USER_AVATAR_UPDATED',
       description: `User ${user.email} avatar updated`,
       metadata: { userId: user.id },
@@ -279,7 +284,7 @@ export class UserService {
     tenantCode?: string,
     tenantName?: string,
     requestBaseUrl?: string,
-    authUser?: { userId: string },
+    authUser?: { userId: string, businessId: string },
   ) {
     const userRepo = tenantDb.getRepository(User);
     const roleRepo = tenantDb.getRepository(Role);
@@ -364,6 +369,7 @@ export class UserService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: authUser?.userId ?? null,
+      businessId: authUser?.businessId ?? dto.businessId,
       action: 'USER_INVITED',
       description: `Invitation sent to ${user.email}`,
       metadata: { userId: user.id, email: user.email, businessId: dto.businessId },

@@ -43,6 +43,7 @@ export class TenantBusinessService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
+      businessId: null,
       action: 'BUSINESS_LISTED',
       description: 'Businesses listed for assignment',
       metadata: { count: businesses.length },
@@ -95,6 +96,7 @@ export class TenantBusinessService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
+      businessId: null,
       action: 'BUSINESS_CREATED',
       description: `Business ${saved.business.name} created`,
       metadata: {
@@ -150,6 +152,7 @@ export class TenantBusinessService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
+      businessId: null,
       action: 'BUSINESS_MEMBER_ASSIGNED',
       description: `User ${dto.userId} assigned to business ${businessId}`,
       metadata: {

@@ -79,4 +79,6 @@ export class User {
 
     @DeleteDateColumn({ nullable: true })
     deletedAt: Date | null;
+
+    
 }

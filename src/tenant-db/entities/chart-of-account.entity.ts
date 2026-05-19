@@ -14,6 +14,7 @@ import { Party } from './party.entity';
 
 export enum ChartOfAccountKind {
   SYSTEM = 'SYSTEM',
+  BUSINESS = 'BUSINESS',
   PARTY_RECEIVABLE = 'PARTY_RECEIVABLE',
   PARTY_PAYABLE = 'PARTY_PAYABLE',
 }

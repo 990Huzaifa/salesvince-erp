@@ -214,6 +214,7 @@ export class PartyService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
+      businessId: scopedBusinessId,
       action: 'PARTY_LISTED',
       description: 'Parties listed',
       metadata: { businessId: scopedBusinessId, count: parties.length },
@@ -241,6 +242,7 @@ export class PartyService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
+      businessId: scopedBusinessId,
       action: 'PARTY_VIEWED',
       description: `Party ${party.code} viewed`,
       metadata: { businessId: scopedBusinessId, partyId: party.id },
@@ -341,6 +343,7 @@ export class PartyService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
+      businessId: scopedBusinessId,
       action: 'PARTY_CREATED',
       description: `Party ${code} created`,
       metadata: {
@@ -416,6 +419,7 @@ export class PartyService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
+      businessId: scopedBusinessId,
       action: 'PARTY_UPDATED',
       description: `Party ${saved.code} updated`,
       metadata: { businessId: scopedBusinessId, partyId: saved.id },
@@ -445,6 +449,7 @@ export class PartyService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
+      businessId: scopedBusinessId,
       action: 'PARTY_DELETED',
       description: `Party ${party.code} deleted`,
       metadata: { businessId: scopedBusinessId, partyId: party.id },

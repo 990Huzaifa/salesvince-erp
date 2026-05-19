@@ -8,11 +8,19 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { User } from './user.entity';
+import { Business } from './business.entity';
 
 @Entity('activity_logs')
 export class ActivityLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
+
+  @Column({ type: 'uuid', nullable: true })
+  businessId: string | null;
+
+  @ManyToOne(() => Business, (business) => business.products, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'businessId' })
+  business: Business;
 
   @Column({ type: 'uuid', nullable: true })
   actorId: string | null;

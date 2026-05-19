@@ -16,6 +16,7 @@ export type TenantJobLog = {
 export type TenantJob = {
   id: string;
   tenantCode: string;
+  businessId: string;
   jobType: string;
   fileName: string;
   status: TenantJobStatus;
@@ -31,6 +32,7 @@ export type TenantJob = {
 
 type CreateTenantJobPayload = {
   tenantCode: string;
+  businessId: string;
   jobType: string;
   fileName: string;
   createdBy: string;
@@ -47,6 +49,7 @@ export class TenantJobService {
     const job: TenantJob = {
       id: randomUUID(),
       tenantCode: payload.tenantCode,
+      businessId: payload.businessId,
       jobType: payload.jobType,
       fileName: payload.fileName,
       status: 'queued',

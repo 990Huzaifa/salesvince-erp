@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -21,10 +20,10 @@ import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
-import { ChartOfAccountKind } from 'src/tenant-db/entities/chart-of-account.entity';
+import { ChartOfAccountType } from 'src/tenant-db/chart-of-accounts/constants/chart-of-account-type.enum';
 import { ChartOfAccountService } from '../service/chart-of-account.service';
 import { CreateChartOfAccountDto } from '../dto/chart-of-account/create-chart-of-account.dto';
-import { UpdateChartOfAccountDto } from '../dto/chart-of-account/update-chart-of-account.dto';
+import { RenameChartOfAccountDto } from '../dto/chart-of-account/rename-chart-of-account.dto';
 
 @Controller('tenant/chart-of-accounts')
 @UseGuards(
@@ -37,46 +36,25 @@ import { UpdateChartOfAccountDto } from '../dto/chart-of-account/update-chart-of
 export class ChartOfAccountController {
   constructor(private readonly chartOfAccountService: ChartOfAccountService) {}
 
+  @Get('types')
+  @RequirePermissions('LIST_CHART_OF_ACCOUNT')
+  listTypes() {
+    return this.chartOfAccountService.listAccountTypes();
+  }
+
   @Get()
   @RequirePermissions('LIST_CHART_OF_ACCOUNT')
   list(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
     @Query('search') search?: string,
-    @Query('parentCode') parentCode?: string,
-    @Query('postableOnly') postableOnly?: string,
-    @Query('tree') tree?: string,
-    @Query('partyId') partyId?: string,
-    @Query('accountKind') accountKind?: ChartOfAccountKind,
+    @Query('type') type?: ChartOfAccountType,
   ) {
     const user = req.user as TenantRequestUser;
     return this.chartOfAccountService.listAccounts(
       tenantDb,
       user.businessId,
-      {
-        search,
-        parentCode,
-        postableOnly: postableOnly === 'true',
-        asTree: tree === 'true',
-        partyId,
-        accountKind,
-      },
-      user.userId,
-    );
-  }
-
-  @Get(':id')
-  @RequirePermissions('VIEW_CHART_OF_ACCOUNT')
-  getById(
-    @TenantConnection() tenantDb: DataSource,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Req() req: Request,
-  ) {
-    const user = req.user as TenantRequestUser;
-    return this.chartOfAccountService.getAccountById(
-      tenantDb,
-      user.businessId,
-      id,
+      { search, type },
       user.userId,
     );
   }
@@ -97,36 +75,20 @@ export class ChartOfAccountController {
     );
   }
 
-  @Patch(':id')
+  @Patch(':id/rename')
   @RequirePermissions('UPDATE_CHART_OF_ACCOUNT')
-  update(
+  rename(
     @TenantConnection() tenantDb: DataSource,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateChartOfAccountDto,
+    @Body() dto: RenameChartOfAccountDto,
     @Req() req: Request,
   ) {
     const user = req.user as TenantRequestUser;
-    return this.chartOfAccountService.updateAccount(
+    return this.chartOfAccountService.renameAccount(
       tenantDb,
       user.businessId,
       id,
       dto,
-      user.userId,
-    );
-  }
-
-  @Delete(':id')
-  @RequirePermissions('DELETE_CHART_OF_ACCOUNT')
-  delete(
-    @TenantConnection() tenantDb: DataSource,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Req() req: Request,
-  ) {
-    const user = req.user as TenantRequestUser;
-    return this.chartOfAccountService.deleteAccount(
-      tenantDb,
-      user.businessId,
-      id,
       user.userId,
     );
   }

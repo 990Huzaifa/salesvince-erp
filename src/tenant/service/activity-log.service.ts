@@ -23,6 +23,7 @@ export class ActivityLogService {
         const activityLogRepo = tenantDb.getRepository(ActivityLog);
         const log = activityLogRepo.create({
             actorId: payload.actorId ?? null,
+            businessId: payload.businessId ?? null,
             action: payload.action,
             description: payload.description ?? null,
             metadata: payload.metadata ?? null,
@@ -40,6 +41,7 @@ export class ActivityLogService {
     ) {
         return this.recordActivityLog(tenantDb, {
             actorId: null,
+            businessId: options?.businessId ?? null,
             action,
             description: options?.description,
             metadata: options?.metadata,

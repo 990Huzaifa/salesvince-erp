@@ -1,28 +1,25 @@
+import { Type } from 'class-transformer';
 import {
-  IsBoolean,
+  IsEnum,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
   MaxLength,
 } from 'class-validator';
+import { ChartOfAccountType } from 'src/tenant-db/chart-of-accounts/constants/chart-of-account-type.enum';
 
 export class CreateChartOfAccountDto {
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(50)
-  code: string;
-
-  @IsString()
-  @IsOptional()
-  @MaxLength(50)
-  parentCode?: string;
+  @IsEnum(ChartOfAccountType)
+  type: ChartOfAccountType;
 
   @IsString()
   @IsNotEmpty()
   @MaxLength(150)
   name: string;
 
-  @IsBoolean()
+  @IsNumber()
   @IsOptional()
-  isPostable?: boolean;
+  @Type(() => Number)
+  openingBalance?: number;
 }

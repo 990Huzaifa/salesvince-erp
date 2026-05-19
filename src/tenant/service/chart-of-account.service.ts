@@ -10,20 +10,44 @@ import {
   ChartOfAccountKind,
 } from 'src/tenant-db/entities/chart-of-account.entity';
 import {
+  BUSINESS_CHART_OF_ACCOUNT_TYPE_CONFIG,
+  resolveChartOfAccountTypeFromParent,
+} from 'src/tenant-db/chart-of-accounts/constants/business-chart-of-account-type.config';
+import { ChartOfAccountType } from 'src/tenant-db/chart-of-accounts/constants/chart-of-account-type.enum';
+import {
+  nextChildAccountCode,
   parseAccountCodeLevels,
   seedDefaultChartOfAccountsForBusiness,
 } from 'src/tenant-db/helpers/chart-of-account-bootstrap.helper';
 import { CreateChartOfAccountDto } from '../dto/chart-of-account/create-chart-of-account.dto';
-import { UpdateChartOfAccountDto } from '../dto/chart-of-account/update-chart-of-account.dto';
+import { RenameChartOfAccountDto } from '../dto/chart-of-account/rename-chart-of-account.dto';
 import { ActivityLogService } from './activity-log.service';
+import { TransactionService } from './transaction.service';
 
-export type ChartOfAccountTreeNode = ChartOfAccount & {
-  children: ChartOfAccountTreeNode[];
+export type ChartOfAccountListItem = {
+  id: string;
+  businessId: string;
+  accountKind: ChartOfAccountKind;
+  accountType: ChartOfAccountType | null;
+  code: string;
+  parentCode: string | null;
+  name: string;
+  isPostable: boolean;
+  level1: number;
+  level2: number;
+  level3: number;
+  level4: number;
+  level5: number;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 @Injectable()
 export class ChartOfAccountService {
-  constructor(private readonly activityLogService: ActivityLogService) {}
+  constructor(
+    private readonly activityLogService: ActivityLogService,
+    private readonly transactionService: TransactionService,
+  ) {}
 
   private assertBusinessId(businessId?: string): string {
     if (!businessId) {
@@ -32,12 +56,12 @@ export class ChartOfAccountService {
     return businessId;
   }
 
-  private mapAccount(account: ChartOfAccount) {
+  private mapBusinessAccount(account: ChartOfAccount): ChartOfAccountListItem {
     return {
       id: account.id,
       businessId: account.businessId,
-      partyId: account.partyId,
       accountKind: account.accountKind,
+      accountType: resolveChartOfAccountTypeFromParent(account.parentCode),
       code: account.code,
       parentCode: account.parentCode,
       name: account.name,
@@ -52,51 +76,34 @@ export class ChartOfAccountService {
     };
   }
 
-  private buildTree(accounts: ChartOfAccount[]): ChartOfAccountTreeNode[] {
-    const nodes = new Map<string, ChartOfAccountTreeNode>();
-    for (const account of accounts) {
-      nodes.set(account.code, { ...account, children: [] });
-    }
-
-    const roots: ChartOfAccountTreeNode[] = [];
-    for (const account of accounts) {
-      const node = nodes.get(account.code)!;
-      if (account.parentCode && nodes.has(account.parentCode)) {
-        nodes.get(account.parentCode)!.children.push(node);
-      } else {
-        roots.push(node);
-      }
-    }
-
-    return roots;
-  }
-
-  private async findAccountForBusiness(
+  private async findBusinessAccountForBusiness(
     tenantDb: DataSource,
     businessId: string,
     accountId: string,
   ): Promise<ChartOfAccount> {
     const account = await tenantDb.getRepository(ChartOfAccount).findOne({
-      where: { id: accountId, businessId, deletedAt: IsNull() },
+      where: {
+        id: accountId,
+        businessId,
+        accountKind: ChartOfAccountKind.BUSINESS,
+        deletedAt: IsNull(),
+      },
     });
     if (!account) {
-      throw new NotFoundException('Chart of account not found');
+      throw new NotFoundException('Business chart of account not found');
     }
     return account;
   }
 
-  private async assertParentExists(
-    tenantDb: DataSource,
-    businessId: string,
-    parentCode: string,
-  ): Promise<ChartOfAccount> {
-    const parent = await tenantDb.getRepository(ChartOfAccount).findOne({
-      where: { businessId, code: parentCode, deletedAt: IsNull() },
-    });
-    if (!parent) {
-      throw new NotFoundException('Parent account not found');
-    }
-    return parent;
+  listAccountTypes() {
+    const data = Object.entries(BUSINESS_CHART_OF_ACCOUNT_TYPE_CONFIG).map(
+      ([type, config]) => ({
+        type: type as ChartOfAccountType,
+        parentCode: config.parentCode,
+        label: config.label,
+      }),
+    );
+    return { data };
   }
 
   async seedForBusiness(
@@ -111,11 +118,7 @@ export class ChartOfAccountService {
     businessId: string | undefined,
     options: {
       search?: string;
-      parentCode?: string;
-      postableOnly?: boolean;
-      asTree?: boolean;
-      partyId?: string;
-      accountKind?: ChartOfAccountKind;
+      type?: ChartOfAccountType;
     },
     actorUserId: string,
   ) {
@@ -124,6 +127,9 @@ export class ChartOfAccountService {
       .getRepository(ChartOfAccount)
       .createQueryBuilder('coa')
       .where('coa.businessId = :businessId', { businessId: scopedBusinessId })
+      .andWhere('coa.accountKind = :accountKind', {
+        accountKind: ChartOfAccountKind.BUSINESS,
+      })
       .andWhere('coa.deletedAt IS NULL')
       .orderBy('coa.code', 'ASC');
 
@@ -134,27 +140,13 @@ export class ChartOfAccountService {
       );
     }
 
-    if (options.parentCode !== undefined) {
-      if (options.parentCode === '' || options.parentCode === null) {
-        qb.andWhere('coa.parentCode IS NULL');
-      } else {
-        qb.andWhere('coa.parentCode = :parentCode', {
-          parentCode: options.parentCode,
-        });
+    if (options.type) {
+      const config = BUSINESS_CHART_OF_ACCOUNT_TYPE_CONFIG[options.type];
+      if (!config) {
+        throw new BadRequestException('Invalid chart of account type');
       }
-    }
-
-    if (options.postableOnly) {
-      qb.andWhere('coa.isPostable = true');
-    }
-
-    if (options.partyId) {
-      qb.andWhere('coa.partyId = :partyId', { partyId: options.partyId });
-    }
-
-    if (options.accountKind) {
-      qb.andWhere('coa.accountKind = :accountKind', {
-        accountKind: options.accountKind,
+      qb.andWhere('coa.parentCode = :parentCode', {
+        parentCode: config.parentCode,
       });
     }
 
@@ -162,39 +154,15 @@ export class ChartOfAccountService {
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
+      businessId: scopedBusinessId,
       action: 'CHART_OF_ACCOUNT_LISTED',
-      description: 'Chart of accounts listed',
+      description: 'Business chart of accounts listed',
       metadata: { businessId: scopedBusinessId, count: accounts.length },
     });
 
-    const data = options.asTree
-      ? this.buildTree(accounts)
-      : accounts.map((a) => this.mapAccount(a));
-
-    return { data };
-  }
-
-  async getAccountById(
-    tenantDb: DataSource,
-    businessId: string | undefined,
-    accountId: string,
-    actorUserId: string,
-  ) {
-    const scopedBusinessId = this.assertBusinessId(businessId);
-    const account = await this.findAccountForBusiness(
-      tenantDb,
-      scopedBusinessId,
-      accountId,
-    );
-
-    await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: actorUserId,
-      action: 'CHART_OF_ACCOUNT_VIEWED',
-      description: `Chart of account ${account.code} viewed`,
-      metadata: { businessId: scopedBusinessId, accountId: account.id },
-    });
-
-    return { data: this.mapAccount(account) };
+    return {
+      data: accounts.map((account) => this.mapBusinessAccount(account)),
+    };
   }
 
   async createAccount(
@@ -204,148 +172,156 @@ export class ChartOfAccountService {
     actorUserId: string,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
-    const code = dto.code.trim();
+    const typeConfig = BUSINESS_CHART_OF_ACCOUNT_TYPE_CONFIG[dto.type];
+    if (!typeConfig) {
+      throw new BadRequestException('Invalid chart of account type');
+    }
+
     const name = dto.name.trim();
-    const parentCode = dto.parentCode?.trim() || null;
+    if (!name) {
+      throw new BadRequestException('Account name is required');
+    }
+
+    await seedDefaultChartOfAccountsForBusiness(tenantDb, scopedBusinessId);
 
     const coaRepo = tenantDb.getRepository(ChartOfAccount);
-
-    const existing = await coaRepo.findOne({
-      where: { businessId: scopedBusinessId, code, deletedAt: IsNull() },
-      select: ['id'],
-    });
-    if (existing) {
-      throw new ConflictException('Account code already exists for this business');
-    }
-
-    if (parentCode) {
-      await this.assertParentExists(tenantDb, scopedBusinessId, parentCode);
-    }
-
-    const levels = parseAccountCodeLevels(code);
-    const saved = await coaRepo.save(
-      coaRepo.create({
-        businessId: scopedBusinessId,
-        code,
-        parentCode,
-        name,
-        isPostable: dto.isPostable ?? true,
-        accountKind: ChartOfAccountKind.SYSTEM,
-        partyId: null,
-        ...levels,
-      }),
-    );
-
-    await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: actorUserId,
-      action: 'CHART_OF_ACCOUNT_CREATED',
-      description: `Chart of account ${code} created`,
-      metadata: { businessId: scopedBusinessId, accountId: saved.id, code },
-    });
-
-    return { data: this.mapAccount(saved) };
-  }
-
-  async updateAccount(
-    tenantDb: DataSource,
-    businessId: string | undefined,
-    accountId: string,
-    dto: UpdateChartOfAccountDto,
-    actorUserId: string,
-  ) {
-    const scopedBusinessId = this.assertBusinessId(businessId);
-    const account = await this.findAccountForBusiness(
-      tenantDb,
-      scopedBusinessId,
-      accountId,
-    );
-    const coaRepo = tenantDb.getRepository(ChartOfAccount);
-
-    if (dto.name !== undefined) {
-      account.name = dto.name.trim();
-    }
-
-    if (dto.isPostable !== undefined) {
-      account.isPostable = dto.isPostable;
-    }
-
-    if (dto.parentCode !== undefined) {
-      const parentCode =
-        dto.parentCode === null || dto.parentCode === ''
-          ? null
-          : dto.parentCode.trim();
-
-      if (parentCode === account.code) {
-        throw new BadRequestException('Account cannot be its own parent');
-      }
-
-      if (parentCode) {
-        await this.assertParentExists(tenantDb, scopedBusinessId, parentCode);
-        const childCount = await coaRepo.count({
-          where: {
-            businessId: scopedBusinessId,
-            parentCode: account.code,
-            deletedAt: IsNull(),
-          },
-        });
-        if (childCount > 0 && parentCode !== account.parentCode) {
-          throw new ConflictException(
-            'Cannot change parent while account has child accounts',
-          );
-        }
-      }
-
-      account.parentCode = parentCode;
-    }
-
-    const saved = await coaRepo.save(account);
-
-    await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: actorUserId,
-      action: 'CHART_OF_ACCOUNT_UPDATED',
-      description: `Chart of account ${saved.code} updated`,
-      metadata: { businessId: scopedBusinessId, accountId: saved.id },
-    });
-
-    return { data: this.mapAccount(saved) };
-  }
-
-  async deleteAccount(
-    tenantDb: DataSource,
-    businessId: string | undefined,
-    accountId: string,
-    actorUserId: string,
-  ) {
-    const scopedBusinessId = this.assertBusinessId(businessId);
-    const account = await this.findAccountForBusiness(
-      tenantDb,
-      scopedBusinessId,
-      accountId,
-    );
-
-    const childCount = await tenantDb.getRepository(ChartOfAccount).count({
+    const parent = await coaRepo.findOne({
       where: {
         businessId: scopedBusinessId,
-        parentCode: account.code,
+        code: typeConfig.parentCode,
         deletedAt: IsNull(),
       },
     });
-    if (childCount > 0) {
-      throw new ConflictException(
-        'Cannot delete account that has child accounts',
+    if (!parent) {
+      throw new NotFoundException(
+        `Parent chart of account "${typeConfig.parentCode}" not found for type ${dto.type}`,
       );
     }
 
-    account.deletedAt = new Date();
-    await tenantDb.getRepository(ChartOfAccount).save(account);
+    const duplicateName = await coaRepo.findOne({
+      where: {
+        businessId: scopedBusinessId,
+        parentCode: typeConfig.parentCode,
+        name,
+        accountKind: ChartOfAccountKind.BUSINESS,
+        deletedAt: IsNull(),
+      },
+      select: ['id'],
+    });
+    if (duplicateName) {
+      throw new ConflictException(
+        'An account with this name already exists under the selected type',
+      );
+    }
+
+    let openingBalanceTransactionId: string | null = null;
+
+    const saved = await tenantDb.transaction(async (manager) => {
+      const code = await nextChildAccountCode(
+        manager.getRepository(ChartOfAccount),
+        scopedBusinessId,
+        typeConfig.parentCode,
+      );
+      const levels = parseAccountCodeLevels(code);
+
+      const account = await manager.save(
+        manager.create(ChartOfAccount, {
+          businessId: scopedBusinessId,
+          code,
+          parentCode: typeConfig.parentCode,
+          name,
+          isPostable: true,
+          accountKind: ChartOfAccountKind.BUSINESS,
+          partyId: null,
+          ...levels,
+        }),
+      );
+
+      const openingTransaction =
+        await this.transactionService.postBusinessAccountOpeningBalance(
+          manager,
+          {
+            businessId: scopedBusinessId,
+            account,
+            openingBalance: dto.openingBalance,
+          },
+        );
+      openingBalanceTransactionId = openingTransaction?.id ?? null;
+
+      return account;
+    });
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
-      action: 'CHART_OF_ACCOUNT_DELETED',
-      description: `Chart of account ${account.code} deleted`,
-      metadata: { businessId: scopedBusinessId, accountId: account.id },
+      businessId: scopedBusinessId,
+      action: 'CHART_OF_ACCOUNT_CREATED',
+      description: `Business chart of account ${saved.code} (${dto.type}) created`,
+      metadata: {
+        businessId: scopedBusinessId,
+        accountId: saved.id,
+        code: saved.code,
+        type: dto.type,
+        openingBalance: dto.openingBalance ?? 0,
+        openingBalanceTransactionId,
+      },
     });
 
-    return { message: 'Chart of account deleted successfully' };
+    return {
+      data: this.mapBusinessAccount(saved),
+      openingBalanceTransactionId,
+    };
+  }
+
+  async renameAccount(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    accountId: string,
+    dto: RenameChartOfAccountDto,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const account = await this.findBusinessAccountForBusiness(
+      tenantDb,
+      scopedBusinessId,
+      accountId,
+    );
+
+    const name = dto.name.trim();
+    if (!name) {
+      throw new BadRequestException('Account name is required');
+    }
+
+    if (name !== account.name && account.parentCode) {
+      const duplicateName = await tenantDb.getRepository(ChartOfAccount).findOne(
+        {
+          where: {
+            businessId: scopedBusinessId,
+            parentCode: account.parentCode,
+            name,
+            accountKind: ChartOfAccountKind.BUSINESS,
+            deletedAt: IsNull(),
+          },
+          select: ['id'],
+        },
+      );
+      if (duplicateName && duplicateName.id !== account.id) {
+        throw new ConflictException(
+          'An account with this name already exists under the same type',
+        );
+      }
+    }
+
+    account.name = name;
+    const saved = await tenantDb.getRepository(ChartOfAccount).save(account);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'CHART_OF_ACCOUNT_RENAMED',
+      description: `Business chart of account ${saved.code} renamed`,
+      metadata: { businessId: scopedBusinessId, accountId: saved.id },
+    });
+
+    return { data: this.mapBusinessAccount(saved) };
   }
 }

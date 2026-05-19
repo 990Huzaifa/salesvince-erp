@@ -36,6 +36,13 @@ export type PartyOpeningBalanceInput = {
   transactionDate?: Date;
 };
 
+export type BusinessAccountOpeningBalanceInput = {
+  businessId: string;
+  account: ChartOfAccount;
+  openingBalance?: number;
+  transactionDate?: Date;
+};
+
 @Injectable()
 export class TransactionService {
   private roundAmount(value: number): number {
@@ -357,5 +364,39 @@ export class TransactionService {
     }
 
     return saved;
+  }
+
+  async postBusinessAccountOpeningBalance(
+    manager: EntityManager,
+    input: BusinessAccountOpeningBalanceInput,
+  ): Promise<Transaction | null> {
+    const openingBalance = input.openingBalance ?? 0;
+    if (this.isEffectivelyZero(openingBalance)) {
+      return null;
+    }
+
+    const abs = this.roundAmount(Math.abs(openingBalance));
+    const nature = getAccountBalanceNature(input.account);
+    const narration = `Opening balance - ${input.account.name}`;
+    const isPositive = openingBalance > 0;
+
+    const debitCredit =
+      nature === 'DEBIT'
+        ? isPositive
+          ? { debitAmount: abs }
+          : { creditAmount: abs }
+        : isPositive
+          ? { creditAmount: abs }
+          : { debitAmount: abs };
+
+    return this.postDirectLedgerEntry(manager, {
+      businessId: input.businessId,
+      chartOfAccountId: input.account.id,
+      referenceType: AccountTransactionReferenceType.OPENING_BALANCE,
+      referenceId: input.account.id,
+      transactionDate: input.transactionDate,
+      description: narration,
+      ...debitCredit,
+    });
   }
 }

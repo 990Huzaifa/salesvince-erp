@@ -1,6 +1,9 @@
 import { IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateActivityLogDto {
+    @IsUUID()
+    businessId: string;
+
     @IsOptional()
     @IsUUID()
     actorId?: string | null;

@@ -76,14 +76,14 @@ export class TenantUserController {
       sortDirection,
       roleId,
       null,
-      req.user as { userId: string },
+      req.user as { userId: string, businessId: string },
     );
   }
 
   @Get(':id')
   @RequirePermissions('VIEW_USER')
   getById(@TenantConnection() tenantDb: DataSource, @Param('id') id: string, @Req() req: Request) {
-    return this.userService.getUserById(tenantDb, id, req.user as { userId: string });
+    return this.userService.getUserById(tenantDb, id, req.user as { userId: string, businessId: string });
   }
 
   @Post('')
@@ -94,7 +94,7 @@ export class TenantUserController {
     @Body() dto: CreateTenantUserDto,
     @Req() req: Request,
   ) {
-    return this.userService.createUser(tenantDb, tenantCode, dto, req.user as { userId: string });
+    return this.userService.createUser(tenantDb, tenantCode, dto, req.user as { userId: string, businessId: string });
   }
 
   @Patch(':id/avatar')
@@ -111,14 +111,14 @@ export class TenantUserController {
       tenantCode,
       id,
       avatar,
-      req.user as { userId: string },
+      req.user as { userId: string, businessId: string },
     );
   }
 
   @Put('update/:id/status')
   @RequirePermissions('UPDATE_USER')
   updateStatus(@TenantConnection() tenantDb: DataSource, @Param('id') id: string, @Query('status') status: boolean, @Req() req: Request) {
-    return this.userService.updateUserStatus(tenantDb, id, status, req.user as { userId: string });
+    return this.userService.updateUserStatus(tenantDb, id, status, req.user as { userId: string, businessId: string });
   }
 
   
@@ -140,7 +140,7 @@ export class TenantUserController {
       authUser?.tenantCode,
       authUser?.tenantName,
       this.buildSetupBaseUrl(req, authUser?.tenantCode),
-      req.user as { userId: string },
+      req.user as { userId: string, businessId: string },
     );
   }
 }
