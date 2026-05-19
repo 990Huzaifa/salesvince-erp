@@ -1,6 +1,8 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
 import { User } from "./user.entity";
 import { Product, ProductFlavour, Uom } from "./product.entity";
+import { Party } from "./party.entity";
+import { Warehouse } from "./warehouse.entity";
 
 
 export enum OrderStatus {
@@ -18,36 +20,54 @@ export class PurchaseOrder {
     @Column({ unique: true })
     orderNumber: string;
 
+    @Column()
+    warehouseId: string;
+
+    @ManyToOne(() => Warehouse, (warehouse) => warehouse.grns, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'warehouseId' })
+    warehouse: Warehouse;
+    
+    @Column()
+    vendorId: string;
+
+    @ManyToOne(() => Party, (party) => party.grns, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'vendorId' })
+    vendor: Party;
+
+
     @Column({ type: 'enum', enum: OrderStatus })
     orderStatus: OrderStatus;
 
-    @Column()
+    @Column({type: 'decimal', precision: 18, scale: 2})
     orderTotal: number;
 
-    @Column({ default: 0 })
+    @Column({type: 'decimal', precision: 18, scale: 2, default: 0})
+    deliveryCost: number;
+
+    @Column({type: 'decimal', precision: 18, scale: 2})
     taxPercentage: number;
 
-    @Column({ default: 0 })
+    @Column({type: 'decimal', precision: 18, scale: 2})
     taxAmount: number;
 
-    @Column({ default: 0 })
+    @Column({type: 'decimal', precision: 18, scale: 2})
     discountPercentage: number;
 
-    @Column({ default: 0 })
+    @Column({type: 'decimal', precision: 18, scale: 2})
     discountAmount: number;
 
-    @Column({ default: 0 })
+    @Column({type: 'decimal', precision: 18, scale: 2})
     totalAmount: number;
 
     @Column({nullable: true})
     notes: string;
     
-    @Column({ nullable: true, default: null })
+    @Column('uuid')
     createdBy: string;
 
-    @ManyToOne(() => User, { onDelete: 'RESTRICT' })
+    @ManyToOne(() => User, (user) => user.purchaseOrders, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'createdBy' })
-    createdByUser: User | null;   
+    createdByUser: User;
 
     @Column()
     orderDate: Date;
@@ -77,7 +97,7 @@ export class PurchaseOrderItem {
     @Column()
     productId: string;
 
-    @ManyToOne(() => Product, { onDelete: 'CASCADE' })
+    @ManyToOne(() => Product, (product) => product.purchaseOrderItems, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'productId' })
     product: Product;
 
@@ -91,7 +111,7 @@ export class PurchaseOrderItem {
     @Column()
     uomId: string;
 
-    @ManyToOne(() => Uom, { onDelete: 'RESTRICT' })
+    @ManyToOne(() => Uom, (uom) => uom.purchaseOrderItems, { onDelete: 'RESTRICT' })
     @JoinColumn({ name: 'uomId' })
     uom: Uom;
 
@@ -99,7 +119,10 @@ export class PurchaseOrderItem {
     purchaseUnitPrice: number;
 
     @Column()
-    saleUnitPrice: number;
+    saleUnitMarginAmount: number;
+
+    @Column()
+    saleUnitMarginPercentage: number;
 
     @Column()
     quantity: number;

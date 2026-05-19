@@ -6,11 +6,15 @@ import {
   Index,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
 import { Business } from './business.entity';
+import { Grn } from './grn.entity';
 import { ChartOfAccount } from './chart-of-account.entity';
+import { PurchaseOrder } from './purchase-order.entity';
+import { PurchaseQuotation } from './purchase-quotation.entity';
 
 export enum PartyType {
   CUSTOMER = 'CUSTOMER',
@@ -118,4 +122,15 @@ export class Party {
 
   @DeleteDateColumn({ nullable: true })
   deletedAt: Date | null;
+
+
+  // relationships
+  @OneToMany(() => PurchaseQuotation, (purchaseQuotation) => purchaseQuotation.vendor, { onDelete: 'CASCADE' })
+  purchaseQuotations: PurchaseQuotation[];
+
+  @OneToMany(() => PurchaseOrder, (purchaseOrder) => purchaseOrder.vendor, { onDelete: 'CASCADE' })
+  purchaseOrders: PurchaseOrder[];
+  
+  @OneToMany(() => Grn, (grn) => grn.vendor, { onDelete: 'CASCADE' })
+  grns: Grn[];
 }

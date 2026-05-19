@@ -2,6 +2,7 @@ import {
   IsArray,
   IsBoolean,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -13,11 +14,14 @@ class UpdateProductPricingDto {
   @IsUUID()
   uomId: string;
 
-  @IsString()
-  purchaseUnitPrice: string;
+  @IsNumber()
+  purchaseUnitPrice: number;
 
-  @IsString()
-  saleUnitPrice: string;
+  @IsNumber()
+  saleUnitMarginAmount: number;
+
+  @IsNumber()
+  saleUnitMarginPercentage: number;
 
   @IsInt()
   quantity: number;
@@ -27,6 +31,10 @@ export class UpdateProductDto {
   @IsOptional()
   @IsUUID()
   categoryId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  subCategoryId?: string;
 
   @IsOptional()
   @IsString()

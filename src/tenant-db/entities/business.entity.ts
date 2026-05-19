@@ -13,6 +13,10 @@ import { Party } from './party.entity';
 import { ChartOfAccount } from './chart-of-account.entity';
 import { Transaction as TransactionEntity } from './transaction.entity';
 import { ProductBrand, Product, ProductCategory, ProductPricing, ProductPricingJob, ProductSubCategory, Uom } from './product.entity';
+import { Warehouse } from './warehouse.entity';
+import { Grn } from './grn.entity';
+import { Batch, StockMovement } from './stock.entity';
+import { StockBalance } from './stock.entity';
 export enum BusinessStatus {
     ACTIVE = 'ACTIVE',
     INACTIVE = 'INACTIVE',
@@ -89,6 +93,21 @@ export class Business {
     
     @OneToMany(() => Uom, (uom) => uom.business, { onDelete: 'CASCADE' })
     uoms: Uom[];
+
+    @OneToMany(() => Warehouse, (warehouse) => warehouse.business, { onDelete: 'CASCADE' })
+    warehouses: Warehouse[];
+
+    @OneToMany(() => Grn, (grn) => grn.business, { onDelete: 'CASCADE' })
+    grns: Grn[];
+
+    @OneToMany(() => Batch, (batch) => batch.business, { onDelete: 'CASCADE' })
+    batches: Batch[];
+
+    @OneToMany(() => StockBalance, (stockBalance) => stockBalance.business, { onDelete: 'CASCADE' })
+    stockBalances: StockBalance[];
+
+    @OneToMany(() => StockMovement, (stockMovement) => stockMovement.business, { onDelete: 'CASCADE' })
+    stockMovements: StockMovement[];
 
 
 }

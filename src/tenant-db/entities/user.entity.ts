@@ -9,6 +9,9 @@ import {
     UpdateDateColumn,
 } from 'typeorm';
 import { UserBusiness } from './user-business.entity';
+import { Grn } from './grn.entity';
+import { PurchaseOrder } from './purchase-order.entity';
+import { PurchaseQuotation } from './purchase-quotation.entity';
 export enum UserStatus {
     ACTIVE = 'ACTIVE',
     INACTIVE = 'INACTIVE',
@@ -80,5 +83,13 @@ export class User {
     @DeleteDateColumn({ nullable: true })
     deletedAt: Date | null;
 
+    // relationships
+    @OneToMany(() => PurchaseQuotation, (purchaseQuotation) => purchaseQuotation.createdByUser, { onDelete: 'CASCADE' })
+    purchaseQuotations: PurchaseQuotation[];
     
+    @OneToMany(() => Grn, (grn) => grn.createdByUser, { onDelete: 'CASCADE' })
+    grns: Grn[];
+
+    @OneToMany(() => PurchaseOrder, (purchaseOrder) => purchaseOrder.createdByUser, { onDelete: 'CASCADE' })
+    purchaseOrders: PurchaseOrder[];
 }

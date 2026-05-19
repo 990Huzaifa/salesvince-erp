@@ -42,6 +42,8 @@ import { NotificationService } from './service/notification.service';
 import { TenantJobController } from './controller/tenant-job.controller';
 import { ProductBrandController } from './controller/product-brand.controller';
 import { ProductBrandService } from './service/product-brand.service';
+import { ProductSubCategoryController } from './controller/product-sub-category.controller';
+import { ProductSubCategoryService } from './service/product-sub-category.service';
 @Module({
   imports: [
     HttpModule,
@@ -66,6 +68,7 @@ import { ProductBrandService } from './service/product-brand.service';
     ContraVoucherController,
     UomController,
     ProductBrandController,
+    ProductSubCategoryController,
     TenantJobController,
   ],
   providers: [
@@ -89,7 +92,8 @@ import { ProductBrandService } from './service/product-brand.service';
     TenantPermissionGuard,
     PusherService,
     UomService,
-    ProductBrandService
+    ProductBrandService,
+    ProductSubCategoryService,
   ],
 })
 export class TenantModule {}

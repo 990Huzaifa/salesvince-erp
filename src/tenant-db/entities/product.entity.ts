@@ -17,6 +17,15 @@ import { User } from './user.entity';
 import { Business } from './business.entity';
 import { SaleOrderItem } from './sale-order.entity';
 import { PurchaseOrderItem } from './purchase-order.entity';
+import { GrnItem } from './grn.entity';
+import { PurchaseQuotationItem } from './purchase-quotation.entity';
+import { Batch, StockMovement, StockBalance } from './stock.entity';
+
+export enum BatchPickStrategy {
+    FIFO = 'FIFO',
+    LIFO = 'LIFO',
+    AVG_COST = 'AVG_COST',
+}
 
 @Entity('product_categories')
 export class ProductCategory {
@@ -129,19 +138,23 @@ export class Uom {
     isBase: boolean;
 
     @OneToMany(() => ProductPricing, (productPricing) => productPricing.uom)
-    pricings: ProductPricing[];
-
-    @OneToMany(() => SaleOrderItem, (saleOrderItem) => saleOrderItem.uom)
-    saleOrderItems: SaleOrderItem[];
-
-    @OneToMany(() => PurchaseOrderItem, (purchaseOrderItem) => purchaseOrderItem.uom)
-    purchaseOrderItems: PurchaseOrderItem[];    
+    pricings: ProductPricing[];  
 
     @CreateDateColumn()
     createdAt: Date;
 
     @UpdateDateColumn()
     updatedAt: Date;
+
+    // relationships
+    @OneToMany(() => PurchaseQuotationItem, (purchaseQuotationItem) => purchaseQuotationItem.uom)
+    purchaseQuotationItems: PurchaseQuotationItem[];
+    @OneToMany(() => PurchaseOrderItem, (purchaseOrderItem) => purchaseOrderItem.uom)
+    purchaseOrderItems: PurchaseOrderItem[];
+    @OneToMany(() => GrnItem, (grnItem) => grnItem.uom)
+    grnItems: GrnItem[];
+    @OneToMany(() => SaleOrderItem, (saleOrderItem) => saleOrderItem.uom)
+    saleOrderItems: SaleOrderItem[];
 }
 
 @Entity('product_brands')
@@ -201,6 +214,9 @@ export class Product {
     @Column()
     name: string;
 
+    @Column({type: 'enum', enum: BatchPickStrategy, default: BatchPickStrategy.LIFO})
+    batchPickStrategy: BatchPickStrategy;
+
     @Column({nullable: true })
     hsCode: string;
 
@@ -240,9 +256,27 @@ export class Product {
     updatedAt: Date;
 
 
-
+    // relationships
     @OneToMany(() => ProductPricingJob, (productPricingJob) => productPricingJob.product)
     pricingJobs: ProductPricingJob[];
+
+    @OneToMany(() => PurchaseQuotationItem, (purchaseQuotationItem) => purchaseQuotationItem.product)
+    purchaseQuotationItems: PurchaseQuotationItem[];
+
+    @OneToMany(() => PurchaseOrderItem, (purchaseOrderItem) => purchaseOrderItem.product)
+    purchaseOrderItems: PurchaseOrderItem[];
+
+    @OneToMany(() => GrnItem, (grnItem) => grnItem.product)
+    grnItems: GrnItem[];
+
+    @OneToMany(() => Batch, (batch) => batch.product, { onDelete: 'CASCADE' })
+    batches: Batch[];
+
+    @OneToMany(() => StockBalance, (stockBalance) => stockBalance.product, { onDelete: 'CASCADE' })
+    stockBalances: StockBalance[];
+
+    @OneToMany(() => StockMovement, (stockMovement) => stockMovement.product, { onDelete: 'CASCADE' })
+    stockMovements: StockMovement[];
 
 }
 
@@ -270,6 +304,17 @@ export class ProductFlavour {
 
     @UpdateDateColumn()
     updatedAt: Date;
+
+    // relationships
+
+    @OneToMany(() => PurchaseOrderItem, (purchaseOrderItem) => purchaseOrderItem.productFlavour)
+    purchaseOrderItems: PurchaseOrderItem[];
+
+    @OneToMany(() => SaleOrderItem, (saleOrderItem) => saleOrderItem.productFlavour)
+    saleOrderItems: SaleOrderItem[];
+
+    @OneToMany(() => GrnItem, (grnItem) => grnItem.productFlavour)
+    grnItems: GrnItem[];
 }
 
 @Entity('product_pricings')
@@ -291,11 +336,14 @@ export class ProductPricing {
     @JoinColumn()
     uom: Uom;
 
-    @Column()
-    purchaseUnitPrice: string;
+    @Column({type: 'decimal', precision: 18, scale: 2})
+    purchaseUnitPrice: number;
 
-    @Column()
-    saleUnitPrice: string;
+    @Column({type: 'decimal', precision: 18, scale: 2})
+    saleUnitMarginAmount: number;
+
+    @Column({type: 'decimal', precision: 18, scale: 2})
+    saleUnitMarginPercentage: number;
 
     @Column()
     quantity: number;

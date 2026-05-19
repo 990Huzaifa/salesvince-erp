@@ -15,11 +15,14 @@ class CreateProductPricingDto {
   @IsUUID()
   uomId: string;
 
-  @IsString()
-  purchaseUnitPrice: string;
+  @IsNumber()
+  purchaseUnitPrice: number;
 
-  @IsString()
-  saleUnitPrice: string;
+  @IsNumber()
+  saleUnitMarginAmount: number;
+
+  @IsNumber()
+  saleUnitMarginPercentage: number;
 
   @IsNumber()
   @Min(1)
@@ -29,6 +32,9 @@ class CreateProductPricingDto {
 export class CreateProductDto {
   @IsUUID()
   categoryId: string;
+
+  @IsUUID()
+  subCategoryId: string;
 
   @IsString()
   skuCode: string;

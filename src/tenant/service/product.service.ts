@@ -21,6 +21,7 @@ import {
   ProductCategory,
   ProductFlavour,
   ProductPricing,
+  ProductSubCategory,
   Uom,
 } from 'src/tenant-db/entities/product.entity';
 import { Asset, AssetStatus } from 'src/tenant-db/entities/asset.entity';
@@ -115,6 +116,27 @@ export class ProductService {
     }
   }
 
+  private async ensureSubCategoryExists(
+    tenantDb: DataSource,
+    subCategoryId: string,
+    categoryId: string,
+  ) {
+    const subCategory = await tenantDb.getRepository(ProductSubCategory).findOne({
+      where: { id: subCategoryId },
+      select: ['id', 'categoryId'],
+    });
+
+    if (!subCategory) {
+      throw new NotFoundException('Product sub category not found');
+    }
+
+    if (subCategory.categoryId !== categoryId) {
+      throw new BadRequestException(
+        'Sub category does not belong to the selected category',
+      );
+    }
+  }
+
   private async ensureBrandExists(tenantDb: DataSource, brandId: string) {
     const brand = await tenantDb.getRepository(ProductBrand).findOne({
       where: { id: brandId },
@@ -170,6 +192,7 @@ export class ProductService {
 
   async create(tenantDb: DataSource, tenantCode: string, dto: CreateProductDto, user: any) {
     const categoryId = dto.categoryId.trim();
+    const subCategoryId = dto.subCategoryId.trim();
     const brandId = dto.brandId?.trim();
     const skuCode = dto.skuCode.trim();
     const name = dto.name.trim();
@@ -178,6 +201,7 @@ export class ProductService {
     const flavourIds = dto.flavourIds.map((id) => id.trim()).filter(Boolean);
 
     await this.ensureCategoryExists(tenantDb, categoryId);
+    await this.ensureSubCategoryExists(tenantDb, subCategoryId, categoryId);
     if (brandId) {
       await this.ensureBrandExists(tenantDb, brandId);
     }
@@ -213,6 +237,7 @@ export class ProductService {
 
       const product = productRepo.create({
         categoryId,
+        subCategoryId,
         brandId: brandId || null,
         skuCode,
         name,
@@ -250,11 +275,11 @@ export class ProductService {
       const pricingRows = dto.pricing.map((price) =>
         productPricingRepo.create({
           productId: savedProduct.id,
-          uomId: price.uomId.trim(),
+          uomId: price.uomId,
           purchaseUnitPrice: price.purchaseUnitPrice,
-          saleUnitPrice: price.saleUnitPrice,
-          // convert it to number
-          quantity: Number(price.quantity),
+          saleUnitMarginAmount: price.saleUnitMarginAmount,
+          saleUnitMarginPercentage: price.saleUnitMarginPercentage,
+          quantity: price.quantity,
         }),
       );
       await productPricingRepo.save(pricingRows);
@@ -286,6 +311,7 @@ export class ProductService {
       .getRepository(Product)
       .createQueryBuilder('product')
       .leftJoinAndSelect('product.category', 'category')
+      .leftJoinAndSelect('product.subCategory', 'subCategory')
       .leftJoinAndSelect('product.brand', 'brand')
       .where('product.isDelete = :isDelete', { isDelete: false });
   
@@ -374,6 +400,7 @@ export class ProductService {
       where: { id, isDelete: false },
       relations: [
         'category',
+        'subCategory',
         'brand',
         'flavours',
         'flavours.flavour',
@@ -420,6 +447,22 @@ export class ProductService {
       if (dto.categoryId !== undefined) {
         await this.ensureCategoryExists(tenantDb, dto.categoryId.trim());
         product.categoryId = dto.categoryId.trim();
+      }
+
+      if (dto.subCategoryId !== undefined) {
+        const nextSubCategoryId = dto.subCategoryId.trim();
+        await this.ensureSubCategoryExists(
+          tenantDb,
+          nextSubCategoryId,
+          product.categoryId,
+        );
+        product.subCategoryId = nextSubCategoryId;
+      } else if (dto.categoryId !== undefined && product.subCategoryId) {
+        await this.ensureSubCategoryExists(
+          tenantDb,
+          product.subCategoryId,
+          product.categoryId,
+        );
       }
 
       if (dto.brandId !== undefined) {
@@ -548,7 +591,8 @@ export class ProductService {
             item.uomId.trim(),
             {
               purchaseUnitPrice: item.purchaseUnitPrice,
-              saleUnitPrice: item.saleUnitPrice,
+              saleUnitMarginAmount: item.saleUnitMarginAmount,
+              saleUnitMarginPercentage: item.saleUnitMarginPercentage,
               quantity: Number(item.quantity),
             },
           ]),
@@ -567,7 +611,8 @@ export class ProductService {
           const currentPricing = existingPricingByUom.get(uomId);
           if (currentPricing) {
             currentPricing.purchaseUnitPrice = requestedPricing.purchaseUnitPrice;
-            currentPricing.saleUnitPrice = requestedPricing.saleUnitPrice;
+            currentPricing.saleUnitMarginAmount = requestedPricing.saleUnitMarginAmount;
+            currentPricing.saleUnitMarginPercentage = requestedPricing.saleUnitMarginPercentage;
             currentPricing.quantity = requestedPricing.quantity;
             await productPricingRepo.save(currentPricing);
             continue;
@@ -578,7 +623,8 @@ export class ProductService {
               productId: product.id,
               uomId,
               purchaseUnitPrice: requestedPricing.purchaseUnitPrice,
-              saleUnitPrice: requestedPricing.saleUnitPrice,
+              saleUnitMarginAmount: requestedPricing.saleUnitMarginAmount,
+              saleUnitMarginPercentage: requestedPricing.saleUnitMarginPercentage,
               quantity: requestedPricing.quantity,
             }),
           );
