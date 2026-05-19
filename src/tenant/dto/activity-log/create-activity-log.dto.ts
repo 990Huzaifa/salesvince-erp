@@ -1,8 +1,9 @@
 import { IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateActivityLogDto {
+    @IsOptional()
     @IsUUID()
-    businessId: string;
+    businessId?: string | null;
 
     @IsOptional()
     @IsUUID()
