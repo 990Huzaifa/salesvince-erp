@@ -15,6 +15,7 @@ import { Grn } from './grn.entity';
 import { ChartOfAccount } from './chart-of-account.entity';
 import { PurchaseOrder } from './purchase-order.entity';
 import { PurchaseQuotation } from './purchase-quotation.entity';
+import { Batch } from './stock.entity';
 
 export enum PartyType {
   CUSTOMER = 'CUSTOMER',
@@ -133,4 +134,7 @@ export class Party {
   
   @OneToMany(() => Grn, (grn) => grn.vendor, { onDelete: 'CASCADE' })
   grns: Grn[];
+
+  @OneToMany(() => Batch, (batch) => batch.vendor, { onDelete: 'CASCADE' })
+  batches: Batch[];
 }

@@ -2,6 +2,7 @@ import { Column, CreateDateColumn, DeleteDateColumn, Entity, JoinColumn, ManyToO
 import { Business } from "./business.entity";
 import { Warehouse } from "./warehouse.entity";
 import { Product } from "./product.entity";
+import { Party } from "./party.entity";
 
 export enum StockMovementType {
     IN = 'IN',
@@ -36,6 +37,13 @@ export class Batch {
     @ManyToOne(() => Warehouse, (warehouse) => warehouse.batches, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'warehouseId' })
     warehouse: Warehouse;
+
+    @Column({type: 'uuid'})
+    vendorId: string;
+
+    @ManyToOne(() => Party, (party) => party.batches, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'vendorId' })
+    vendor: Party;
 
     @Column()
     batchNumber: string;
