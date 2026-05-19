@@ -15,6 +15,8 @@ import { User } from './user.entity';
 // import { StockTransferItem } from './stock-transfer.entity';
 // import { SchemeProduct, SchemeProductCategory } from './scheme.entity';
 import { Business } from './business.entity';
+import { SaleOrderItem } from './sale-order.entity';
+import { PurchaseOrderItem } from './purchase-order.entity';
 
 @Entity('product_categories')
 export class ProductCategory {
@@ -49,6 +51,44 @@ export class ProductCategory {
 
     @UpdateDateColumn()
     updatedAt: Date;
+
+    @OneToMany(() => ProductSubCategory, (subCategory) => subCategory.category)
+    subCategories: ProductSubCategory[];
+}
+
+@Entity('product_sub_categories')
+export class ProductSubCategory {
+    @PrimaryGeneratedColumn('uuid')
+    id: string;
+
+    @Column()
+    name: string;
+
+    @Column()
+    slug: string;
+
+    @Column()
+    businessId: string;
+
+    @ManyToOne(() => Business, (business) => business.productSubCategories, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'businessId' })
+    business: Business;
+
+    @Column()
+    categoryId: string;
+
+    @ManyToOne(() => ProductCategory, (category) => category.subCategories, { onDelete: 'RESTRICT' })
+    @JoinColumn()
+    category: ProductCategory;
+
+    @OneToMany(() => Product, (product) => product.subCategory)
+    products: Product[];
+
+    @CreateDateColumn()
+    createdAt: Date;
+
+    @UpdateDateColumn()
+    updatedAt: Date;
 }
 
 @Entity('flavours')
@@ -76,6 +116,13 @@ export class Uom {
     id: string;
 
     @Column()
+    businessId: string;
+
+    @ManyToOne(() => Business, (business) => business.uoms, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'businessId' })
+    business: Business;
+
+    @Column()
     name: string;
 
     @Column({ name: 'is_base', default: false })
@@ -83,6 +130,18 @@ export class Uom {
 
     @OneToMany(() => ProductPricing, (productPricing) => productPricing.uom)
     pricings: ProductPricing[];
+
+    @OneToMany(() => SaleOrderItem, (saleOrderItem) => saleOrderItem.uom)
+    saleOrderItems: SaleOrderItem[];
+
+    @OneToMany(() => PurchaseOrderItem, (purchaseOrderItem) => purchaseOrderItem.uom)
+    purchaseOrderItems: PurchaseOrderItem[];    
+
+    @CreateDateColumn()
+    createdAt: Date;
+
+    @UpdateDateColumn()
+    updatedAt: Date;
 }
 
 @Entity('product_brands')
@@ -128,6 +187,13 @@ export class Product {
     @ManyToOne(() => ProductCategory, (category) => category.products, { onDelete: 'RESTRICT' })
     @JoinColumn()
     category: ProductCategory;
+
+    @Column()
+    subCategoryId: string;
+
+    @ManyToOne(() => ProductSubCategory, (subCategory) => subCategory.products, { onDelete: 'RESTRICT' })
+    @JoinColumn()
+    subCategory: ProductSubCategory;
 
     @Column({unique: true })
     skuCode: string;

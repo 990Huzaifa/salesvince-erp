@@ -192,9 +192,12 @@ export class PartyService {
       .getRepository(Party)
       .createQueryBuilder('p')
       .leftJoinAndSelect('p.receivableAccount', 'ra')
-      .leftJoinAndSelect('p.payableAccount', 'pa')
-      .where('p.businessId = :businessId', { businessId: scopedBusinessId })
-      .andWhere('p.deletedAt IS NULL')
+      .leftJoinAndSelect('p.payableAccount', 'pa');
+
+      if(options.type === PartyType.VENDOR) {
+        qb.where('p.businessId = :businessId', { businessId: scopedBusinessId });
+      }
+      qb.andWhere('p.deletedAt IS NULL')
       .orderBy('p.name', 'ASC')
       .skip(skip)
       .take(limit);

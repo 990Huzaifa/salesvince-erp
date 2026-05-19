@@ -1,6 +1,6 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
 import { User } from "./user.entity";
-import { Product, ProductFlavour, ProductPricing } from "./product.entity";
+import { Product, ProductFlavour, Uom } from "./product.entity";
 
 
 export enum OrderStatus {
@@ -89,11 +89,17 @@ export class PurchaseOrderItem {
     productFlavour: ProductFlavour;
 
     @Column()
-    productPricingId: string;
+    uomId: string;
 
-    @ManyToOne(() => ProductPricing, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'productPricingId' })
-    productPricing: ProductPricing;
+    @ManyToOne(() => Uom, { onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'uomId' })
+    uom: Uom;
+
+    @Column()
+    purchaseUnitPrice: number;
+
+    @Column()
+    saleUnitPrice: number;
 
     @Column()
     quantity: number;
