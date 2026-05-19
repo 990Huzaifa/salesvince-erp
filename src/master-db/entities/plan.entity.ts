@@ -4,6 +4,7 @@ export enum LIMIT_KEY {
     USER = 'USER',
     STORAGE = 'STORAGE',
     BUSINESS = 'BUSINESS',
+    EMPLOYEES = 'EMPLOYEES',
 }
 
 export enum BillingCycle {

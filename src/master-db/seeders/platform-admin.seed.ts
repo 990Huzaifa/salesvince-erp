@@ -9,7 +9,7 @@ export async function seedPlatformAdminUser(dataSource: DataSource) {
 
     console.log('🌱 Seeding platform admin user...');
 
-    const email = 'admin@snd.com';
+    const email = 'admin@erp.com';
 
     let user = await userRepo.findOne({
         where: { email },
