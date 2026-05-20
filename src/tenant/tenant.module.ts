@@ -47,6 +47,8 @@ import { ProductSubCategoryService } from './service/product-sub-category.servic
 import { ProductCategoryController } from './controller/product-category.controller';
 import { ProductCategoryService } from './service/product-category.service';
 import { TransactionController } from './controller/transaction.controller';
+import { AssetController } from './controller/asset.controller';
+import { AssetService } from './service/asset.service';
 @Module({
   imports: [
     HttpModule,
@@ -57,6 +59,7 @@ import { TransactionController } from './controller/transaction.controller';
     TypeOrmModule.forFeature([Tenant]),
   ],
   controllers: [
+    AssetController,
     TenantAuthController,
     TenantUserController,
     TenantBusinessController,
@@ -100,6 +103,7 @@ import { TransactionController } from './controller/transaction.controller';
     ProductBrandService,
     ProductCategoryService,
     ProductSubCategoryService,
+    AssetService,
   ],
 })
 export class TenantModule {}
