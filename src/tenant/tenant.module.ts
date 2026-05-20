@@ -44,6 +44,8 @@ import { ProductBrandController } from './controller/product-brand.controller';
 import { ProductBrandService } from './service/product-brand.service';
 import { ProductSubCategoryController } from './controller/product-sub-category.controller';
 import { ProductSubCategoryService } from './service/product-sub-category.service';
+import { ProductCategoryController } from './controller/product-category.controller';
+import { ProductCategoryService } from './service/product-category.service';
 @Module({
   imports: [
     HttpModule,
@@ -68,6 +70,7 @@ import { ProductSubCategoryService } from './service/product-sub-category.servic
     ContraVoucherController,
     UomController,
     ProductBrandController,
+    ProductCategoryController,
     ProductSubCategoryController,
     TenantJobController,
   ],
@@ -93,6 +96,7 @@ import { ProductSubCategoryService } from './service/product-sub-category.servic
     PusherService,
     UomService,
     ProductBrandService,
+    ProductCategoryService,
     ProductSubCategoryService,
   ],
 })
