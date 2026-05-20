@@ -12,6 +12,8 @@ import {
 import type { Request } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
+import { TenantLoginOnlyGuard } from 'src/auth/tenant-login-only.guard';
+import { TenantSuperAdminGuard } from 'src/auth/tenant-super-admin.guard';
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
@@ -21,7 +23,13 @@ import { CreateTenantBusinessDto } from '../dto/business/create-tenant-business.
 import { AssignBusinessMemberDto } from '../dto/business/assign-business-member.dto';
 
 @Controller('tenant/businesses')
-@UseGuards(TenantJwtAuthGuard, TenantJwtGuard, TenantConnectionGuard)
+@UseGuards(
+  TenantJwtAuthGuard,
+  TenantJwtGuard,
+  TenantConnectionGuard,
+  TenantLoginOnlyGuard,
+  TenantSuperAdminGuard,
+)
 export class TenantBusinessController {
   constructor(private readonly tenantBusinessService: TenantBusinessService) {}
 
