@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
+import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
 import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
@@ -17,6 +18,7 @@ import { UpdateProductBrandDto } from '../dto/product-brand/update-product-brand
   TenantJwtAuthGuard,
   TenantJwtGuard,
   TenantConnectionGuard,
+  TenantBusinessAccessGuard,
   TenantPermissionGuard,
 )
 export class ProductBrandController {
@@ -29,7 +31,7 @@ export class ProductBrandController {
     @Body() dto: CreateProductBrandDto,
     @Req() req: Request,
   ) {
-    return this.productBrandService.create(tenantDb, dto, req.user);
+    return this.productBrandService.create(tenantDb, dto, req.user,);
   }
 
   @Post('import')

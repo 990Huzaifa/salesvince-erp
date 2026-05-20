@@ -37,16 +37,6 @@ export class TenantBusinessAccessGuard implements CanActivate {
       return true;
     }
 
-    if (user.tokenType === TENANT_LOGIN_TOKEN) {
-      const tenantUser = await tenantDb.getRepository(User).findOne({
-        where: { id: user.userId },
-        select: ['id', 'isSuperAdmin'],
-      });
-      if (tenantUser?.isSuperAdmin) {
-        return true;
-      }
-    }
-
     throw new ForbiddenException('Business access token required');
   }
 }
