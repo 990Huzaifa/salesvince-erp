@@ -135,7 +135,7 @@ export class UserService {
     const userRepo = tenantDb.getRepository(User);
     const found = await userRepo.findOne({
       where: { id, deletedAt: IsNull() },
-      relations: ['userBusinesses', 'userBusinesses.business', 'userBusinesses.role'],
+      relations: ['userBusinesses', 'userBusinesses.business', 'userBusinesses.role', 'userBusinesses.role.rolePermissions', 'userBusinesses.role.rolePermissions.permission'],
     });
     if (!found) {
       throw new NotFoundException('User not found');
