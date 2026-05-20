@@ -7,7 +7,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CreatePurchaseQuotationDto } from './create-purchase-quotation.dto';
-import { CreatePurchaseQuotationItemDto } from './create-purchase-quotation-item.dto';
+import { UpdatePurchaseQuotationItemDto } from './update-purchase-quotation-item.dto';
 
 export class UpdatePurchaseQuotationDto extends PartialType(
   CreatePurchaseQuotationDto,
@@ -16,6 +16,6 @@ export class UpdatePurchaseQuotationDto extends PartialType(
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
-  @Type(() => CreatePurchaseQuotationItemDto)
-  items?: CreatePurchaseQuotationItemDto[];
+  @Type(() => UpdatePurchaseQuotationItemDto)
+  items?: UpdatePurchaseQuotationItemDto[];
 }

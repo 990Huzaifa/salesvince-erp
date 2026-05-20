@@ -24,6 +24,7 @@ import {
 import { CreatePurchaseQuotationDto } from '../dto/purchase-quotation/create-purchase-quotation.dto';
 import { CreatePurchaseQuotationItemDto } from '../dto/purchase-quotation/create-purchase-quotation-item.dto';
 import { UpdatePurchaseQuotationDto } from '../dto/purchase-quotation/update-purchase-quotation.dto';
+import { UpdatePurchaseQuotationItemDto } from '../dto/purchase-quotation/update-purchase-quotation-item.dto';
 import { ActivityLogService } from './activity-log.service';
 
 const QUOTATION_NUMBER_PREFIX = 'PQ';
@@ -37,10 +38,6 @@ export class PurchaseQuotationService {
       throw new BadRequestException('Business context is required');
     }
     return businessId;
-  }
-
-  private computeLineTotal(quantity: number, unitPrice: number): number {
-    return quantity * unitPrice;
   }
 
   private async generateQuotationNumber(
@@ -138,6 +135,68 @@ export class PurchaseQuotationService {
         quantity: item.quantity,
       }),
     );
+  }
+
+  private async syncQuotationItems(
+    manager: EntityManager,
+    businessId: string,
+    quotationId: string,
+    items: UpdatePurchaseQuotationItemDto[],
+    existingItems: PurchaseQuotationItem[],
+  ): Promise<void> {
+    await this.validateLineItems(manager, businessId, items);
+
+    const itemRepo = manager.getRepository(PurchaseQuotationItem);
+    const existingById = new Map(existingItems.map((row) => [row.id, row]));
+    const keptItemIds = new Set<string>();
+
+    for (const item of items) {
+      if (item.id) {
+        const existing = existingById.get(item.id);
+        if (!existing || existing.purchaseQuotationId !== quotationId) {
+          throw new NotFoundException(`Quotation item ${item.id} not found`);
+        }
+        keptItemIds.add(item.id);
+        await itemRepo.update(existing.id, {
+          productId: item.productId,
+          uomId: item.uomId,
+          quantity: item.quantity,
+        });
+        continue;
+      }
+
+      await itemRepo.save(
+        itemRepo.create({
+          purchaseQuotationId: quotationId,
+          productId: item.productId,
+          uomId: item.uomId,
+          quantity: item.quantity,
+        }),
+      );
+    }
+
+    const idsToRemove = existingItems
+      .filter((row) => !keptItemIds.has(row.id))
+      .map((row) => row.id);
+
+    if (idsToRemove.length > 0) {
+      await itemRepo.delete({
+        id: In(idsToRemove),
+        purchaseQuotationId: quotationId,
+      });
+    }
+  }
+
+  private async saveQuotationHeader(
+    manager: EntityManager,
+    quotation: PurchaseQuotation,
+  ): Promise<void> {
+    await manager.getRepository(PurchaseQuotation).update(quotation.id, {
+      quotationNumber: quotation.quotationNumber,
+      vendorId: quotation.vendorId,
+      quotationDate: quotation.quotationDate,
+      notes: quotation.notes,
+    });
   }
 
   private mapQuotation(quotation: PurchaseQuotation) {
@@ -429,18 +488,20 @@ export class PurchaseQuotationService {
       quotation.notes = dto.notes?.trim() || null;
     }
 
+    const existingItems = [...(quotation.items ?? [])];
+
     const updated = await tenantDb.transaction(async (manager) => {
       if (dto.items !== undefined) {
-        await this.validateLineItems(manager, scopedBusinessId, dto.items);
-        await manager
-          .getRepository(PurchaseQuotationItem)
-          .delete({ purchaseQuotationId: quotation.id });
-        await manager
-          .getRepository(PurchaseQuotationItem)
-          .save(this.buildItemEntities(manager, quotation.id, dto.items));
+        await this.syncQuotationItems(
+          manager,
+          scopedBusinessId,
+          quotation.id,
+          dto.items,
+          existingItems,
+        );
       }
 
-      await manager.getRepository(PurchaseQuotation).save(quotation);
+      await this.saveQuotationHeader(manager, quotation);
 
       return manager.getRepository(PurchaseQuotation).findOneOrFail({
         where: { id: quotation.id },
