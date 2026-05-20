@@ -144,11 +144,11 @@ export class PurchaseOrderService {
     pricing: ProductPricing,
   ): ResolvedLineItem {
     const purchaseUnitPrice =
-      item.purchaseUnitPrice ?? Number(pricing.purchaseUnitPrice);
+      item.purchaseUnitPrice ?? pricing.purchaseUnitPrice;
     const saleUnitMarginAmount =
-      item.saleUnitMarginAmount ?? Number(pricing.saleUnitMarginAmount);
+      item.saleUnitMarginAmount ?? pricing.saleUnitMarginAmount;
     const saleUnitMarginPercentage =
-      item.saleUnitMarginPercentage ?? Number(pricing.saleUnitMarginPercentage);
+      item.saleUnitMarginPercentage ?? pricing.saleUnitMarginPercentage;
     const discountPercentage = item.discountPercentage ?? 0;
     const lineSubtotal = purchaseUnitPrice * item.quantity;
     const discountAmount = this.roundAmount(
@@ -340,13 +340,13 @@ export class PurchaseOrderService {
             name: item.uom.name,
           }
         : null,
-      purchaseUnitPrice: Number(item.purchaseUnitPrice),
-      saleUnitMarginAmount: Number(item.saleUnitMarginAmount),
-      saleUnitMarginPercentage: Number(item.saleUnitMarginPercentage),
+      purchaseUnitPrice: item.purchaseUnitPrice,
+      saleUnitMarginAmount: item.saleUnitMarginAmount,
+      saleUnitMarginPercentage: item.saleUnitMarginPercentage,
       quantity: item.quantity,
-      discountPercentage: Number(item.discountPercentage),
-      discountAmount: Number(item.discountAmount),
-      totalAmount: Number(item.totalAmount),
+      discountPercentage: item.discountPercentage,
+      discountAmount: item.discountAmount,
+      totalAmount: item.totalAmount,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     }));
@@ -372,13 +372,13 @@ export class PurchaseOrderService {
           }
         : null,
       orderStatus: order.orderStatus,
-      orderTotal: Number(order.orderTotal),
-      deliveryCost: Number(order.deliveryCost),
-      taxPercentage: Number(order.taxPercentage),
-      taxAmount: Number(order.taxAmount),
-      discountPercentage: Number(order.discountPercentage),
-      discountAmount: Number(order.discountAmount),
-      totalAmount: Number(order.totalAmount),
+      orderTotal: order.orderTotal,
+      deliveryCost: order.deliveryCost,
+      taxPercentage: order.taxPercentage,
+      taxAmount: order.taxAmount,
+      discountPercentage: order.discountPercentage,
+      discountAmount: order.discountAmount,
+      totalAmount: order.totalAmount,
       notes: order.notes,
       orderDate: order.orderDate,
       createdBy: order.createdBy,
@@ -972,10 +972,10 @@ export class PurchaseOrderService {
         uomId: item.uomId,
         productFlavourId: item.productFlavourId ?? undefined,
         quantity: item.quantity,
-        purchaseUnitPrice: Number(item.purchaseUnitPrice),
-        saleUnitMarginAmount: Number(item.saleUnitMarginAmount),
-        saleUnitMarginPercentage: Number(item.saleUnitMarginPercentage),
-        discountPercentage: Number(item.discountPercentage),
+        purchaseUnitPrice: item.purchaseUnitPrice,
+        saleUnitMarginAmount: item.saleUnitMarginAmount,
+        saleUnitMarginPercentage: item.saleUnitMarginPercentage,
+        discountPercentage: item.discountPercentage,
       }));
 
       const pricingByKey = await this.validateLineItems(
@@ -985,10 +985,10 @@ export class PurchaseOrderService {
       );
       const resolvedLines = this.buildResolvedLines(itemsForTotals, pricingByKey);
       const totals = this.computeOrderTotals(resolvedLines, {
-        deliveryCost: dto.deliveryCost ?? Number(order.deliveryCost),
-        taxPercentage: dto.taxPercentage ?? Number(order.taxPercentage),
+        deliveryCost: dto.deliveryCost ?? order.deliveryCost,
+        taxPercentage: dto.taxPercentage ?? order.taxPercentage,
         discountPercentage:
-          dto.discountPercentage ?? Number(order.discountPercentage),
+          dto.discountPercentage ?? order.discountPercentage,
       });
 
       await manager.getRepository(PurchaseOrder).update(order.id, {
