@@ -46,6 +46,7 @@ import { ProductSubCategoryController } from './controller/product-sub-category.
 import { ProductSubCategoryService } from './service/product-sub-category.service';
 import { ProductCategoryController } from './controller/product-category.controller';
 import { ProductCategoryService } from './service/product-category.service';
+import { TransactionController } from './controller/transaction.controller';
 @Module({
   imports: [
     HttpModule,
@@ -73,6 +74,7 @@ import { ProductCategoryService } from './service/product-category.service';
     ProductCategoryController,
     ProductSubCategoryController,
     TenantJobController,
+    TransactionController,
   ],
   providers: [
     TenantAuthService,
