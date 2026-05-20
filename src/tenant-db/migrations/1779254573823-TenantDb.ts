@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class TenantDb1779200942487 implements MigrationInterface {
-    name = 'TenantDb1779200942487'
+export class TenantDb1779254573823 implements MigrationInterface {
+    name = 'TenantDb1779254573823'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`CREATE TYPE "public"."chart_of_accounts_accountkind_enum" AS ENUM('SYSTEM', 'BUSINESS', 'PARTY_RECEIVABLE', 'PARTY_PAYABLE')`);
