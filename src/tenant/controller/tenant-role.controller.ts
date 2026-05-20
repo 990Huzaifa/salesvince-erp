@@ -30,7 +30,6 @@ import { UpdateTenantRoleDto } from '../dto/role/update-tenant-role.dto';
   TenantJwtAuthGuard,
   TenantJwtGuard,
   TenantConnectionGuard,
-  TenantBusinessAccessGuard,
   TenantPermissionGuard,
 )
 export class TenantRoleController {

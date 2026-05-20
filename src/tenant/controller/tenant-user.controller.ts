@@ -17,7 +17,6 @@ import { UserService } from '../service/user.service';
   TenantJwtAuthGuard,
   TenantJwtGuard,
   TenantConnectionGuard,
-  TenantBusinessAccessGuard,
   TenantPermissionGuard,
 )
 export class TenantUserController {
