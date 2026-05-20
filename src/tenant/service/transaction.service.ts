@@ -429,8 +429,8 @@ export class TransactionService {
     const qb = tenantDb.getRepository(Transaction).createQueryBuilder('t')
     .leftJoinAndSelect('t.chartOfAccount', 'coa');
     qb.where('t.businessId = :businessId', { businessId: scopedBusinessId })
-    qb.orderBy('t.transactionDate', 'ASC')
-    .addOrderBy('t.createdAt', 'ASC')
+    qb.orderBy('t.transactionDate', 'DESC')
+    .addOrderBy('t.id', 'DESC')
     .skip(skip)
     .take(limit);
 
