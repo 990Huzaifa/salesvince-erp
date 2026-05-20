@@ -51,6 +51,8 @@ import { AssetController } from './controller/asset.controller';
 import { AssetService } from './service/asset.service';
 import { ProductController } from './controller/product.controller';
 import { ProductService } from './service/product.service';
+import { TenantUtilityController } from './controller/utility.controller';
+import { TenantUtilityService } from './service/tenant-utility.service';
 @Module({
   imports: [
     HttpModule,
@@ -81,6 +83,7 @@ import { ProductService } from './service/product.service';
     ProductController,
     TenantJobController,
     TransactionController,
+    TenantUtilityController,
   ],
   providers: [
     TenantAuthService,
@@ -108,6 +111,7 @@ import { ProductService } from './service/product.service';
     ProductSubCategoryService,
     ProductService,
     AssetService,
+    TenantUtilityService,
   ],
 })
 export class TenantModule {}
