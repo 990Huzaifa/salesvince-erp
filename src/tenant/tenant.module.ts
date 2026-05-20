@@ -49,6 +49,8 @@ import { ProductCategoryService } from './service/product-category.service';
 import { TransactionController } from './controller/transaction.controller';
 import { AssetController } from './controller/asset.controller';
 import { AssetService } from './service/asset.service';
+import { ProductController } from './controller/product.controller';
+import { ProductService } from './service/product.service';
 @Module({
   imports: [
     HttpModule,
@@ -76,6 +78,7 @@ import { AssetService } from './service/asset.service';
     ProductBrandController,
     ProductCategoryController,
     ProductSubCategoryController,
+    ProductController,
     TenantJobController,
     TransactionController,
   ],
@@ -103,6 +106,7 @@ import { AssetService } from './service/asset.service';
     ProductBrandService,
     ProductCategoryService,
     ProductSubCategoryService,
+    ProductService,
     AssetService,
   ],
 })
