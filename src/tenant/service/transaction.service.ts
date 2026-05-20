@@ -429,7 +429,6 @@ export class TransactionService {
     const qb = tenantDb.getRepository(Transaction).createQueryBuilder('t')
     .leftJoinAndSelect('t.chartOfAccount', 'coa');
     qb.where('t.businessId = :businessId', { businessId: scopedBusinessId })
-    .andWhere('t.deletedAt IS NULL')
     qb.orderBy('t.transactionDate', 'ASC')
     .skip(skip)
     .take(limit);
