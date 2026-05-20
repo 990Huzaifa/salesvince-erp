@@ -28,6 +28,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'CREATE_CHART_OF_ACCOUNT', name: 'Create Chart of Account' },
   { key: 'CREATE_PARTY', name: 'Create Party' },
   { key: 'CREATE_PURCHASE_QUOTATION', name: 'Create Purchase Quotation' },
+  { key: 'CREATE_PURCHASE_ORDER', name: 'Create Purchase Order' },
   { key: 'CREATE_WAREHOUSE', name: 'Create Warehouse' },
 
   { key: 'LIST_USER', name: 'List Users' },
@@ -54,6 +55,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'LIST_CHART_OF_ACCOUNT', name: 'List Chart of Account' },
   { key: 'LIST_PARTY', name: 'List Party' },
   { key: 'LIST_PURCHASE_QUOTATION', name: 'List Purchase Quotation' },
+  { key: 'LIST_PURCHASE_ORDER', name: 'List Purchase Order' },
   { key: 'LIST_WAREHOUSE', name: 'List Warehouse' },
 
   { key: 'UPDATE_USER', name: 'Update Users' },
@@ -80,12 +82,14 @@ export const TENANT_PERMISSIONS = [
   { key: 'APPROVE_SALE_RETURN_VOUCHER', name: 'Approve Sale Return Voucher' },
   { key: 'APPROVE_EXPENSE_VOUCHER', name: 'Approve Expense Voucher' },
   { key: 'APPROVE_CONTRA_VOUCHER', name: 'Approve Contra Voucher' },
+  { key: 'APPROVE_PURCHASE_ORDER', name: 'Approve Purchase Order' },
   { key: 'UPDATE_OPENING_STOCK', name: 'Update Opening Stock' },
   { key: 'UPDATE_PURCHASE_STOCK', name: 'Update Purchase Stock' },
   { key: 'UPDATE_TRANSFER_STOCK', name: 'Update Transfer Stock' },
   { key: 'UPDATE_CHART_OF_ACCOUNT', name: 'Update Chart of Account' },
   { key: 'UPDATE_PARTY', name: 'Update Party' },
   { key: 'UPDATE_PURCHASE_QUOTATION', name: 'Update Purchase Quotation' },
+  { key: 'UPDATE_PURCHASE_ORDER', name: 'Update Purchase Order' },
   { key: 'UPDATE_WAREHOUSE', name: 'Update Warehouse' },
 
   { key: 'VIEW_USER', name: 'View Users' },
@@ -112,6 +116,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'VIEW_CHART_OF_ACCOUNT', name: 'View Chart of Account' },
   { key: 'VIEW_PARTY', name: 'View Party' },
   { key: 'VIEW_PURCHASE_QUOTATION', name: 'View Purchase Quotation' },
+  { key: 'VIEW_PURCHASE_ORDER', name: 'View Purchase Order' },
   { key: 'VIEW_WAREHOUSE', name: 'View Warehouse' },
 
   { key: 'DELETE_USER', name: 'Delete Users' },
@@ -130,6 +135,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'DELETE_CHART_OF_ACCOUNT', name: 'Delete Chart of Account' },
   { key: 'DELETE_PARTY', name: 'Delete Party' },
   { key: 'DELETE_PURCHASE_QUOTATION', name: 'Delete Purchase Quotation' },
+  { key: 'DELETE_PURCHASE_ORDER', name: 'Delete Purchase Order' },
 
 ];
 

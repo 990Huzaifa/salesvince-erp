@@ -57,6 +57,8 @@ import { PurchaseQuotationController } from './controller/purchase-quotation.con
 import { PurchaseQuotationService } from './service/purchase-quotation.service';
 import { WarehouseController } from './controller/warehouse.controller';
 import { WarehouseService } from './service/warehouse.service';
+import { PurchaseOrderController } from './controller/purchase-order.controller';
+import { PurchaseOrderService } from './service/purchase-order.service';
 @Module({
   imports: [
     HttpModule,
@@ -90,6 +92,7 @@ import { WarehouseService } from './service/warehouse.service';
     TenantUtilityController,
     PurchaseQuotationController,
     WarehouseController,
+    PurchaseOrderController,
   ],
   providers: [
     TenantAuthService,
@@ -120,6 +123,7 @@ import { WarehouseService } from './service/warehouse.service';
     TenantUtilityService,
     PurchaseQuotationService,
     WarehouseService,
+    PurchaseOrderService,
   ],
 })
 export class TenantModule {}
