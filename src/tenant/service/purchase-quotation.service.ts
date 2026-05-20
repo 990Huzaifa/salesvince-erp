@@ -136,8 +136,6 @@ export class PurchaseQuotationService {
         productId: item.productId,
         uomId: item.uomId,
         quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        totalPrice: this.computeLineTotal(item.quantity, item.unitPrice),
       }),
     );
   }
@@ -161,13 +159,9 @@ export class PurchaseQuotationService {
           }
         : null,
       quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      totalPrice: item.totalPrice,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     }));
-
-    const orderTotal = items.reduce((sum, item) => sum + item.totalPrice, 0);
 
     return {
       id: quotation.id,
@@ -191,7 +185,6 @@ export class PurchaseQuotationService {
             email: quotation.createdByUser.email,
           }
         : null,
-      orderTotal,
       items,
       createdAt: quotation.createdAt,
       updatedAt: quotation.updatedAt,

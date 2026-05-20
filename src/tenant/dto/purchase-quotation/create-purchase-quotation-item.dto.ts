@@ -10,8 +10,4 @@ export class CreatePurchaseQuotationItemDto {
   @IsInt()
   @Min(1)
   quantity: number;
-
-  @IsInt()
-  @Min(0)
-  unitPrice: number;
 }

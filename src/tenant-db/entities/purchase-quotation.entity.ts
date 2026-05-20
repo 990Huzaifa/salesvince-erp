@@ -71,12 +71,6 @@ export class PurchaseQuotationItem {
     @Column()
     quantity: number;
 
-    @Column()
-    unitPrice: number;
-
-    @Column()
-    totalPrice: number;
-
     @CreateDateColumn()
     createdAt: Date;
 
