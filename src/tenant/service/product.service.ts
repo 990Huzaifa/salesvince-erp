@@ -34,6 +34,7 @@ import { ActivityLogService } from './activity-log.service';
 import { S3Service } from 'src/common/s3/s3.service';
 import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
+import { createChartOfAccountForProduct } from 'src/tenant-db/helpers/product-chart-of-account.helper';
 import { CreateProductDto } from '../dto/product/create-product.dto';
 import { UpdateProductDto } from '../dto/product/update-product.dto';
 
@@ -199,7 +200,7 @@ export class ProductService {
     const name = dto.name.trim();
     const description = dto.description?.trim() || null;
     const hsCode = dto.hsCode?.trim() || null;
-    const flavourIds = dto.flavourIds.map((id) => id.trim()).filter(Boolean);
+    const flavourIds = (dto.flavourIds ?? []).map((id) => id.trim()).filter(Boolean);
 
     await this.ensureCategoryExists(tenantDb, categoryId, user);
     await this.ensureSubCategoryExists(tenantDb, subCategoryId, categoryId, user);
@@ -207,7 +208,9 @@ export class ProductService {
       await this.ensureBrandExists(tenantDb, brandId);
     }
     await this.ensureSkuUnique(tenantDb, skuCode);
-    await this.ensureFlavoursExist(tenantDb, flavourIds);
+    if (flavourIds.length) {
+      await this.ensureFlavoursExist(tenantDb, flavourIds);
+    }
     await this.ensureUomsExist(
       tenantDb,
       dto.pricing.map((item) => item.uomId.trim()),
@@ -237,6 +240,7 @@ export class ProductService {
       }
 
       const product = productRepo.create({
+        businessId: user.businessId,
         categoryId,
         subCategoryId,
         brandId: brandId || null,
@@ -250,6 +254,7 @@ export class ProductService {
       });
 
       const savedProduct = await productRepo.save(product);
+      await createChartOfAccountForProduct(manager, savedProduct);
 
       if (uniqueAssetIds.length) {
         const now = new Date();
@@ -265,13 +270,15 @@ export class ProductService {
         }
       }
 
-      const flavourRows = [...new Set(flavourIds)].map((flavourId) =>
-        productFlavourRepo.create({
-          productId: savedProduct.id,
-          flavourId,
-        }),
-      );
-      await productFlavourRepo.save(flavourRows);
+      if (flavourIds.length) {
+        const flavourRows = [...new Set(flavourIds)].map((flavourId) =>
+          productFlavourRepo.create({
+            productId: savedProduct.id,
+            flavourId,
+          }),
+        );
+        await productFlavourRepo.save(flavourRows);
+      }
 
       const pricingRows = dto.pricing.map((price) =>
         productPricingRepo.create({
@@ -403,6 +410,7 @@ export class ProductService {
         'category',
         'subCategory',
         'brand',
+        'chartOfAccount',
         'flavours',
         'flavours.flavour',
         'pricing',

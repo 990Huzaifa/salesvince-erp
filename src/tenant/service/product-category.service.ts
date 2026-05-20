@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { DataSource, Like } from 'typeorm';
 import { ProductCategory } from 'src/tenant-db/entities/product.entity';
+import { ensureChartOfAccountForCategory } from 'src/tenant-db/helpers/product-chart-of-account.helper';
 import { ActivityLogService } from './activity-log.service';
 import { CreateProductCategoryDto } from '../dto/product-category/create-product-category.dto';
 import { UpdateProductCategoryDto } from '../dto/product-category/update-product-category.dto';
@@ -140,14 +141,18 @@ export class ProductCategoryService {
           continue;
         }
 
-        const created = await categoryRepo.save(
-          categoryRepo.create({
-            name: row.name,
-            slug: row.slug,
-            businessId: user.businessId,
-            createdBy: user.userId,
-          }),
-        );
+        const created = await tenantDb.transaction(async (manager) => {
+          const category = await manager.getRepository(ProductCategory).save(
+            manager.getRepository(ProductCategory).create({
+              name: row.name,
+              slug: row.slug,
+              businessId: user.businessId,
+              createdBy: user.userId,
+            }),
+          );
+          await ensureChartOfAccountForCategory(manager, category);
+          return category;
+        });
 
         this.tenantJobService.appendLog(jobId, {
           row: row.row,
@@ -199,14 +204,20 @@ export class ProductCategoryService {
       throw new ConflictException('Product category with this slug already exists');
     }
 
-    const category = tenantDb.getRepository(ProductCategory).create({
-      name: dto.name.trim(),
-      slug,
-      businessId: user.businessId,
-      createdBy: user.userId,
+    const createdCategory = await tenantDb.transaction(async (manager) => {
+      const category = await manager.getRepository(ProductCategory).save(
+        manager.getRepository(ProductCategory).create({
+          name: dto.name.trim(),
+          slug,
+          businessId: user.businessId,
+          createdBy: user.userId,
+        }),
+      );
+      await ensureChartOfAccountForCategory(manager, category);
+      return manager.getRepository(ProductCategory).findOneOrFail({
+        where: { id: category.id },
+      });
     });
-
-    const createdCategory = await tenantDb.getRepository(ProductCategory).save(category);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: user.userId,

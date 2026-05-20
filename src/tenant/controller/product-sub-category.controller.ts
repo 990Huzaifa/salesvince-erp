@@ -7,8 +7,11 @@ import {
   Put,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
@@ -16,7 +19,7 @@ import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
-import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
+import { TenantCode, TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import { ProductSubCategoryService } from '../service/product-sub-category.service';
 import { CreateProductSubCategoryDto } from '../dto/product-sub-category/create-product-sub-category.dto';
 import { UpdateProductSubCategoryDto } from '../dto/product-sub-category/update-product-sub-category.dto';
@@ -41,6 +44,23 @@ export class ProductSubCategoryController {
     @Req() req: Request,
   ) {
     return this.productSubCategoryService.create(tenantDb, dto, req.user);
+  }
+
+  @Post('import')
+  @RequirePermissions('CREATE_PRODUCT_SUB_CATEGORY')
+  @UseInterceptors(FileInterceptor('file'))
+  importSubCategories(
+    @TenantConnection() tenantDb: DataSource,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    return this.productSubCategoryService.importSubCategories(
+      tenantDb,
+      file,
+      req.user,
+      tenantCode,
+    );
   }
 
   @Get()

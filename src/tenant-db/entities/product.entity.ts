@@ -15,6 +15,7 @@ import { User } from './user.entity';
 // import { StockTransferItem } from './stock-transfer.entity';
 // import { SchemeProduct, SchemeProductCategory } from './scheme.entity';
 import { Business } from './business.entity';
+import { ChartOfAccount } from './chart-of-account.entity';
 import { SaleOrderItem } from './sale-order.entity';
 import { PurchaseOrderItem } from './purchase-order.entity';
 import { GrnItem } from './grn.entity';
@@ -44,6 +45,13 @@ export class ProductCategory {
 
     @Column()
     slug: string;
+
+    @Column({ type: 'uuid', nullable: true })
+    chartOfAccountId: string | null;
+
+    @ManyToOne(() => ChartOfAccount, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'chartOfAccountId' })
+    chartOfAccount: ChartOfAccount | null;
 
     @Column({ name: 'created_by', nullable: true })
     createdBy: string;
@@ -89,6 +97,13 @@ export class ProductSubCategory {
     @ManyToOne(() => ProductCategory, (category) => category.subCategories, { onDelete: 'RESTRICT' })
     @JoinColumn()
     category: ProductCategory;
+
+    @Column({ type: 'uuid', nullable: true })
+    chartOfAccountId: string | null;
+
+    @ManyToOne(() => ChartOfAccount, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'chartOfAccountId' })
+    chartOfAccount: ChartOfAccount | null;
 
     @OneToMany(() => Product, (product) => product.subCategory)
     products: Product[];
@@ -232,6 +247,13 @@ export class Product {
 
     @Column({nullable: true })
     image: string | null;
+
+    @Column({ type: 'uuid', nullable: true })
+    chartOfAccountId: string | null;
+
+    @ManyToOne(() => ChartOfAccount, { nullable: true, onDelete: 'SET NULL' })
+    @JoinColumn({ name: 'chartOfAccountId' })
+    chartOfAccount: ChartOfAccount | null;
 
     @Column({ default: true })
     isActive: boolean;

@@ -17,6 +17,9 @@ export enum ChartOfAccountKind {
   BUSINESS = 'BUSINESS',
   PARTY_RECEIVABLE = 'PARTY_RECEIVABLE',
   PARTY_PAYABLE = 'PARTY_PAYABLE',
+  PRODUCT_CATEGORY = 'PRODUCT_CATEGORY',
+  PRODUCT_SUB_CATEGORY = 'PRODUCT_SUB_CATEGORY',
+  PRODUCT_INVENTORY = 'PRODUCT_INVENTORY',
 }
 
 @Entity('chart_of_accounts')
@@ -42,6 +45,15 @@ export class ChartOfAccount {
   @ManyToOne(() => Party, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'partyId' })
   party: Party | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  productCategoryId: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  productSubCategoryId: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  productId: string | null;
 
   @Column({
     type: 'enum',
