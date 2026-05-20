@@ -73,7 +73,7 @@ export class Transaction {
   @Column({ type: 'uuid', nullable: true })
   referenceId: string | null;
 
-  @Column({ type: 'timestamp with time zone' })
+  @Column({ type: 'date' })
   transactionDate: Date;
 
   @Column({ type: 'text', nullable: true })
