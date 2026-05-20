@@ -204,7 +204,7 @@ export class UserService {
     });
 
     const createdUser = await userRepo.save(user);
-
+    
     const ub = ubRepo.create({
       userId: createdUser.id,
       businessId: dto.businessId,

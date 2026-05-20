@@ -106,7 +106,7 @@ export class ProductService {
       .filter(Boolean);
   }
 
-  private async ensureCategoryExists(tenantDb: DataSource, categoryId: string) {
+  private async ensureCategoryExists(tenantDb: DataSource, categoryId: string, user: any) {
     const category = await tenantDb.getRepository(ProductCategory).findOne({
       where: { id: categoryId },
       select: ['id'],
@@ -120,9 +120,10 @@ export class ProductService {
     tenantDb: DataSource,
     subCategoryId: string,
     categoryId: string,
+    user: any,
   ) {
     const subCategory = await tenantDb.getRepository(ProductSubCategory).findOne({
-      where: { id: subCategoryId },
+      where: { id: subCategoryId, businessId: user.businessId },
       select: ['id', 'categoryId'],
     });
 
@@ -200,8 +201,8 @@ export class ProductService {
     const hsCode = dto.hsCode?.trim() || null;
     const flavourIds = dto.flavourIds.map((id) => id.trim()).filter(Boolean);
 
-    await this.ensureCategoryExists(tenantDb, categoryId);
-    await this.ensureSubCategoryExists(tenantDb, subCategoryId, categoryId);
+    await this.ensureCategoryExists(tenantDb, categoryId, user);
+    await this.ensureSubCategoryExists(tenantDb, subCategoryId, categoryId, user);
     if (brandId) {
       await this.ensureBrandExists(tenantDb, brandId);
     }
@@ -445,7 +446,7 @@ export class ProductService {
       }
 
       if (dto.categoryId !== undefined) {
-        await this.ensureCategoryExists(tenantDb, dto.categoryId.trim());
+        await this.ensureCategoryExists(tenantDb, dto.categoryId.trim(), user);
         product.categoryId = dto.categoryId.trim();
       }
 
@@ -455,6 +456,7 @@ export class ProductService {
           tenantDb,
           nextSubCategoryId,
           product.categoryId,
+          user,
         );
         product.subCategoryId = nextSubCategoryId;
       } else if (dto.categoryId !== undefined && product.subCategoryId) {
@@ -462,6 +464,7 @@ export class ProductService {
           tenantDb,
           product.subCategoryId,
           product.categoryId,
+          user,
         );
       }
 

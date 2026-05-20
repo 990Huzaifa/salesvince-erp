@@ -114,7 +114,7 @@ export class UomService {
     const uomRepo = tenantDb.getRepository(Uom);
     for (const row of rows) {
       try {
-        const exists = await uomRepo.findOne({ where: { name: row.name } });
+        const exists = await uomRepo.findOne({ where: { name: row.name, businessId: user.businessId } });
         if (exists) {
           this.tenantJobService.appendLog(jobId, {
             row: row.row,
@@ -125,7 +125,7 @@ export class UomService {
           continue;
         }
 
-        const created = await uomRepo.save(uomRepo.create({ name: row.name, isBase: false }));
+        const created = await uomRepo.save(uomRepo.create({ name: row.name, businessId: user.businessId, isBase: false }));
         this.tenantJobService.appendLog(jobId, {
           row: row.row,
           name: row.name,
@@ -167,7 +167,7 @@ export class UomService {
     const uomRepo = tenantDb.getRepository(Uom);
 
     const existingUom = await uomRepo.findOne({
-      where: { name },
+      where: { name, businessId: user.businessId },
     });
 
     if (existingUom) {
@@ -179,6 +179,7 @@ export class UomService {
     const createdUom = await uomRepo.save(
       uomRepo.create({
         name,
+        businessId: user.businessId,
         isBase: false,
       }),
     );
@@ -188,7 +189,7 @@ export class UomService {
       businessId: user.businessId,
       action: 'UOM_CREATED',
       description: `UOM ${createdUom.name} created`,
-      metadata: { uomId: createdUom.id, isBase: createdUom.isBase },
+      metadata: { uomId: createdUom.id, businessId: createdUom.businessId, isBase: createdUom.isBase },
     });
 
     return createdUom;
@@ -202,7 +203,7 @@ export class UomService {
     user: any,
   ) {
     const [uoms, total] = await tenantDb.getRepository(Uom).findAndCount({
-      where: { name: Like(`%${search}%`), isBase: false },
+      where: { name: Like(`%${search}%`), businessId: user.businessId, isBase: false },
       order: { name: 'ASC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -221,7 +222,7 @@ export class UomService {
 
   async view(tenantDb: DataSource, id: string, user: any) {
     const uom = await tenantDb.getRepository(Uom).findOne({
-      where: { id },
+      where: { id, businessId: user.businessId },
     });
 
     if (!uom) {
@@ -241,7 +242,7 @@ export class UomService {
 
   async edit(tenantDb: DataSource, id: string, dto: UpdateUomDto, user: any) {
     const uomRepo = tenantDb.getRepository(Uom);
-    const uom = await uomRepo.findOne({ where: { id } });
+    const uom = await uomRepo.findOne({ where: { id, businessId: user.businessId } });
 
     if (!uom) {
       throw new NotFoundException('UOM not found');
@@ -250,7 +251,7 @@ export class UomService {
     if (dto.name !== undefined) {
       const nextName = dto.name.trim();
       if (nextName !== uom.name) {
-        const nameTaken = await uomRepo.findOne({ where: { name: nextName } });
+        const nameTaken = await uomRepo.findOne({ where: { name: nextName, businessId: user.businessId } });
         if (nameTaken) {
           throw new ConflictException('UOM with this name already exists');
         }
@@ -265,7 +266,7 @@ export class UomService {
       businessId: user.businessId,
       action: 'UOM_UPDATED',
       description: `UOM ${uom.name} updated`,
-      metadata: { uomId: uom.id, isBase: uom.isBase },
+      metadata: { uomId: uom.id, businessId: uom.businessId, isBase: uom.isBase },
     });
 
     return uom;

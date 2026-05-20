@@ -95,6 +95,7 @@ export class ProductCategoryService {
       tenantDb,
       {
         userId: user.userId,
+        businessId: user.businessId,
         title,
         message,
         type: 'product_category_import',
@@ -128,7 +129,7 @@ export class ProductCategoryService {
 
     for (const row of rows) {
       try {
-        const exists = await categoryRepo.findOne({ where: [{ slug: row.slug }, { name: row.name }] });
+        const exists = await categoryRepo.findOne({ where: [{ slug: row.slug }, { name: row.name, businessId: user.businessId }] });
         if (exists) {
           this.tenantJobService.appendLog(jobId, {
             row: row.row,
@@ -143,6 +144,7 @@ export class ProductCategoryService {
           categoryRepo.create({
             name: row.name,
             slug: row.slug,
+            businessId: user.businessId,
             createdBy: user.userId,
           }),
         );
@@ -151,7 +153,7 @@ export class ProductCategoryService {
           row: row.row,
           name: row.name,
           status: 'success',
-          metadata: { categoryId: created.id, slug: created.slug },
+          metadata: { categoryId: created.id, businessId: created.businessId, slug: created.slug },
         });
       } catch (error) {
         this.tenantJobService.appendLog(jobId, {
@@ -190,7 +192,7 @@ export class ProductCategoryService {
   ) {
     const slug = dto.slug.trim().toLowerCase();
     const existingCategory = await tenantDb.getRepository(ProductCategory).findOne({
-      where: { slug },
+      where: { slug, businessId: user.businessId },
     });
 
     if (existingCategory) {
@@ -200,6 +202,7 @@ export class ProductCategoryService {
     const category = tenantDb.getRepository(ProductCategory).create({
       name: dto.name.trim(),
       slug,
+      businessId: user.businessId,
       createdBy: user.userId,
     });
 
@@ -210,7 +213,7 @@ export class ProductCategoryService {
       businessId: user.businessId,
       action: 'PRODUCT_CATEGORY_CREATED',
       description: `Product category ${createdCategory.name} created`,
-      metadata: { productCategoryId: createdCategory.id, slug: createdCategory.slug },
+      metadata: { productCategoryId: createdCategory.id, businessId: createdCategory.businessId, slug: createdCategory.slug },
     });
 
     return createdCategory;
@@ -225,8 +228,8 @@ export class ProductCategoryService {
   ) {
     const [categories, total] = await tenantDb.getRepository(ProductCategory).findAndCount({
       where: [
-        { name: Like(`%${search}%`) },
-        { slug: Like(`%${search}%`) },
+        { name: Like(`%${search}%`), businessId: user.businessId },
+        { slug: Like(`%${search}%`), businessId: user.businessId },
       ],
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
@@ -246,7 +249,7 @@ export class ProductCategoryService {
 
   async view(tenantDb: DataSource, id: string, user: any) {
     const category = await tenantDb.getRepository(ProductCategory).findOne({
-      where: { id },
+      where: { id, businessId: user.businessId },
     });
 
     if (!category) {
@@ -272,7 +275,7 @@ export class ProductCategoryService {
   ) {
     const categoryRepo = tenantDb.getRepository(ProductCategory);
     const category = await categoryRepo.findOne({
-      where: { id },
+      where: { id, businessId: user.businessId },
     });
 
     if (!category) {
@@ -282,7 +285,7 @@ export class ProductCategoryService {
     if (dto.slug !== undefined) {
       const nextSlug = dto.slug.trim().toLowerCase();
       if (nextSlug !== category.slug) {
-        const slugTaken = await categoryRepo.findOne({ where: { slug: nextSlug } });
+        const slugTaken = await categoryRepo.findOne({ where: { slug: nextSlug, businessId: user.businessId } });
         if (slugTaken) {
           throw new ConflictException('Product category with this slug already exists');
         }
@@ -301,7 +304,7 @@ export class ProductCategoryService {
       businessId: user.businessId,
       action: 'PRODUCT_CATEGORY_UPDATED',
       description: `Product category ${category.name} updated`,
-      metadata: { productCategoryId: category.id, slug: category.slug },
+      metadata: { productCategoryId: category.id, businessId: category.businessId, slug: category.slug },
     });
 
     return category;

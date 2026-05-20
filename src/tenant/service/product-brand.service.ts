@@ -80,6 +80,7 @@ export class ProductBrandService {
     await this.notificationService.createNotification(tenantDb, {
       userId: user.userId,
       title,
+      businessId: user.businessId,
       message,
       type: 'product_brand_import',
     }, tenantCode, {
@@ -109,7 +110,7 @@ export class ProductBrandService {
     const brandRepo = tenantDb.getRepository(ProductBrand);
     for (const row of rows) {
       try {
-        const exists = await brandRepo.findOne({ where: { name: row.name } });
+        const exists = await brandRepo.findOne({ where: { name: row.name, businessId: user.businessId } });
         if (exists) {
           this.tenantJobService.appendLog(jobId, {
             row: row.row,
@@ -120,12 +121,12 @@ export class ProductBrandService {
           continue;
         }
 
-        const created = await brandRepo.save(brandRepo.create({ name: row.name }));
+        const created = await brandRepo.save(brandRepo.create({ name: row.name, businessId: user.businessId }));
         this.tenantJobService.appendLog(jobId, {
           row: row.row,
           name: row.name,
           status: 'success',
-          metadata: { brandId: created.id },
+          metadata: { brandId: created.id, businessId: created.businessId },
         });
       } catch (error) {
         this.tenantJobService.appendLog(jobId, {
@@ -160,14 +161,14 @@ export class ProductBrandService {
   async create(tenantDb: DataSource, dto: CreateProductBrandDto, user: any) {
     const name = dto.name.trim();
     const existingBrand = await tenantDb.getRepository(ProductBrand).findOne({
-      where: { name },
+      where: { name, businessId: user.businessId },
     });
 
     if (existingBrand) {
       throw new ConflictException('Product brand with this name already exists');
     }
 
-    const brand = tenantDb.getRepository(ProductBrand).create({ name });
+    const brand = tenantDb.getRepository(ProductBrand).create({ name, businessId: user.businessId });
     const createdBrand = await tenantDb.getRepository(ProductBrand).save(brand);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
@@ -175,7 +176,7 @@ export class ProductBrandService {
       businessId: user.businessId,
       action: 'PRODUCT_BRAND_CREATED',
       description: `Product brand ${createdBrand.name} created`,
-      metadata: { productBrandId: createdBrand.id },
+      metadata: { productBrandId: createdBrand.id, businessId: createdBrand.businessId },
     });
 
     return createdBrand;
@@ -189,7 +190,7 @@ export class ProductBrandService {
     user: any,
   ) {
     const [brands, total] = await tenantDb.getRepository(ProductBrand).findAndCount({
-      where: { name: Like(`%${search}%`) },
+      where: { name: Like(`%${search}%`), businessId: user.businessId },
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -208,7 +209,7 @@ export class ProductBrandService {
 
   async view(tenantDb: DataSource, id: string, user: any) {
     const brand = await tenantDb.getRepository(ProductBrand).findOne({
-      where: { id },
+      where: { id, businessId: user.businessId },
     });
 
     if (!brand) {
@@ -228,7 +229,7 @@ export class ProductBrandService {
 
   async edit(tenantDb: DataSource, id: string, dto: UpdateProductBrandDto, user: any) {
     const brandRepo = tenantDb.getRepository(ProductBrand);
-    const brand = await brandRepo.findOne({ where: { id } });
+    const brand = await brandRepo.findOne({ where: { id, businessId: user.businessId } });
 
     if (!brand) {
       throw new NotFoundException('Product brand not found');
@@ -237,7 +238,7 @@ export class ProductBrandService {
     if (dto.name !== undefined) {
       const nextName = dto.name.trim();
       if (nextName !== brand.name) {
-        const nameTaken = await brandRepo.findOne({ where: { name: nextName } });
+        const nameTaken = await brandRepo.findOne({ where: { name: nextName, businessId: user.businessId } });
         if (nameTaken) {
           throw new ConflictException('Product brand with this name already exists');
         }
@@ -252,7 +253,7 @@ export class ProductBrandService {
       businessId: user.businessId,
       action: 'PRODUCT_BRAND_UPDATED',
       description: `Product brand ${brand.name} updated`,
-      metadata: { productBrandId: brand.id },
+      metadata: { productBrandId: brand.id, businessId: brand.businessId },
     });
 
     return brand;

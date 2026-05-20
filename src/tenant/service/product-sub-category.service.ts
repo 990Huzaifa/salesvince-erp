@@ -16,9 +16,9 @@ import { UpdateProductSubCategoryDto } from '../dto/product-sub-category/update-
 export class ProductSubCategoryService {
   constructor(private readonly activityLogService: ActivityLogService) {}
 
-  private async ensureCategoryExists(tenantDb: DataSource, categoryId: string) {
+  private async ensureCategoryExists(tenantDb: DataSource, categoryId: string, user: any) {
     const category = await tenantDb.getRepository(ProductCategory).findOne({
-      where: { id: categoryId },
+      where: { id: categoryId, businessId: user.businessId },
       select: ['id'],
     });
 
@@ -36,11 +36,11 @@ export class ProductSubCategoryService {
     const name = dto.name.trim();
     const slug = dto.slug.trim().toLowerCase();
 
-    await this.ensureCategoryExists(tenantDb, categoryId);
+    await this.ensureCategoryExists(tenantDb, categoryId, user);
 
     const subCategoryRepo = tenantDb.getRepository(ProductSubCategory);
     const existingSubCategory = await subCategoryRepo.findOne({
-      where: { categoryId, slug },
+      where: { categoryId, slug, businessId: user.businessId },
     });
 
     if (existingSubCategory) {
@@ -53,6 +53,7 @@ export class ProductSubCategoryService {
       name,
       slug,
       categoryId,
+      businessId: user.businessId,
     });
 
     const createdSubCategory = await subCategoryRepo.save(subCategory);
@@ -64,6 +65,7 @@ export class ProductSubCategoryService {
       description: `Product sub category ${createdSubCategory.name} created`,
       metadata: {
         productSubCategoryId: createdSubCategory.id,
+        businessId: createdSubCategory.businessId,
         categoryId: createdSubCategory.categoryId,
         slug: createdSubCategory.slug,
       },
@@ -82,8 +84,8 @@ export class ProductSubCategoryService {
   ) {
     const subCategoryRepo = tenantDb.getRepository(ProductSubCategory);
     const where: Array<Record<string, unknown>> = [
-      { name: Like(`%${search}%`) },
-      { slug: Like(`%${search}%`) },
+      { name: Like(`%${search}%`), businessId: user.businessId },
+      { slug: Like(`%${search}%`), businessId: user.businessId },
     ];
 
     if (categoryId?.trim()) {
@@ -114,7 +116,7 @@ export class ProductSubCategoryService {
 
   async view(tenantDb: DataSource, id: string, user: any) {
     const subCategory = await tenantDb.getRepository(ProductSubCategory).findOne({
-      where: { id },
+      where: { id, businessId: user.businessId },
       relations: ['category'],
     });
 
@@ -141,7 +143,7 @@ export class ProductSubCategoryService {
   ) {
     const subCategoryRepo = tenantDb.getRepository(ProductSubCategory);
     const subCategory = await subCategoryRepo.findOne({
-      where: { id },
+      where: { id, businessId: user.businessId },
     });
 
     if (!subCategory) {
@@ -151,7 +153,7 @@ export class ProductSubCategoryService {
     if (dto.categoryId !== undefined) {
       const nextCategoryId = dto.categoryId.trim();
       if (nextCategoryId !== subCategory.categoryId) {
-        await this.ensureCategoryExists(tenantDb, nextCategoryId);
+        await this.ensureCategoryExists(tenantDb, nextCategoryId, user);
         subCategory.categoryId = nextCategoryId;
       }
     }
@@ -160,7 +162,7 @@ export class ProductSubCategoryService {
       const nextSlug = dto.slug.trim().toLowerCase();
       if (nextSlug !== subCategory.slug) {
         const slugTaken = await subCategoryRepo.findOne({
-          where: { categoryId: subCategory.categoryId, slug: nextSlug },
+          where: { categoryId: subCategory.categoryId, slug: nextSlug, businessId: user.businessId },
         });
         if (slugTaken && slugTaken.id !== subCategory.id) {
           throw new ConflictException(
@@ -184,6 +186,7 @@ export class ProductSubCategoryService {
       description: `Product sub category ${subCategory.name} updated`,
       metadata: {
         productSubCategoryId: subCategory.id,
+        businessId: subCategory.businessId,
         categoryId: subCategory.categoryId,
         slug: subCategory.slug,
       },
