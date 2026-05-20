@@ -28,6 +28,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'CREATE_CHART_OF_ACCOUNT', name: 'Create Chart of Account' },
   { key: 'CREATE_PARTY', name: 'Create Party' },
   { key: 'CREATE_PURCHASE_QUOTATION', name: 'Create Purchase Quotation' },
+  { key: 'CREATE_WAREHOUSE', name: 'Create Warehouse' },
 
   { key: 'LIST_USER', name: 'List Users' },
   { key: 'LIST_ROLE', name: 'List Role' },
@@ -53,6 +54,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'LIST_CHART_OF_ACCOUNT', name: 'List Chart of Account' },
   { key: 'LIST_PARTY', name: 'List Party' },
   { key: 'LIST_PURCHASE_QUOTATION', name: 'List Purchase Quotation' },
+  { key: 'LIST_WAREHOUSE', name: 'List Warehouse' },
 
   { key: 'UPDATE_USER', name: 'Update Users' },
   { key: 'UPDATE_ROLE', name: 'Update Role' },
@@ -84,6 +86,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'UPDATE_CHART_OF_ACCOUNT', name: 'Update Chart of Account' },
   { key: 'UPDATE_PARTY', name: 'Update Party' },
   { key: 'UPDATE_PURCHASE_QUOTATION', name: 'Update Purchase Quotation' },
+  { key: 'UPDATE_WAREHOUSE', name: 'Update Warehouse' },
 
   { key: 'VIEW_USER', name: 'View Users' },
   { key: 'VIEW_ROLE', name: 'View Role' },
@@ -109,6 +112,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'VIEW_CHART_OF_ACCOUNT', name: 'View Chart of Account' },
   { key: 'VIEW_PARTY', name: 'View Party' },
   { key: 'VIEW_PURCHASE_QUOTATION', name: 'View Purchase Quotation' },
+  { key: 'VIEW_WAREHOUSE', name: 'View Warehouse' },
 
   { key: 'DELETE_USER', name: 'Delete Users' },
   { key: 'DELETE_ROLE', name: 'Delete Role' },
