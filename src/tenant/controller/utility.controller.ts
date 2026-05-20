@@ -26,6 +26,11 @@ export class TenantUtilityController {
         return this.utilityService.getProductCategories(tenantDb);
     }
 
+    @Get('product-sub-categories')
+    async getProductSubCategories(@TenantConnection() tenantDb: DataSource,) {
+        return this.utilityService.getProductSubCategories(tenantDb);
+    }
+
     @Get('product-brands')
     async getProductBrands(@TenantConnection() tenantDb: DataSource,) {
         return this.utilityService.getProductBrands(tenantDb);

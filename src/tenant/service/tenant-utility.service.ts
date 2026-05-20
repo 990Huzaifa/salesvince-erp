@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
 import { Role } from 'src/tenant-db/entities/role.entity';
-import { Flavour, Product, ProductBrand, ProductCategory, Uom } from 'src/tenant-db/entities/product.entity';
+import { Flavour, Product, ProductBrand, ProductCategory, ProductSubCategory, Uom } from 'src/tenant-db/entities/product.entity';
 import { Permission } from 'src/tenant-db/entities/permission.entity';
 
 @Injectable()
@@ -36,6 +36,15 @@ export class TenantUtilityService {
     });
 
     return { result: productCategories };
+  }
+
+  async getProductSubCategories(tenantDb: DataSource) {
+    const productSubCategories = await tenantDb.getRepository(ProductSubCategory).find({
+      select: ['id', 'name', 'slug'],
+      order: { name: 'ASC' },
+    });
+
+    return { result: productSubCategories };
   }
 
   async getProductBrands(tenantDb: DataSource) {
