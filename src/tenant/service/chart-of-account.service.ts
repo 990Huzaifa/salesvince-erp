@@ -8,6 +8,7 @@ import { DataSource, IsNull } from 'typeorm';
 import {
   ChartOfAccount,
   ChartOfAccountKind,
+  AccountCodeLevels,
 } from 'src/tenant-db/entities/chart-of-account.entity';
 import {
   BUSINESS_CHART_OF_ACCOUNT_TYPE_CONFIG,
@@ -33,11 +34,7 @@ export type ChartOfAccountListItem = {
   parentCode: string | null;
   name: string;
   isPostable: boolean;
-  level1: number;
-  level2: number;
-  level3: number;
-  level4: number;
-  level5: number;
+} & AccountCodeLevels & {
   createdAt: Date;
   updatedAt: Date;
 };
@@ -71,6 +68,7 @@ export class ChartOfAccountService {
       level3: account.level3,
       level4: account.level4,
       level5: account.level5,
+      level6: account.level6,
       createdAt: account.createdAt,
       updatedAt: account.updatedAt,
     };

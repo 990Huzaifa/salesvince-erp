@@ -2,6 +2,7 @@ import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
 import {
   ChartOfAccount,
   ChartOfAccountKind,
+  AccountCodeLevels,
 } from '../entities/chart-of-account.entity';
 import { DEFAULT_CHART_OF_ACCOUNTS } from '../chart-of-accounts/constants/default-chart-of-accounts';
 
@@ -36,13 +37,7 @@ export async function nextChildAccountCode(
   return `${prefix}${maxSuffix + 1}`;
 }
 
-export function parseAccountCodeLevels(code: string): {
-  level1: number;
-  level2: number;
-  level3: number;
-  level4: number;
-  level5: number;
-} {
+export function parseAccountCodeLevels(code: string): AccountCodeLevels {
   const parts = code.split('-').map((p) => parseInt(p, 10) || 0);
   return {
     level1: parts[0] ?? 0,
@@ -50,6 +45,7 @@ export function parseAccountCodeLevels(code: string): {
     level3: parts[2] ?? 0,
     level4: parts[3] ?? 0,
     level5: parts[4] ?? 0,
+    level6: parts[5] ?? 0,
   };
 }
 

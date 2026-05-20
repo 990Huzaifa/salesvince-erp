@@ -89,6 +89,9 @@ export class ChartOfAccount {
   @Column({ default: 0 })
   level5: number;
 
+  @Column({ default: 0 })
+  level6: number;
+
   @CreateDateColumn()
   createdAt: Date;
 
@@ -98,3 +101,8 @@ export class ChartOfAccount {
   @DeleteDateColumn({ nullable: true })
   deletedAt: Date | null;
 }
+
+export type AccountCodeLevels = Pick<
+  ChartOfAccount,
+  'level1' | 'level2' | 'level3' | 'level4' | 'level5' | 'level6'
+>;
