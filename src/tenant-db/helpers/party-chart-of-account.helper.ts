@@ -51,7 +51,7 @@ async function createPartyLinkedAccount(
       accountKind: params.accountKind,
       code,
       parentCode: params.parentCode,
-      name: `${params.label} - ${params.partyName}`,
+      name: `${params.partyName} - ${params.label}`,
       isPostable: true,
       ...levels,
     }),
