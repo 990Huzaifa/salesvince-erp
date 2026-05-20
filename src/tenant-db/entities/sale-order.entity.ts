@@ -21,22 +21,22 @@ export class SaleOrder {
     @Column({ type: 'enum', enum: OrderStatus })
     orderStatus: OrderStatus;
 
-    @Column()
+    @Column({ type: 'decimal', precision: 18, scale: 2})
     orderTotal: number;
 
-    @Column({ default: 0 })
+    @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
     taxPercentage: number;
 
-    @Column({ default: 0 })
+    @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
     taxAmount: number;
 
-    @Column({ default: 0 })
+    @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
     discountPercentage: number;
 
-    @Column({ default: 0 })
+    @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
     discountAmount: number;
 
-    @Column({ default: 0 })
+    @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
     totalAmount: number;
 
     @Column({nullable: true})
@@ -95,22 +95,25 @@ export class SaleOrderItem {
     @JoinColumn({ name: 'uomId' })
     uom: Uom;
 
-    @Column()
+    @Column({type: 'decimal', precision: 18, scale: 2})
     purchaseUnitPrice: number;
 
-    @Column()
-    saleUnitPrice: number;
+    @Column({type: 'decimal', precision: 18, scale: 2})
+    saleMarginAmount: number;
+
+    @Column({type: 'decimal', precision: 18, scale: 2})
+    saleMarginPercentage: number;
 
     @Column()
     quantity: number;
 
-    @Column({default: 0})
+    @Column({type: 'decimal', precision: 18, scale: 2, default: 0})
     discountPercentage: number;
 
-    @Column({default: 0})
+    @Column({type: 'decimal', precision: 18, scale: 2, default: 0})
     discountAmount: number;
 
-    @Column({default: 0})
+    @Column({type: 'decimal', precision: 18, scale: 2, default: 0})
     totalAmount: number;    
 
     @CreateDateColumn()

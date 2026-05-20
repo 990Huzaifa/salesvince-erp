@@ -115,25 +115,25 @@ export class PurchaseOrderItem {
     @JoinColumn({ name: 'uomId' })
     uom: Uom;
 
-    @Column()
+    @Column({type: 'decimal', precision: 18, scale: 2})
     purchaseUnitPrice: number;
 
-    @Column()
+    @Column({type: 'decimal', precision: 18, scale: 2})
     saleUnitMarginAmount: number;
 
-    @Column()
+    @Column({ type: 'decimal', precision: 18, scale: 2})
     saleUnitMarginPercentage: number;
 
     @Column()
     quantity: number;
 
-    @Column({default: 0})
+    @Column({ type: 'decimal', precision: 18, scale: 2, default: 0})
     discountPercentage: number;
 
-    @Column({default: 0})
+    @Column({ type: 'decimal', precision: 18, scale: 2, default: 0})
     discountAmount: number;
 
-    @Column({default: 0})
+    @Column({ type: 'decimal', precision: 18, scale: 2, default: 0})
     totalAmount: number;    
 
     @CreateDateColumn()
