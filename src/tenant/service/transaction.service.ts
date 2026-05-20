@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { EntityManager, IsNull } from 'typeorm';
+import { DataSource, EntityManager, IsNull } from 'typeorm';
 import {
   AccountTransactionReferenceType,
   Transaction,
@@ -10,6 +10,7 @@ import {
   computeBalanceMovement,
   getAccountBalanceNature,
 } from 'src/tenant-db/helpers/transaction-balance.helper';
+import { ActivityLogService } from './activity-log.service';
 
 export type JournalLineInput = {
   chartOfAccountId: string;
@@ -45,6 +46,15 @@ export type BusinessAccountOpeningBalanceInput = {
 
 @Injectable()
 export class TransactionService {
+
+  constructor(private readonly activityLogService: ActivityLogService) {}
+
+  private assertBusinessId(businessId?: string): string {
+    if (!businessId) {
+      throw new BadRequestException('Business ID is required');
+    }
+    return businessId;
+  }
   private roundAmount(value: number): number {
     return Math.round(value * 100) / 100;
   }
@@ -398,5 +408,48 @@ export class TransactionService {
       description: narration,
       ...debitCredit,
     });
+  }
+
+  async listTransactions(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    options: {
+      page: number;
+      limit: number;
+      search?: string;
+    },
+    actorUserId: string,
+  ){
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const page = Math.max(1, options.page);
+    const limit = Math.max(1, options.limit);
+    const skip = (page - 1) * limit;
+
+    // join with chart of account to get the account name
+    const qb = tenantDb.getRepository(Transaction).createQueryBuilder('t')
+    .leftJoinAndSelect('t.chartOfAccount', 'coa');
+    qb.where('t.businessId = :businessId', { businessId: scopedBusinessId })
+    .andWhere('t.deletedAt IS NULL')
+    qb.orderBy('t.transactionDate', 'ASC')
+    .skip(skip)
+    .take(limit);
+
+    if (options.search?.trim()) {
+      qb.andWhere('coa.name ILIKE :search', { search: `%${options.search.trim()}%` });
+    }
+
+    const [transactions, total] = await qb.getManyAndCount();
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: businessId,
+      action: 'TRANSACTION_LISTED',
+      description: 'Transactions listed',
+      metadata: { businessId: scopedBusinessId, count: transactions.length },
+    });
+      return {
+      data: transactions,
+      meta: { total, page, limit },
+    };
   }
 }
