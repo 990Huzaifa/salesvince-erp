@@ -37,6 +37,9 @@ export class Business {
     @Column({ type: 'varchar', length: 180, nullable: true })
     legalName: string | null;
 
+    @Column({nullable: true })
+    logo: string | null;
+
     @Column({ type: 'varchar', length: 10, default: 'PKR' })
     currency: string;
 
