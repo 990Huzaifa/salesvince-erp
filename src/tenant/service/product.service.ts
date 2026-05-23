@@ -37,6 +37,7 @@ import { extname } from 'node:path';
 import { createChartOfAccountForProduct } from 'src/tenant-db/helpers/product-chart-of-account.helper';
 import { CreateProductDto } from '../dto/product/create-product.dto';
 import { UpdateProductDto } from '../dto/product/update-product.dto';
+import { BatchPickStrategy } from 'src/tenant-db/entities/product.entity';
 
 @Injectable()
 export class ProductService {
@@ -149,6 +150,15 @@ export class ProductService {
     }
   }
 
+  private async ensureBarcodeUnique(tenantDb: DataSource, barcode: string) {
+    const existing = await tenantDb.getRepository(Product).findOne({
+      where: { barcode, isDelete: false },
+    });
+    if (existing) {
+      throw new ConflictException('Product with this barcode already exists');
+    }
+  }
+
   private async ensureSkuUnique(
     tenantDb: DataSource,
     skuCode: string,
@@ -200,10 +210,15 @@ export class ProductService {
     const name = dto.name.trim();
     const description = dto.description?.trim() || null;
     const hsCode = dto.hsCode?.trim() || null;
+    const barcode = dto.barcode?.trim() || null;
     const flavourIds = (dto.flavourIds ?? []).map((id) => id.trim()).filter(Boolean);
+    const batchPickStrategy = dto.batchPickStrategy ?? BatchPickStrategy.LIFO;
 
     await this.ensureCategoryExists(tenantDb, categoryId, user);
     await this.ensureSubCategoryExists(tenantDb, subCategoryId, categoryId, user);
+    if (barcode) {
+      await this.ensureBarcodeUnique(tenantDb, barcode);
+    }
     if (brandId) {
       await this.ensureBrandExists(tenantDb, brandId);
     }
@@ -251,6 +266,7 @@ export class ProductService {
         image: productImage,
         isActive: dto.isActive,
         createdBy: user.userId,
+        batchPickStrategy,
       });
 
       const savedProduct = await productRepo.save(product);
@@ -451,6 +467,16 @@ export class ProductService {
 
       if (!product) {
         throw new NotFoundException('Product not found');
+      }
+
+      if (dto.batchPickStrategy !== undefined) {
+        const batchPickStrategy = dto.batchPickStrategy ?? BatchPickStrategy.LIFO;
+        product.batchPickStrategy = batchPickStrategy;
+      }
+
+      if (dto.barcode !== undefined) {
+        const barcode = dto.barcode?.trim() || null;
+        product.barcode = barcode;
       }
 
       if (dto.categoryId !== undefined) {

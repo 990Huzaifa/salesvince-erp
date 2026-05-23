@@ -1,6 +1,7 @@
 import {
   IsArray,
   IsBoolean,
+  IsEnum,
   IsInt,
   IsNumber,
   IsOptional,
@@ -9,6 +10,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { BatchPickStrategy } from 'src/tenant-db/entities/product.entity';
 
 class UpdateProductPricingDto {
   @IsUUID()
@@ -28,6 +30,11 @@ class UpdateProductPricingDto {
 }
 
 export class UpdateProductDto {
+
+  @IsEnum(BatchPickStrategy)
+  @IsOptional()
+  batchPickStrategy?: BatchPickStrategy;
+
   @IsOptional()
   @IsUUID()
   categoryId?: string;
@@ -51,6 +58,10 @@ export class UpdateProductDto {
   @IsOptional()
   @IsString()
   hsCode?: string;
+  
+  @IsOptional()
+  @IsString()
+  barcode?: string | null;
 
   @IsOptional()
   @IsUUID()
