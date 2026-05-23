@@ -12,7 +12,7 @@ import { UserBusiness } from './user-business.entity';
 import { Party } from './party.entity';
 import { ChartOfAccount } from './chart-of-account.entity';
 import { Transaction as TransactionEntity } from './transaction.entity';
-import { ProductBrand, Product, ProductCategory, ProductPricing, ProductPricingJob, ProductSubCategory, Uom } from './product.entity';
+import { ProductBrand, Product, ProductCategory, ProductPricing, ProductPricingJob, ProductSubCategory, Uom, Flavour } from './product.entity';
 import { Warehouse } from './warehouse.entity';
 import { Grn } from './grn.entity';
 import { Batch, StockMovement } from './stock.entity';
@@ -77,6 +77,9 @@ export class Business {
 
     @OneToMany(() => TransactionEntity, (transaction) => transaction.business, { onDelete: 'CASCADE' })
     transactions: TransactionEntity[];
+
+    @OneToMany(() => Flavour, (flavour) => flavour.business, { onDelete: 'CASCADE' })
+    flavours: Flavour[];
 
     @OneToMany(() => ProductCategory, (productCategory) => productCategory.business, { onDelete: 'CASCADE' })
     productCategories: ProductCategory[];

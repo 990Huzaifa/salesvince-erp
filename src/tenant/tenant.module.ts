@@ -64,6 +64,8 @@ import { GrnService } from './service/purchase/grn.service';
 import { StockService } from './service/stock.service';
 import { PurchaseInvoiceController } from './controller/purchase-invoice.controller';
 import { PurchaseInvoiceService } from './service/purchase/purchase-invoice.service';
+import { FinanceController } from './controller/finance.controller';
+import { FinanceService } from './service/finance.service';
 @Module({
   imports: [
     HttpModule,
@@ -100,6 +102,7 @@ import { PurchaseInvoiceService } from './service/purchase/purchase-invoice.serv
     PurchaseOrderController,
     GrnController,
     PurchaseInvoiceController,
+    FinanceController,
   ],
   providers: [
     TenantAuthService,
@@ -134,6 +137,7 @@ import { PurchaseInvoiceService } from './service/purchase/purchase-invoice.serv
     GrnService,
     StockService,
     PurchaseInvoiceService,
+    FinanceService,
   ],
 })
 export class TenantModule {}

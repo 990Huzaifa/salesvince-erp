@@ -122,6 +122,13 @@ export class Flavour {
     id: string;
 
     @Column()
+    businessId: string;
+
+    @ManyToOne(() => Business, (business) => business.flavours, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'businessId' })
+    business: Business; 
+
+    @Column()
     name: string;
 
     @OneToMany(() => ProductFlavour, (productFlavour) => productFlavour.flavour)

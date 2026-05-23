@@ -4,6 +4,9 @@ import { Role } from 'src/tenant-db/entities/role.entity';
 import { Flavour, Product, ProductBrand, ProductCategory, ProductSubCategory, Uom } from 'src/tenant-db/entities/product.entity';
 import { Permission } from 'src/tenant-db/entities/permission.entity';
 import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
+import { ChartOfAccount, ChartOfAccountKind } from 'src/tenant-db/entities/chart-of-account.entity';
+import { ChartOfAccountType } from 'src/tenant-db/chart-of-accounts/constants/chart-of-account-type.enum';
+import { COA_PARENT_CODES } from 'src/tenant-db/chart-of-accounts/constants/coa-parent-codes';
 
 @Injectable()
 export class TenantUtilityService {
@@ -80,9 +83,10 @@ export class TenantUtilityService {
     return { result: productList };
   }
 
-  async getFlavours(tenantDb: DataSource) {
+  async getFlavours(tenantDb: DataSource, businessId: string) {
     const flavours = await tenantDb.getRepository(Flavour).find({
       select: ['id', 'name'],
+      where: { businessId: businessId },
       order: { name: 'ASC' },
     });
 
@@ -107,6 +111,31 @@ export class TenantUtilityService {
     });
 
     return { result: warehouses };
+  }
+
+  async getAccountTypes(tenantDb: DataSource) {
+    const accountTypes = [
+      { parentCode: COA_PARENT_CODES.INVENTORY, label: 'Inventory' },
+      { parentCode: COA_PARENT_CODES.CUSTOMER_RECEIVABLES, label: 'Customer Receivables' },
+      { parentCode: COA_PARENT_CODES.VENDOR_PAYABLES, label: 'Vendor Payables' },
+      { parentCode: COA_PARENT_CODES.BUSINESS_EXPENSE, label: 'Business Expense' },
+      { parentCode: COA_PARENT_CODES.BUSINESS_INCOME, label: 'Business Income' },
+      { parentCode: COA_PARENT_CODES.OWNER_CAPITAL, label: 'Owner Capital' },
+      { parentCode: COA_PARENT_CODES.SALARIES_PAYABLE, label: 'Salaries Payable' },
+      { parentCode: COA_PARENT_CODES.TAX_PAYABLE, label: 'Tax Payable' },
+      { parentCode: COA_PARENT_CODES.SHORT_TERM_LOAN_PAYABLE, label: 'Short-Term Loan Payable' },
+      { parentCode: COA_PARENT_CODES.LONG_TERM_LOAN_PAYABLE, label: 'Long-Term Loan Payable' },
+    ];
+    return { result: accountTypes };
+  }
+
+  async getAccountList(tenantDb: DataSource, parentCode: string, businessId: string) {
+    const accountList = await tenantDb.getRepository(ChartOfAccount).find({
+      select: ['id', 'name', 'code', 'parentCode', 'isPostable'],
+      where: { deletedAt: null, parentCode: parentCode, isPostable: true, businessId: businessId },
+      order: { name: 'ASC' },
+    });
+    return { result: accountList };
   }
 
 }

@@ -1,4 +1,4 @@
-import { Controller, Get, Req, UseGuards } from "@nestjs/common";
+import { BadRequestException, Controller, Get, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { TenantJwtAuthGuard } from "src/auth/tenant-jwt-auth.guard";
 import { TenantConnectionGuard } from "src/common/guards/tenant-connection.guard";
@@ -87,8 +87,9 @@ export class TenantUtilityController {
         TenantBusinessAccessGuard,
     )
     @Get('flavours')
-    async getFlavours(@TenantConnection() tenantDb: DataSource) {
-        return this.utilityService.getFlavours(tenantDb);
+    async getFlavours(@TenantConnection() tenantDb: DataSource, @Req() req: Request) {
+        const user = req.user as TenantRequestUser;
+        return this.utilityService.getFlavours(tenantDb, user.businessId);
     }
 
     @UseGuards(
@@ -119,5 +120,34 @@ export class TenantUtilityController {
     ) {
         const user = req.user as TenantRequestUser;
         return this.utilityService.getProductList(tenantDb, user.businessId);
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+    )
+    @Get('account-types')
+    async getAccountTypes(@TenantConnection() tenantDb: DataSource) {
+        return this.utilityService.getAccountTypes(tenantDb);
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+    )
+    @Get('accounts-list')
+    async getAccountList(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+        @Query('parentCode') parentCode: string,
+    ) {
+        if (!parentCode) {
+            throw new BadRequestException('Parent code is required');
+        }
+        const user = req.user as TenantRequestUser;
+        return this.utilityService.getAccountList(tenantDb, parentCode, user.businessId);
     }
 }
