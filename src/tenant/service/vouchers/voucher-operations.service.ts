@@ -265,6 +265,7 @@ export class VoucherOperationsService {
     businessId: string,
     config: VoucherConfig<T>,
     dto: VoucherCreatePayload,
+    options?: { excludeVoucherId?: string },
   ): Promise<{ partyLedgerAccountId?: string }> {
     const voucherNumber = dto.voucherNumber?.trim();
     if (!voucherNumber) {
@@ -273,6 +274,7 @@ export class VoucherOperationsService {
     await this.assertUniqueVoucherNumber(
       this.getRepo(manager, config.entity),
       voucherNumber,
+      options?.excludeVoucherId,
     );
 
     if (config.hasParty) {
@@ -716,6 +718,7 @@ export class VoucherOperationsService {
         businessId,
         config,
         validationPayload,
+        { excludeVoucherId: voucher.id },
       );
 
       return this.getRepo(manager, config.entity).save(voucher);
@@ -764,23 +767,35 @@ export class VoucherOperationsService {
         : undefined;
 
       if (config.referenceType === 'EXPENSE_VOUCHER') {
-        await this.validateCreatePayload(manager, businessId, config, {
-          voucherNumber: voucher.voucherNumber,
-          paymentMethod: voucher.paymentMethod,
-          paymentDate: voucher.paymentDate,
-          paymentAmount: voucher.paymentAmount,
-          expenseAccId: voucher.expenseAccId,
-          accId: voucher.accId,
-        });
+        await this.validateCreatePayload(
+          manager,
+          businessId,
+          config,
+          {
+            voucherNumber: voucher.voucherNumber,
+            paymentMethod: voucher.paymentMethod,
+            paymentDate: voucher.paymentDate,
+            paymentAmount: voucher.paymentAmount,
+            expenseAccId: voucher.expenseAccId,
+            accId: voucher.accId,
+          },
+          { excludeVoucherId: voucher.id },
+        );
       } else if (config.referenceType === 'CONTRA_VOUCHER') {
-        await this.validateCreatePayload(manager, businessId, config, {
-          voucherNumber: voucher.voucherNumber,
-          paymentMethod: voucher.paymentMethod,
-          paymentDate: voucher.paymentDate,
-          paymentAmount: voucher.paymentAmount,
-          fromAccId: voucher.fromAccId,
-          toAccId: voucher.toAccId,
-        });
+        await this.validateCreatePayload(
+          manager,
+          businessId,
+          config,
+          {
+            voucherNumber: voucher.voucherNumber,
+            paymentMethod: voucher.paymentMethod,
+            paymentDate: voucher.paymentDate,
+            paymentAmount: voucher.paymentAmount,
+            fromAccId: voucher.fromAccId,
+            toAccId: voucher.toAccId,
+          },
+          { excludeVoucherId: voucher.id },
+        );
       }
 
       voucher.status = VoucherStatus.PAID;
