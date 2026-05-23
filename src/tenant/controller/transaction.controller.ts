@@ -1,7 +1,7 @@
 import { TenantBusinessAccessGuard } from "src/auth/tenant-business-access.guard";
 import { TenantConnection } from "src/common/tenant/tenant-connection.decorator";
 import { DataSource } from "typeorm";
-import { Controller, Get, Query, Req, UseGuards } from "@nestjs/common";
+import { Controller, Get, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { TenantPermissionGuard } from "src/auth/tenant-permission.guard";
 import { TenantRequestUser } from "src/auth/tenant-jwt.strategy";
@@ -29,5 +29,20 @@ export class TransactionController {
             limit: limit,
             search: search,
         }, user.userId);
+    }
+
+    @Post('recalculate')
+    recalculateLedgers(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+        @Query('chartOfAccountId') chartOfAccountId?: string,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.transactionService.recalculateBusinessLedgers(
+            tenantDb,
+            user.businessId,
+            chartOfAccountId,
+            user.userId,
+        );
     }
 }   

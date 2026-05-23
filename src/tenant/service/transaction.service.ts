@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource, EntityManager, IsNull } from 'typeorm';
+import { DataSource, EntityManager, In, IsNull } from 'typeorm';
 import {
   AccountTransactionReferenceType,
   Transaction,
@@ -10,6 +10,7 @@ import {
   computeBalanceMovement,
   getAccountBalanceNature,
 } from 'src/tenant-db/helpers/transaction-balance.helper';
+import { recalculateAccountLedgerBalances } from 'src/tenant-db/helpers/ledger-balance-recalculation.helper';
 import { ActivityLogService } from './activity-log.service';
 
 export type JournalLineInput = {
@@ -152,6 +153,18 @@ export class TransactionService {
     return this.roundAmount(previousBalance + movement);
   }
 
+  private async recalculateAfterPost(
+    manager: EntityManager,
+    businessId: string,
+    account: ChartOfAccount,
+  ): Promise<void> {
+    await recalculateAccountLedgerBalances(manager, {
+      businessId,
+      account,
+      chartOfAccountId: account.id,
+    });
+  }
+
   private async saveLedgerEntry(
     manager: EntityManager,
     params: {
@@ -165,6 +178,7 @@ export class TransactionService {
       debitAmount: number | null;
       creditAmount: number | null;
       previousBalance?: number;
+      skipRecalc?: boolean;
     },
   ): Promise<Transaction> {
     const previousBalance =
@@ -183,7 +197,7 @@ export class TransactionService {
     );
 
     const txRepo = manager.getRepository(Transaction);
-    return txRepo.save(
+    const saved = await txRepo.save(
       txRepo.create({
         businessId: params.businessId,
         chartOfAccountId: params.account.id,
@@ -196,6 +210,18 @@ export class TransactionService {
         currentBalance,
       }),
     );
+
+    if (!params.skipRecalc) {
+      await this.recalculateAfterPost(
+        manager,
+        params.businessId,
+        params.account,
+      );
+      const refreshed = await txRepo.findOne({ where: { id: saved.id } });
+      return refreshed ?? saved;
+    }
+
+    return saved;
   }
 
   async postDirectLedgerEntry(
@@ -256,6 +282,7 @@ export class TransactionService {
     const saved: Transaction[] = [];
     /** Running balance per COA within this journal batch (same account twice in one voucher). */
     const batchBalances = new Map<string, number>();
+    const affectedAccounts = new Map<string, ChartOfAccount>();
 
     for (const line of params.lines) {
       const account = await this.resolvePostableAccount(
@@ -263,6 +290,7 @@ export class TransactionService {
         params.businessId,
         line.chartOfAccountId,
       );
+      affectedAccounts.set(account.id, account);
 
       const debit = line.debitAmount ?? 0;
       const credit = line.creditAmount ?? 0;
@@ -287,6 +315,7 @@ export class TransactionService {
         debitAmount: hasDebit ? this.roundAmount(debit) : null,
         creditAmount: hasDebit ? null : this.roundAmount(credit),
         previousBalance,
+        skipRecalc: true,
       });
 
       batchBalances.set(
@@ -296,7 +325,20 @@ export class TransactionService {
       saved.push(entry);
     }
 
-    return saved;
+    for (const account of affectedAccounts.values()) {
+      await this.recalculateAfterPost(manager, params.businessId, account);
+    }
+
+    if (saved.length === 0) {
+      return saved;
+    }
+
+    const txRepo = manager.getRepository(Transaction);
+    const refreshed = await txRepo.find({
+      where: { id: In(saved.map((entry) => entry.id)) },
+    });
+    const byId = new Map(refreshed.map((entry) => [entry.id, entry]));
+    return saved.map((entry) => byId.get(entry.id) ?? entry);
   }
 
   async postPartyOpeningBalances(
@@ -450,6 +492,79 @@ export class TransactionService {
       return {
       data: transactions,
       meta: { total, page, limit },
+    };
+  }
+
+  async recalculateBusinessLedgers(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    chartOfAccountId: string | undefined,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+
+    const results = await tenantDb.transaction(async (manager) => {
+      const accountIds = chartOfAccountId
+        ? [chartOfAccountId]
+        : (
+            await manager
+              .getRepository(Transaction)
+              .createQueryBuilder('t')
+              .select('DISTINCT t.chartOfAccountId', 'chartOfAccountId')
+              .where('t.businessId = :businessId', {
+                businessId: scopedBusinessId,
+              })
+              .getRawMany<{ chartOfAccountId: string }>()
+          ).map((row) => row.chartOfAccountId);
+
+      const recalculated: Array<{
+        chartOfAccountId: string;
+        updatedCount: number;
+        closingBalance: number;
+      }> = [];
+
+      for (const coaId of accountIds) {
+        const account = await manager.getRepository(ChartOfAccount).findOne({
+          where: {
+            id: coaId,
+            businessId: scopedBusinessId,
+            deletedAt: IsNull(),
+          },
+        });
+        if (!account) {
+          continue;
+        }
+
+        const result = await recalculateAccountLedgerBalances(manager, {
+          businessId: scopedBusinessId,
+          account,
+          chartOfAccountId: coaId,
+        });
+
+        recalculated.push({
+          chartOfAccountId: coaId,
+          updatedCount: result.updatedCount,
+          closingBalance: result.closingBalance,
+        });
+      }
+
+      return recalculated;
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'LEDGER_RECALCULATED',
+      description: `Ledger balances recalculated for ${results.length} account(s)`,
+      metadata: {
+        chartOfAccountId: chartOfAccountId ?? null,
+        accountsRecalculated: results.length,
+      },
+    });
+
+    return {
+      accountsRecalculated: results.length,
+      results,
     };
   }
 }

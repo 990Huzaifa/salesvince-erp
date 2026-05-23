@@ -47,6 +47,7 @@ export enum AccountTransactionReferenceType {
   @Index(['businessId', 'chartOfAccountId'])
   @Index(['businessId', 'chartOfAccountId', 'createdAt'])
   @Index(['businessId', 'referenceType', 'referenceId'])
+  @Index(['businessId', 'chartOfAccountId', 'transactionDate', 'createdAt'])
 export class Transaction {
   @PrimaryGeneratedColumn('uuid')
   id: string;
