@@ -22,6 +22,7 @@ import { GrnItem } from './grn.entity';
 import { PurchaseQuotationItem } from './purchase-quotation.entity';
 import { Batch, StockMovement, StockBalance } from './stock.entity';
 import { PurchaseInvoiceItem } from './purchase-invoice.entity';
+import { SaleQuotationItem } from './sale-quotation.entity';
 
 export enum BatchPickStrategy {
     FIFO = 'FIFO',
@@ -179,6 +180,10 @@ export class Uom {
     @OneToMany(() => PurchaseInvoiceItem, (purchaseInvoiceItem) => purchaseInvoiceItem.uom)
     purchaseInvoiceItems: PurchaseInvoiceItem[];
     
+
+    @OneToMany(() => SaleQuotationItem, (saleQuotationItem) => saleQuotationItem.uom)
+    saleQuotationItems: SaleQuotationItem[];
+
     @OneToMany(() => SaleOrderItem, (saleOrderItem) => saleOrderItem.uom)
     saleOrderItems: SaleOrderItem[];
 }
@@ -307,6 +312,12 @@ export class Product {
 
     @OneToMany(() => PurchaseInvoiceItem, (purchaseInvoiceItem) => purchaseInvoiceItem.product)
     purchaseInvoiceItems: PurchaseInvoiceItem[];
+
+    @OneToMany(() => SaleQuotationItem, (saleQuotationItem) => saleQuotationItem.product)
+    saleQuotationItems: SaleQuotationItem[];
+
+    @OneToMany(() => SaleOrderItem, (saleOrderItem) => saleOrderItem.product)
+    saleOrderItems: SaleOrderItem[];
 
     @OneToMany(() => Batch, (batch) => batch.product, { onDelete: 'CASCADE' })
     batches: Batch[];

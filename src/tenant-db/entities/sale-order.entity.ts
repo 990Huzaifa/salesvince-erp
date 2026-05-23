@@ -1,6 +1,7 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
 import { User } from "./user.entity";
 import { Product, ProductFlavour, ProductPricing, Uom } from "./product.entity";
+import { Business } from "./business.entity";
 
 
 export enum OrderStatus {
@@ -14,6 +15,13 @@ export enum OrderStatus {
 export class SaleOrder {
     @PrimaryGeneratedColumn('uuid')
     id: string;
+
+    @Column()
+    businessId: string;
+
+    @ManyToOne(() => Business, (business) => business.saleOrders, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'businessId' })
+    business: Business;
 
     @Column({ unique: true })
     orderNumber: string;
@@ -77,7 +85,7 @@ export class SaleOrderItem {
     @Column()
     productId: string;
 
-    @ManyToOne(() => Product, { onDelete: 'CASCADE' })
+    @ManyToOne(() => Product, (product) => product.saleOrderItems, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'productId' })
     product: Product;
 

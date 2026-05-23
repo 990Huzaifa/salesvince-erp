@@ -4,15 +4,15 @@ import { User } from "./user.entity";
 import { Product, Uom } from "./product.entity";
 import { Business } from "./business.entity";
 
-@Entity({ name: 'purchase_quotations' })
-export class PurchaseQuotation {
+@Entity({ name: 'sale_quotations' })
+export class SaleQuotation {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
     @Column()
     businessId: string;
 
-    @ManyToOne(() => Business, (business) => business.purchaseQuotations, { onDelete: 'CASCADE' })
+    @ManyToOne(() => Business, (business) => business.saleQuotations, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'businessId' })
     business: Business;
 
@@ -20,11 +20,11 @@ export class PurchaseQuotation {
     quotationNumber: string;
 
     @Column()
-    vendorId: string;
+    customerId: string;
 
-    @ManyToOne(() => Party, (party) => party.purchaseQuotations, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'vendorId' })
-    vendor: Party;
+    @ManyToOne(() => Party, (party) => party.saleQuotations, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'customerId' })
+    customer: Party;
 
     @Column()
     quotationDate: Date;
@@ -35,7 +35,7 @@ export class PurchaseQuotation {
     @Column('uuid')
     createdBy: string;
 
-    @ManyToOne(() => User, (user) => user.purchaseQuotations, { onDelete: 'CASCADE' })
+    @ManyToOne(() => User, (user) => user.saleQuotations, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'createdBy' })
     createdByUser: User;
 
@@ -46,33 +46,33 @@ export class PurchaseQuotation {
     updatedAt: Date;
 
     // relationships
-    @OneToMany(() => PurchaseQuotationItem, (item) => item.purchaseQuotation, { onDelete: 'CASCADE' })
-    items: PurchaseQuotationItem[];
+    @OneToMany(() => SaleQuotationItem, (item) => item.saleQuotation, { onDelete: 'CASCADE' })
+    items: SaleQuotationItem[];
 }
 
-@Entity({ name: 'purchase_quotation_items' })
-export class PurchaseQuotationItem {
+@Entity({ name: 'sale_quotation_items' })
+export class SaleQuotationItem {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
     @Column()
-    purchaseQuotationId: string;
+    saleQuotationId: string;
 
-    @ManyToOne(() => PurchaseQuotation, (purchaseQuotation) => purchaseQuotation.items, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'purchaseQuotationId' })
-    purchaseQuotation: PurchaseQuotation;
+    @ManyToOne(() => SaleQuotation, (saleQuotation) => saleQuotation.items, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'saleQuotationId' })
+    saleQuotation: SaleQuotation;
 
     @Column()
     productId: string;
 
-    @ManyToOne(() => Product, (product) => product.purchaseQuotationItems, { onDelete: 'CASCADE' })
+    @ManyToOne(() => Product, (product) => product.saleQuotationItems, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'productId' })
     product: Product;
     
     @Column()
     uomId: string;
 
-    @ManyToOne(() => Uom, (uom) => uom.purchaseQuotationItems, { onDelete: 'CASCADE' })
+    @ManyToOne(() => Uom, (uom) => uom.saleQuotationItems, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'uomId' })
     uom: Uom;
 

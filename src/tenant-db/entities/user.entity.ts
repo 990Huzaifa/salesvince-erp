@@ -12,6 +12,7 @@ import { UserBusiness } from './user-business.entity';
 import { Grn } from './grn.entity';
 import { PurchaseOrder } from './purchase-order.entity';
 import { PurchaseQuotation } from './purchase-quotation.entity';
+import { SaleQuotation } from './sale-quotation.entity';
 export enum UserStatus {
     ACTIVE = 'ACTIVE',
     INACTIVE = 'INACTIVE',
@@ -92,4 +93,7 @@ export class User {
 
     @OneToMany(() => PurchaseOrder, (purchaseOrder) => purchaseOrder.createdByUser, { onDelete: 'CASCADE' })
     purchaseOrders: PurchaseOrder[];
+
+    @OneToMany(() => SaleQuotation, (saleQuotation) => saleQuotation.createdByUser, { onDelete: 'CASCADE' })
+    saleQuotations: SaleQuotation[];
 }
