@@ -21,11 +21,12 @@ import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
-import { PurchaseQuotationService } from '../service/purchase/purchase-quotation.service';
-import { CreatePurchaseQuotationDto } from '../dto/purchase-quotation/create-purchase-quotation.dto';
-import { UpdatePurchaseQuotationDto } from '../dto/purchase-quotation/update-purchase-quotation.dto';
+import { GrnStatus } from 'src/tenant-db/entities/grn.entity';
+import { GrnService } from '../service/purchase/grn.service';
+import { CreateGrnDto } from '../dto/grn/create-grn.dto';
+import { UpdateGrnDto } from '../dto/grn/update-grn.dto';
 
-@Controller('tenant/purchase-quotations')
+@Controller('tenant/grns')
 @UseGuards(
   TenantJwtAuthGuard,
   TenantJwtGuard,
@@ -33,20 +34,18 @@ import { UpdatePurchaseQuotationDto } from '../dto/purchase-quotation/update-pur
   TenantBusinessAccessGuard,
   TenantPermissionGuard,
 )
-export class PurchaseQuotationController {
-  constructor(
-    private readonly purchaseQuotationService: PurchaseQuotationService,
-  ) {}
+export class GrnController {
+  constructor(private readonly grnService: GrnService) {}
 
   @Post('create')
-  @RequirePermissions('CREATE_PURCHASE_QUOTATION')
+  @RequirePermissions('CREATE_PURCHASE_STOCK')
   create(
     @TenantConnection() tenantDb: DataSource,
-    @Body() dto: CreatePurchaseQuotationDto,
+    @Body() dto: CreateGrnDto,
     @Req() req: Request,
   ) {
     const user = req.user as TenantRequestUser;
-    return this.purchaseQuotationService.create(
+    return this.grnService.create(
       tenantDb,
       user.businessId,
       dto,
@@ -54,8 +53,24 @@ export class PurchaseQuotationController {
     );
   }
 
+  @Post('create-and-approve')
+  @RequirePermissions('APPROVE_PURCHASE_STOCK')
+  createAndApprove(
+    @TenantConnection() tenantDb: DataSource,
+    @Body() dto: CreateGrnDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.grnService.create(
+      tenantDb,
+      user.businessId,
+      { ...dto, status: GrnStatus.APPROVED },
+      user.userId,
+    );
+  }
+
   @Get()
-  @RequirePermissions('LIST_PURCHASE_QUOTATION')
+  @RequirePermissions('LIST_PURCHASE_STOCK')
   list(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -63,9 +78,12 @@ export class PurchaseQuotationController {
     @Query('limit') limit: number = 10,
     @Query('search') search?: string,
     @Query('vendorId') vendorId?: string,
+    @Query('warehouseId') warehouseId?: string,
+    @Query('purchaseOrderId') purchaseOrderId?: string,
+    @Query('status') status?: GrnStatus,
   ) {
     const user = req.user as TenantRequestUser;
-    return this.purchaseQuotationService.list(
+    return this.grnService.list(
       tenantDb,
       user.businessId,
       {
@@ -73,20 +91,23 @@ export class PurchaseQuotationController {
         limit: Number(limit),
         search,
         vendorId,
+        warehouseId,
+        purchaseOrderId,
+        status,
       },
       user.userId,
     );
   }
 
   @Get(':id')
-  @RequirePermissions('VIEW_PURCHASE_QUOTATION')
-  getById(
+  @RequirePermissions('VIEW_PURCHASE_STOCK')
+  view(
     @TenantConnection() tenantDb: DataSource,
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: Request,
   ) {
     const user = req.user as TenantRequestUser;
-    return this.purchaseQuotationService.getById(
+    return this.grnService.view(
       tenantDb,
       user.businessId,
       id,
@@ -95,15 +116,15 @@ export class PurchaseQuotationController {
   }
 
   @Put('update/:id')
-  @RequirePermissions('UPDATE_PURCHASE_QUOTATION')
-  update(
+  @RequirePermissions('UPDATE_PURCHASE_STOCK')
+  edit(
     @TenantConnection() tenantDb: DataSource,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdatePurchaseQuotationDto,
+    @Body() dto: UpdateGrnDto,
     @Req() req: Request,
   ) {
     const user = req.user as TenantRequestUser;
-    return this.purchaseQuotationService.update(
+    return this.grnService.edit(
       tenantDb,
       user.businessId,
       id,
@@ -113,14 +134,30 @@ export class PurchaseQuotationController {
   }
 
   @Delete(':id')
-  @RequirePermissions('DELETE_PURCHASE_QUOTATION')
+  @RequirePermissions('DELETE_PURCHASE_STOCK')
   delete(
     @TenantConnection() tenantDb: DataSource,
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: Request,
   ) {
     const user = req.user as TenantRequestUser;
-    return this.purchaseQuotationService.delete(
+    return this.grnService.delete(
+      tenantDb,
+      user.businessId,
+      id,
+      user.userId,
+    );
+  }
+
+  @Post('approve/:id')
+  @RequirePermissions('APPROVE_PURCHASE_STOCK')
+  approve(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.grnService.approve(
       tenantDb,
       user.businessId,
       id,

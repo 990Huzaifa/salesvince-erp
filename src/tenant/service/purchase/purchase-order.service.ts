@@ -25,13 +25,13 @@ import {
   ProductPricing,
   Uom,
 } from 'src/tenant-db/entities/product.entity';
-import { CreatePurchaseOrderDto } from '../dto/purchase-order/create-purchase-order.dto';
-import { CreatePurchaseOrderItemDto } from '../dto/purchase-order/create-purchase-order-item.dto';
-import { CreateSimplePurchaseOrderDto } from '../dto/purchase-order/create-simple-purchase-order.dto';
-import { CreateSimplePurchaseOrderItemDto } from '../dto/purchase-order/create-simple-purchase-order-item.dto';
-import { UpdatePurchaseOrderDto } from '../dto/purchase-order/update-purchase-order.dto';
-import { UpdatePurchaseOrderItemDto } from '../dto/purchase-order/update-purchase-order-item.dto';
-import { ActivityLogService } from './activity-log.service';
+import { CreatePurchaseOrderDto } from '../../dto/purchase-order/create-purchase-order.dto';
+import { CreatePurchaseOrderItemDto } from '../../dto/purchase-order/create-purchase-order-item.dto';
+import { CreateSimplePurchaseOrderDto } from '../../dto/purchase-order/create-simple-purchase-order.dto';
+import { CreateSimplePurchaseOrderItemDto } from '../../dto/purchase-order/create-simple-purchase-order-item.dto';
+import { UpdatePurchaseOrderDto } from '../../dto/purchase-order/update-purchase-order.dto';
+import { UpdatePurchaseOrderItemDto } from '../../dto/purchase-order/update-purchase-order-item.dto';
+import { ActivityLogService } from '../activity-log.service';
 
 const ORDER_NUMBER_PREFIX = 'PO';
 

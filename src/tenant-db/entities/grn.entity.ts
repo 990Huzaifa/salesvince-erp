@@ -4,6 +4,8 @@ import { Warehouse } from "./warehouse.entity";
 import { Party } from "./party.entity";
 import { Product, ProductFlavour, Uom } from "./product.entity";
 import { User } from "./user.entity";
+import { PurchaseOrder } from "./purchase-order.entity";
+import { PurchaseInvoice } from "./purchase-invoice.entity";
 
 export enum GrnStatus {
     PENDING = 'PENDING',
@@ -16,6 +18,13 @@ export enum GrnStatus {
 export class Grn {
     @PrimaryGeneratedColumn('uuid')
     id: string;
+
+    @Column()
+    purchaseOrderId: string;
+
+    @ManyToOne(() => PurchaseOrder, (purchaseOrder) => purchaseOrder.grns, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'purchaseOrderId' })
+    purchaseOrder: PurchaseOrder;
 
     @Column()
     businessId: string;
@@ -81,6 +90,9 @@ export class Grn {
     // relationships
     @OneToMany(() => GrnItem, (item) => item.grn, { onDelete: 'CASCADE' })
     items: GrnItem[];
+
+    @OneToMany(() => PurchaseInvoice, (purchaseInvoice) => purchaseInvoice.grn, { onDelete: 'CASCADE' })
+    purchaseInvoices: PurchaseInvoice[];
 }
 
 @Entity('grn-items')

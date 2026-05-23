@@ -21,11 +21,11 @@ import {
   ProductPricing,
   Uom,
 } from 'src/tenant-db/entities/product.entity';
-import { CreatePurchaseQuotationDto } from '../dto/purchase-quotation/create-purchase-quotation.dto';
-import { CreatePurchaseQuotationItemDto } from '../dto/purchase-quotation/create-purchase-quotation-item.dto';
-import { UpdatePurchaseQuotationDto } from '../dto/purchase-quotation/update-purchase-quotation.dto';
-import { UpdatePurchaseQuotationItemDto } from '../dto/purchase-quotation/update-purchase-quotation-item.dto';
-import { ActivityLogService } from './activity-log.service';
+import { CreatePurchaseQuotationDto } from '../../dto/purchase-quotation/create-purchase-quotation.dto';
+import { CreatePurchaseQuotationItemDto } from '../../dto/purchase-quotation/create-purchase-quotation-item.dto';
+import { UpdatePurchaseQuotationDto } from '../../dto/purchase-quotation/update-purchase-quotation.dto';
+import { UpdatePurchaseQuotationItemDto } from '../../dto/purchase-quotation/update-purchase-quotation-item.dto';
+import { ActivityLogService } from '../activity-log.service';
 
 const QUOTATION_NUMBER_PREFIX = 'PQ';
 

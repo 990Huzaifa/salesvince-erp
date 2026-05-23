@@ -10,7 +10,7 @@ export enum StockMovementType {
 }
 
 export enum ReferenceType {
-    PURCHAS = 'PURCHASE',
+    PURCHASE = 'PURCHASE',
     SALE = 'SALE',
     PURCHASE_RETURN = 'PURCHASE_RETURN',
     SALE_RETURN = 'SALE_RETURN',

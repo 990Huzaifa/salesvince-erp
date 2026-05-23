@@ -24,11 +24,13 @@ export const TENANT_PERMISSIONS = [
   { key: 'CREATE_CONTRA_VOUCHER', name: 'Create Contra Voucher' },
   { key: 'CREATE_OPENING_STOCK', name: 'Create Opening Stock' },
   { key: 'CREATE_PURCHASE_STOCK', name: 'Create Purchase Stock' },
+  { key: 'APPROVE_PURCHASE_STOCK', name: 'Approve Purchase Stock (GRN)' },
   { key: 'CREATE_TRANSFER_STOCK', name: 'Create Transfer Stock' },
   { key: 'CREATE_CHART_OF_ACCOUNT', name: 'Create Chart of Account' },
   { key: 'CREATE_PARTY', name: 'Create Party' },
   { key: 'CREATE_PURCHASE_QUOTATION', name: 'Create Purchase Quotation' },
   { key: 'CREATE_PURCHASE_ORDER', name: 'Create Purchase Order' },
+  { key: 'CREATE_PURCHASE_INVOICE', name: 'Create Purchase Invoice' },
   { key: 'CREATE_WAREHOUSE', name: 'Create Warehouse' },
 
   { key: 'LIST_USER', name: 'List Users' },
@@ -56,6 +58,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'LIST_PARTY', name: 'List Party' },
   { key: 'LIST_PURCHASE_QUOTATION', name: 'List Purchase Quotation' },
   { key: 'LIST_PURCHASE_ORDER', name: 'List Purchase Order' },
+  { key: 'LIST_PURCHASE_INVOICE', name: 'List Purchase Invoice' },
   { key: 'LIST_WAREHOUSE', name: 'List Warehouse' },
 
   { key: 'UPDATE_USER', name: 'Update Users' },
@@ -117,6 +120,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'VIEW_PARTY', name: 'View Party' },
   { key: 'VIEW_PURCHASE_QUOTATION', name: 'View Purchase Quotation' },
   { key: 'VIEW_PURCHASE_ORDER', name: 'View Purchase Order' },
+  { key: 'VIEW_PURCHASE_INVOICE', name: 'View Purchase Invoice' },
   { key: 'VIEW_WAREHOUSE', name: 'View Warehouse' },
 
   { key: 'DELETE_USER', name: 'Delete Users' },

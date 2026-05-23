@@ -54,11 +54,16 @@ import { ProductService } from './service/product.service';
 import { TenantUtilityController } from './controller/utility.controller';
 import { TenantUtilityService } from './service/tenant-utility.service';
 import { PurchaseQuotationController } from './controller/purchase-quotation.controller';
-import { PurchaseQuotationService } from './service/purchase-quotation.service';
+import { PurchaseQuotationService } from './service/purchase/purchase-quotation.service';
 import { WarehouseController } from './controller/warehouse.controller';
 import { WarehouseService } from './service/warehouse.service';
 import { PurchaseOrderController } from './controller/purchase-order.controller';
-import { PurchaseOrderService } from './service/purchase-order.service';
+import { PurchaseOrderService } from './service/purchase/purchase-order.service';
+import { GrnController } from './controller/grn.controller';
+import { GrnService } from './service/purchase/grn.service';
+import { StockService } from './service/stock.service';
+import { PurchaseInvoiceController } from './controller/purchase-invoice.controller';
+import { PurchaseInvoiceService } from './service/purchase/purchase-invoice.service';
 @Module({
   imports: [
     HttpModule,
@@ -93,6 +98,8 @@ import { PurchaseOrderService } from './service/purchase-order.service';
     PurchaseQuotationController,
     WarehouseController,
     PurchaseOrderController,
+    GrnController,
+    PurchaseInvoiceController,
   ],
   providers: [
     TenantAuthService,
@@ -124,6 +131,9 @@ import { PurchaseOrderService } from './service/purchase-order.service';
     PurchaseQuotationService,
     WarehouseService,
     PurchaseOrderService,
+    GrnService,
+    StockService,
+    PurchaseInvoiceService,
   ],
 })
 export class TenantModule {}

@@ -17,6 +17,8 @@ import { Warehouse } from './warehouse.entity';
 import { Grn } from './grn.entity';
 import { Batch, StockMovement } from './stock.entity';
 import { StockBalance } from './stock.entity';
+import { PurchaseOrder } from './purchase-order.entity';
+import { PurchaseInvoice } from './purchase-invoice.entity';
 export enum BusinessStatus {
     ACTIVE = 'ACTIVE',
     INACTIVE = 'INACTIVE',
@@ -97,8 +99,14 @@ export class Business {
     @OneToMany(() => Warehouse, (warehouse) => warehouse.business, { onDelete: 'CASCADE' })
     warehouses: Warehouse[];
 
+    @OneToMany(() => PurchaseOrder, (purchaseOrder) => purchaseOrder.business, { onDelete: 'CASCADE' })
+    purchaseOrders: PurchaseOrder[];
+
     @OneToMany(() => Grn, (grn) => grn.business, { onDelete: 'CASCADE' })
     grns: Grn[];
+
+    @OneToMany(() => PurchaseInvoice, (purchaseInvoice) => purchaseInvoice.business, { onDelete: 'CASCADE' })
+    purchaseInvoices: PurchaseInvoice[];
 
     @OneToMany(() => Batch, (batch) => batch.business, { onDelete: 'CASCADE' })
     batches: Batch[];

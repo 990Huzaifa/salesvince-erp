@@ -22,7 +22,7 @@ import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { OrderStatus } from 'src/tenant-db/entities/purchase-order.entity';
-import { PurchaseOrderService } from '../service/purchase-order.service';
+import { PurchaseOrderService } from '../service/purchase/purchase-order.service';
 import { CreatePurchaseOrderDto } from '../dto/purchase-order/create-purchase-order.dto';
 import { CreateSimplePurchaseOrderDto } from '../dto/purchase-order/create-simple-purchase-order.dto';
 import { UpdatePurchaseOrderDto } from '../dto/purchase-order/update-purchase-order.dto';
