@@ -14,11 +14,6 @@ import {
 import { PaymentMethod } from 'src/tenant-db/entities/voucher.entity';
 
 export class VoucherPaymentFieldsDto {
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
-  voucherNumber: string;
-
   @IsEnum(PaymentMethod)
   paymentMethod: PaymentMethod;
 

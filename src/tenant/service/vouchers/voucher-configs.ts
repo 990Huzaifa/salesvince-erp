@@ -30,6 +30,7 @@ export const PURCHASE_VOUCHER_CONFIG: VoucherConfig<PurchaseVoucher> = {
   referenceType: AccountTransactionReferenceType.PAYMENT_VOUCHER,
   activityKey: 'PURCHASE_VOUCHER',
   permissionKey: 'PURCHASE_VOUCHER',
+  numberPrefix: 'PV',
   hasParty: true,
   buildJournalLines: (voucher, partyLedgerAccountId) =>
     amountLines(
@@ -45,6 +46,7 @@ export const SALE_VOUCHER_CONFIG: VoucherConfig<SaleVoucher> = {
   referenceType: AccountTransactionReferenceType.RECEIPT_VOUCHER,
   activityKey: 'SALE_VOUCHER',
   permissionKey: 'SALE_VOUCHER',
+  numberPrefix: 'RV',
   hasParty: true,
   buildJournalLines: (voucher, partyLedgerAccountId) =>
     amountLines(
@@ -61,6 +63,7 @@ export const PURCHASE_RETURN_VOUCHER_CONFIG: VoucherConfig<PurchaseReturnVoucher
     referenceType: AccountTransactionReferenceType.PURCHASE_RETURN_VOUCHER,
     activityKey: 'PURCHASE_RETURN_VOUCHER',
     permissionKey: 'PURCHASE_RETURN_VOUCHER',
+    numberPrefix: 'PRV',
     hasParty: true,
     buildJournalLines: (voucher, partyLedgerAccountId) =>
       amountLines(
@@ -76,6 +79,7 @@ export const SALE_RETURN_VOUCHER_CONFIG: VoucherConfig<SaleReturnVoucher> = {
   referenceType: AccountTransactionReferenceType.SALE_RETURN_VOUCHER,
   activityKey: 'SALE_RETURN_VOUCHER',
   permissionKey: 'SALE_RETURN_VOUCHER',
+  numberPrefix: 'SRV',
   hasParty: true,
   buildJournalLines: (voucher, partyLedgerAccountId) =>
     amountLines(
@@ -91,6 +95,7 @@ export const EXPENSE_VOUCHER_CONFIG: VoucherConfig<ExpenseVoucher> = {
   referenceType: AccountTransactionReferenceType.EXPENSE_VOUCHER,
   activityKey: 'EXPENSE_VOUCHER',
   permissionKey: 'EXPENSE_VOUCHER',
+  numberPrefix: 'EV',
   hasParty: false,
   buildJournalLines: (voucher) =>
     amountLines(
@@ -106,6 +111,7 @@ export const CONTRA_VOUCHER_CONFIG: VoucherConfig<ContraVoucher> = {
   referenceType: AccountTransactionReferenceType.CONTRA_VOUCHER,
   activityKey: 'CONTRA_VOUCHER',
   permissionKey: 'CONTRA_VOUCHER',
+  numberPrefix: 'CV',
   hasParty: false,
   buildJournalLines: (voucher) =>
     amountLines(

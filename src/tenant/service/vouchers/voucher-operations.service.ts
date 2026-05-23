@@ -24,6 +24,7 @@ import {
   ExpenseVoucherPayload,
   PartyVoucherPayload,
   VoucherConfig,
+  VoucherCreateInput,
   VoucherCreatePayload,
   VoucherEntity,
   VoucherListOptions,
@@ -49,10 +50,45 @@ export class VoucherOperationsService {
     return source.getRepository(entity) as Repository<T>;
   }
 
+  private async generateVoucherNumber<T extends VoucherEntity>(
+    manager: EntityManager,
+    config: VoucherConfig<T>,
+  ): Promise<string> {
+    const prefix = config.numberPrefix;
+    const alias = 'voucher';
+    const last = await this.getRepo(manager, config.entity)
+      .createQueryBuilder(alias)
+      .where(`${alias}.voucherNumber LIKE :pattern`, {
+        pattern: `${prefix}-%`,
+      })
+      .orderBy(`${alias}.voucherNumber`, 'DESC')
+      .getOne();
+
+    let next = 1;
+    if (last) {
+      const suffix = String(last.voucherNumber).replace(`${prefix}-`, '');
+      next = (parseInt(suffix, 10) || 0) + 1;
+    }
+
+    return `${prefix}-${String(next).padStart(5, '0')}`;
+  }
+
+  private async resolveCreatePayload<T extends VoucherEntity>(
+    manager: EntityManager,
+    config: VoucherConfig<T>,
+    dto: VoucherCreateInput,
+  ): Promise<VoucherCreatePayload> {
+    const voucherNumber = await this.generateVoucherNumber(manager, config);
+    return { ...dto, voucherNumber } as VoucherCreatePayload;
+  }
+
   private applyPaymentFields(
     target: VoucherEntity,
     dto: VoucherPaymentPayload,
   ): void {
+    if (!dto.voucherNumber?.trim()) {
+      throw new BadRequestException('Voucher number is required');
+    }
     target.voucherNumber = dto.voucherNumber.trim();
     target.paymentMethod = String(dto.paymentMethod);
     target.paymentDate =
@@ -182,7 +218,7 @@ export class VoucherOperationsService {
     dto: VoucherUpdatePayload,
   ): VoucherCreatePayload {
     const payment: VoucherPaymentPayload = {
-      voucherNumber: (dto.voucherNumber ?? voucher.voucherNumber).trim(),
+      voucherNumber: voucher.voucherNumber,
       paymentMethod: dto.paymentMethod ?? voucher.paymentMethod,
       paymentDate: dto.paymentDate ?? voucher.paymentDate,
       paymentAmount:
@@ -230,9 +266,13 @@ export class VoucherOperationsService {
     config: VoucherConfig<T>,
     dto: VoucherCreatePayload,
   ): Promise<{ partyLedgerAccountId?: string }> {
+    const voucherNumber = dto.voucherNumber?.trim();
+    if (!voucherNumber) {
+      throw new BadRequestException('Voucher number is required');
+    }
     await this.assertUniqueVoucherNumber(
       this.getRepo(manager, config.entity),
-      dto.voucherNumber.trim(),
+      voucherNumber,
     );
 
     if (config.hasParty) {
@@ -324,9 +364,6 @@ export class VoucherOperationsService {
     config: VoucherConfig<T>,
     dto: VoucherUpdatePayload,
   ): void {
-    if (dto.voucherNumber !== undefined) {
-      voucher.voucherNumber = String(dto.voucherNumber).trim();
-    }
     if (dto.paymentMethod !== undefined) {
       voucher.paymentMethod = dto.paymentMethod as string;
     }
@@ -451,15 +488,16 @@ export class VoucherOperationsService {
     tenantDb: DataSource,
     businessId: string,
     config: VoucherConfig<T>,
-    items: VoucherCreatePayload[],
+    items: VoucherCreateInput[],
     userId: string,
   ) {
     const saved: T[] = [];
 
     for (const dto of items) {
       const voucher = await tenantDb.transaction(async (manager) => {
-        await this.validateCreatePayload(manager, businessId, config, dto);
-        const entity = this.buildEntityFromCreate(config, dto, userId);
+        const payload = await this.resolveCreatePayload(manager, config, dto);
+        await this.validateCreatePayload(manager, businessId, config, payload);
+        const entity = this.buildEntityFromCreate(config, payload, userId);
         return this.getRepo(manager, config.entity).save(entity);
       });
       saved.push(voucher);
@@ -480,20 +518,21 @@ export class VoucherOperationsService {
     tenantDb: DataSource,
     businessId: string,
     config: VoucherConfig<T>,
-    items: VoucherCreatePayload[],
+    items: VoucherCreateInput[],
     userId: string,
   ) {
     const saved: T[] = [];
 
     for (const dto of items) {
       const voucher = await tenantDb.transaction(async (manager) => {
+        const payload = await this.resolveCreatePayload(manager, config, dto);
         const validation = await this.validateCreatePayload(
           manager,
           businessId,
           config,
-          dto,
+          payload,
         );
-        const entity = this.buildEntityFromCreate(config, dto, userId);
+        const entity = this.buildEntityFromCreate(config, payload, userId);
         const created = await this.getRepo(manager, config.entity).save(entity);
         const partyLedgerAccountId =
           validation.partyLedgerAccountId ??
@@ -665,14 +704,6 @@ export class VoucherOperationsService {
       );
       this.assertEditable(voucher);
       this.applyUpdateFields(voucher, config, dto);
-
-      if (dto.voucherNumber !== undefined) {
-        await this.assertUniqueVoucherNumber(
-          this.getRepo(manager, config.entity),
-          voucher.voucherNumber,
-          voucher.id,
-        );
-      }
 
       const validationPayload = this.buildFullCreatePayload(
         voucher,

@@ -8,7 +8,8 @@ import {
 
 /** Shared payment fields for create / full validation payloads. */
 export type VoucherPaymentPayload = {
-  voucherNumber: string;
+  /** Set by service on create; not accepted from API input. */
+  voucherNumber?: string;
   paymentMethod: PaymentMethod | string;
   paymentDate: string | Date;
   paymentAmount: number;
@@ -38,6 +39,9 @@ export type VoucherCreatePayload =
   | PartyVoucherPayload
   | ExpenseVoucherPayload
   | ContraVoucherPayload;
+
+/** API / service input before voucher number is assigned. */
+export type VoucherCreateInput = Omit<VoucherCreatePayload, 'voucherNumber'>;
 
 /** Partial update — all variant-specific fields optional in one flat shape. */
 export type VoucherUpdatePayload = Partial<VoucherPaymentPayload> & {
@@ -81,6 +85,7 @@ export type VoucherConfig<T extends VoucherEntity> = {
   referenceType: AccountTransactionReferenceType;
   activityKey: string;
   permissionKey: string;
+  numberPrefix: string;
   hasParty: boolean;
   buildJournalLines: (voucher: T, partyLedgerAccountId?: string) => JournalLineInput[];
 };
