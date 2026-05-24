@@ -18,7 +18,6 @@ import {
   UserBusinessStatus,
 } from 'src/tenant-db/entities/user-business.entity';
 import { Role, RoleStatus } from 'src/tenant-db/entities/role.entity';
-import { Permission } from 'src/tenant-db/entities/permission.entity';
 import { TenantLoginDto } from '../dto/tenant-login.dto';
 import { SetupTenantUserPasswordDto } from '../dto/user/setup-tenant-user-password.dto';
 import { SelectBusinessDto } from '../dto/select-business.dto';
@@ -61,7 +60,8 @@ export type TenantLoginResponse = {
 export type TenantBusinessAccessResponse = {
   access_token: string;
   token_type: typeof BUSINESS_ACCESS_TOKEN;
-  permissions: string[];
+  isSuperAdmin: boolean;
+  permissions?: string[];
 };
 
 @Injectable()
@@ -212,27 +212,6 @@ export class TenantAuthService {
     );
   }
 
-  private async resolveUserBusinessPermissions(
-    tenantDb: DataSource,
-    userId: string,
-    role: Role,
-  ): Promise<string[]> {
-    const tenantUser = await tenantDb.getRepository(User).findOne({
-      where: { id: userId },
-      select: ['id', 'isSuperAdmin'],
-    });
-
-    if (tenantUser?.isSuperAdmin) {
-      const all = await tenantDb.getRepository(Permission).find({
-        select: ['key'],
-        order: { key: 'ASC' },
-      });
-      return all.map((p) => p.key);
-    }
-
-    return this.extractRolePermissionKeys(role);
-  }
-
   private async buildBusinessesList(
     tenantDb: DataSource,
     userId: string,
@@ -351,27 +330,20 @@ export class TenantAuthService {
     ub.lastSelectedAt = new Date();
     await ubRepo.save(ub);
 
-    let userCode = jwtUser.userCode;
-    if (!userCode) {
-      const dbUser = await tenantDb.getRepository(User).findOne({
-        where: { id: jwtUser.userId },
-        select: ['code'],
-      });
-      userCode = dbUser?.code ?? '';
-    }
+    const dbUser = await tenantDb.getRepository(User).findOne({
+      where: { id: jwtUser.userId },
+      select: ['code', 'isSuperAdmin'],
+    });
+
+    let userCode = jwtUser.userCode ?? dbUser?.code ?? '';
+    const isSuperAdmin = dbUser?.isSuperAdmin === true;
 
     const businessCode = ub.business?.code ?? '';
     if (!businessCode) {
       throw new ForbiddenException('Business not found');
     }
 
-    const permissions = await this.resolveUserBusinessPermissions(
-      tenantDb,
-      jwtUser.userId,
-      ub.role,
-    );
-
-    return {
+    const response: TenantBusinessAccessResponse = {
       access_token: this.signBusinessAccessJwt(jwtUser.userId, tenant, {
         businessId: dto.businessId,
         businessCode,
@@ -380,8 +352,14 @@ export class TenantAuthService {
         userCode,
       }),
       token_type: BUSINESS_ACCESS_TOKEN,
-      permissions,
+      isSuperAdmin,
     };
+
+    if (!isSuperAdmin) {
+      response.permissions = this.extractRolePermissionKeys(ub.role);
+    }
+
+    return response;
   }
 
   async setupInvitedUserPassword(
