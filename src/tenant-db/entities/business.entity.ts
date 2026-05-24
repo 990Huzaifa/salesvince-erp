@@ -37,6 +37,10 @@ export class Business {
     @Column({ type: 'varchar', length: 150 })
     name: string;
 
+    @Index({ unique: true })
+    @Column({ type: 'varchar', length: 20 })
+    code: string;
+
     @Column({ type: 'varchar', length: 180, nullable: true })
     legalName: string | null;
 

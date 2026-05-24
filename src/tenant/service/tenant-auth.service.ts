@@ -28,6 +28,7 @@ import {
 
 export type TenantLoginBusinessRow = {
   businessId: string;
+  businessCode: string;
   businessName: string;
   businessStatus: string;
   userBusinessId: string;
@@ -189,6 +190,7 @@ export class TenantAuthService {
 
     return rows.map((ub) => ({
       businessId: ub.businessId,
+      businessCode: ub.business?.code ?? '',
       businessName: ub.business?.name ?? '',
       businessStatus: ub.business?.status ?? '',
       userBusinessId: ub.id,

@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, IsNull } from 'typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
 import { User } from 'src/tenant-db/entities/user.entity';
 import { Business, BusinessStatus } from 'src/tenant-db/entities/business.entity';
 import { Role } from 'src/tenant-db/entities/role.entity';
@@ -20,6 +20,21 @@ import { ActivityLogService } from './activity-log.service';
 @Injectable()
 export class TenantBusinessService {
   constructor(private readonly activityLogService: ActivityLogService) {}
+
+  private async generateUniqueBusinessCode(
+    businessRepo: Repository<Business>,
+  ): Promise<string> {
+    while (true) {
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const existing = await businessRepo.findOne({
+        where: { code, deletedAt: IsNull() },
+        select: ['id'],
+      });
+      if (!existing) {
+        return code;
+      }
+    }
+  }
 
   private async assertSuperAdmin(tenantDb: DataSource, userId: string) {
     const user = await tenantDb.getRepository(User).findOne({
@@ -70,10 +85,13 @@ export class TenantBusinessService {
       throw new ConflictException('Business name already exists');
     }
 
+    const code = await this.generateUniqueBusinessCode(businessRepo);
+
     const saved = await tenantDb.transaction(async (manager) => {
       const business = await manager.save(
         manager.create(Business, {
           name,
+          code,
           legalName: dto.legalName?.trim() ?? null,
           status: BusinessStatus.ACTIVE,
         }),

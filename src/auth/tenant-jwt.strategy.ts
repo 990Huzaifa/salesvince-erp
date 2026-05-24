@@ -20,6 +20,7 @@ export type TenantJwtPayload = {
   type?: string;
   tokenType?: typeof TENANT_LOGIN_TOKEN | typeof BUSINESS_ACCESS_TOKEN;
   businessId?: string;
+  businessCode?: string;
   userBusinessId?: string;
   roleId?: string;
 };
@@ -33,6 +34,7 @@ export type TenantRequestUser = {
   tenantStatus?: TenantStatus;
   tokenType: typeof TENANT_LOGIN_TOKEN | typeof BUSINESS_ACCESS_TOKEN;
   businessId?: string;
+  businessCode?: string;
   userBusinessId?: string;
   roleId?: string;
 };
@@ -80,6 +82,7 @@ export class TenantJwtStrategy extends PassportStrategy(Strategy, 'tenant-jwt') 
         tenantStatus: payload.tenantStatus,
         tokenType: BUSINESS_ACCESS_TOKEN,
         businessId: payload.businessId,
+        businessCode: payload.businessCode,
         userBusinessId: payload.userBusinessId,
         roleId: payload.roleId,
       };

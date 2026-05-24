@@ -107,8 +107,8 @@ export class TenantAuthController {
     const userCode = user.userCode;
 
     const baseChannel = `private-tenant-${user.tenantCode}-user-${userCode}`;
-    const withBusiness = user.businessId
-      ? `${baseChannel}-business-${user.businessId}`
+    const withBusiness = user.businessCode
+      ? `${baseChannel}-business-${user.businessCode}`
       : null;
 
     const allowed =
