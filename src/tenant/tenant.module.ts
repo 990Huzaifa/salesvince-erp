@@ -66,6 +66,7 @@ import { PurchaseInvoiceController } from './controller/purchase-invoice.control
 import { PurchaseInvoiceService } from './service/purchase/purchase-invoice.service';
 import { FinanceController } from './controller/finance.controller';
 import { FinanceService } from './service/finance.service';
+import { TenantNotificationController } from './controller/tenant-notification.controller';
 @Module({
   imports: [
     HttpModule,
@@ -80,6 +81,7 @@ import { FinanceService } from './service/finance.service';
     TenantAuthController,
     TenantUserController,
     TenantBusinessController,
+    TenantNotificationController,
     TenantRoleController,
     ChartOfAccountController,
     PartyController,
