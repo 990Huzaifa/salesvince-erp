@@ -11,6 +11,7 @@ export type TenantJwtPayload = {
   sub?: string;
   userId?: string;
   tenantId: string;
+  userCode?: string;
   /** @deprecated use tokenType + business-scoped RBAC */
   role?: string;
   tenantStatus?: TenantStatus;
@@ -25,6 +26,7 @@ export type TenantJwtPayload = {
 
 export type TenantRequestUser = {
   userId: string;
+  userCode?: string;
   tenantId: string;
   tenantCode?: string;
   tenantName?: string;
@@ -56,6 +58,7 @@ export class TenantJwtStrategy extends PassportStrategy(Strategy, 'tenant-jwt') 
     if (tokenType === TENANT_LOGIN_TOKEN) {
       return {
         userId,
+        userCode: payload.userCode,
         tenantId: payload.tenantId,
         tenantCode: payload.tenantCode,
         tenantName: payload.tenantName,
@@ -70,6 +73,7 @@ export class TenantJwtStrategy extends PassportStrategy(Strategy, 'tenant-jwt') 
       }
       return {
         userId,
+        userCode: payload.userCode,
         tenantId: payload.tenantId,
         tenantCode: payload.tenantCode,
         tenantName: payload.tenantName,

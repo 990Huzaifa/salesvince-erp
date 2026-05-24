@@ -104,9 +104,9 @@ export class TenantAuthController {
     const socketId = (req.body as { socket_id?: string }).socket_id;
     const channel = (req.body as { channel_name?: string }).channel_name;
     const user = req.user as TenantRequestUser;
-    const userId = user.userId;
+    const userCode = user.userCode;
 
-    const baseChannel = `private-tenant-${user.tenantCode}-user-${userId}`;
+    const baseChannel = `private-tenant-${user.tenantCode}-user-${userCode}`;
     const withBusiness = user.businessId
       ? `${baseChannel}-business-${user.businessId}`
       : null;
