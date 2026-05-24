@@ -45,6 +45,7 @@ export type TenantLoginCapabilities = {
 export type TenantLoginResponse = {
   access_token: string;
   token_type: typeof TENANT_LOGIN_TOKEN;
+  tenantCode: string;
   isSuperAdmin: boolean;
   user: {
     id: string;
@@ -188,6 +189,7 @@ export class TenantAuthService {
     return {
       access_token: this.signTenantLoginJwt(user.id, tenant, user.code),
       token_type: TENANT_LOGIN_TOKEN,
+      tenantCode: tenant.code,
       isSuperAdmin,
       user: {
         id: user.id,
