@@ -4,6 +4,7 @@ import { DataSource, Repository } from "typeorm";
 import { PusherService } from "src/common/pusher/pusher.service";
 import { ActivityLogService } from "src/platform/services/activity-log.service";
 import { User } from "src/tenant-db/entities/user.entity";
+import { Business } from "src/tenant-db/entities/business.entity";
 import { Notification } from "src/tenant-db/entities/notification.entity";
 import { CreateNotificationDto } from "../dto/notification/create-notification.dto";
 
@@ -51,9 +52,20 @@ export class NotificationService {
 
         const saved = await tenantDb.getRepository(Notification).save(notification);
 
+        let channel = `private-tenant-${tenantCode}-user-${user.code}`;
+        if (payload.businessId) {
+            const business = await tenantDb.getRepository(Business).findOne({
+                where: { id: payload.businessId },
+                select: ['code'],
+            });
+            if (business?.code) {
+                channel = `${channel}-business-${business.code}`;
+            }
+        }
+
         try {
             await this.pusherService.trigger(
-                `private-tenant-${tenantCode}-user-${user.id}`,
+                channel,
                 'notification.new',
                 {
                     message: saved,

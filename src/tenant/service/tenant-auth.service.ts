@@ -120,7 +120,11 @@ export class TenantAuthService {
     return tenant;
   }
 
-  private signTenantLoginJwt(userId: string, tenant: Tenant): string {
+  private signTenantLoginJwt(
+    userId: string,
+    tenant: Tenant,
+    userCode: string,
+  ): string {
     const expiresIn = (
       process.env.JWT_TENANT_LOGIN_EXPIRES_IN ||
       process.env.JWT_EXPIRES_IN ||
@@ -131,6 +135,8 @@ export class TenantAuthService {
       {
         tokenType: TENANT_LOGIN_TOKEN,
         sub: userId,
+        userId,
+        userCode,
         tenantId: tenant.id,
         tenantCode: tenant.code,
         tenantStatus: tenant.status,
@@ -145,6 +151,7 @@ export class TenantAuthService {
     tenant: Tenant,
     row: {
       businessId: string;
+      businessCode: string;
       userBusinessId: string;
       roleId: string;
       userCode: string;
@@ -155,12 +162,14 @@ export class TenantAuthService {
       {
         tokenType: BUSINESS_ACCESS_TOKEN,
         sub: userId,
+        userId,
         userCode: row.userCode,
         tenantId: tenant.id,
         tenantCode: tenant.code,
         tenantStatus: tenant.status,
         tenantName: tenant.name,
         businessId: row.businessId,
+        businessCode: row.businessCode,
         userBusinessId: row.userBusinessId,
         roleId: row.roleId,
       },
@@ -175,7 +184,7 @@ export class TenantAuthService {
   ): TenantLoginResponse {
     const isSuperAdmin = user.isSuperAdmin === true;
     return {
-      access_token: this.signTenantLoginJwt(user.id, tenant),
+      access_token: this.signTenantLoginJwt(user.id, tenant, user.code),
       token_type: TENANT_LOGIN_TOKEN,
       isSuperAdmin,
       user: {
@@ -286,7 +295,7 @@ export class TenantAuthService {
         businessId: dto.businessId,
         deletedAt: IsNull(),
       },
-      relations: ['role'],
+      relations: ['role', 'business'],
     });
 
     if (!ub) {
@@ -306,12 +315,27 @@ export class TenantAuthService {
     ub.lastSelectedAt = new Date();
     await ubRepo.save(ub);
 
+    let userCode = jwtUser.userCode;
+    if (!userCode) {
+      const dbUser = await tenantDb.getRepository(User).findOne({
+        where: { id: jwtUser.userId },
+        select: ['code'],
+      });
+      userCode = dbUser?.code ?? '';
+    }
+
+    const businessCode = ub.business?.code ?? '';
+    if (!businessCode) {
+      throw new ForbiddenException('Business not found');
+    }
+
     return {
       access_token: this.signBusinessAccessJwt(jwtUser.userId, tenant, {
         businessId: dto.businessId,
+        businessCode,
         userBusinessId: ub.id,
         roleId: ub.roleId,
-        userCode: jwtUser.userCode,
+        userCode,
       }),
       token_type: BUSINESS_ACCESS_TOKEN,
     };

@@ -18,6 +18,8 @@ import { PusherService } from 'src/common/pusher/pusher.service';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { TenantAuthService } from 'src/tenant/service/tenant-auth.service';
 import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
+import { User } from 'src/tenant-db/entities/user.entity';
+import { Business } from 'src/tenant-db/entities/business.entity';
 
 const getRequestHeader = (req: Request, names: string[]): string | undefined => {
   for (const name of names) {
@@ -108,11 +110,31 @@ export class TenantAuthController {
     const socketId = (req.body as { socket_id?: string }).socket_id;
     const channel = (req.body as { channel_name?: string }).channel_name;
     const user = req.user as TenantRequestUser;
-    const userCode = user.userCode;
+
+    let userCode = user.userCode;
+    let businessCode = user.businessCode;
+    if (req.tenantDb) {
+      if (!userCode) {
+        const row = await req.tenantDb
+          .getRepository(User)
+          .findOne({ where: { id: user.userId }, select: ['code'] });
+        userCode = row?.code;
+      }
+      if (!businessCode && user.businessId) {
+        const row = await req.tenantDb
+          .getRepository(Business)
+          .findOne({ where: { id: user.businessId }, select: ['code'] });
+        businessCode = row?.code;
+      }
+    }
+
+    if (!user.tenantCode || !userCode) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
 
     const baseChannel = `private-tenant-${user.tenantCode}-user-${userCode}`;
-    const withBusiness = user.businessCode
-      ? `${baseChannel}-business-${user.businessCode}`
+    const withBusiness = businessCode
+      ? `${baseChannel}-business-${businessCode}`
       : null;
 
     const allowed =
