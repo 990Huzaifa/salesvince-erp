@@ -27,6 +27,7 @@ import { CreateProductDto } from '../dto/product/create-product.dto';
 import { UpdateProductDto } from '../dto/product/update-product.dto';
 import { ProductService } from '../service/product.service';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
 
 @Controller('tenant/products')
 @UseGuards(
@@ -34,6 +35,7 @@ import { FilesInterceptor } from '@nestjs/platform-express';
   TenantJwtGuard,
   TenantConnectionGuard,
   TenantPermissionGuard,
+  TenantBusinessAccessGuard,
 )
 export class ProductController {
   constructor(private readonly productService: ProductService) {}

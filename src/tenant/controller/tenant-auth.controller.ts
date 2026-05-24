@@ -17,6 +17,7 @@ import { SelectBusinessDto } from '../dto/select-business.dto';
 import { PusherService } from 'src/common/pusher/pusher.service';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { TenantAuthService } from 'src/tenant/service/tenant-auth.service';
+import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
 
 const getRequestHeader = (req: Request, names: string[]): string | undefined => {
   for (const name of names) {
@@ -97,7 +98,7 @@ export class TenantAuthController {
     );
   }
 
-  @UseGuards(TenantJwtAuthGuard)
+  @UseGuards(TenantJwtAuthGuard, TenantJwtGuard, TenantConnectionGuard, TenantBusinessAccessGuard)
   @Post('pusher')
   async pusherAuth(@Req() req: Request, @Res() res: Response) {
     const socketId = (req.body as { socket_id?: string }).socket_id;
