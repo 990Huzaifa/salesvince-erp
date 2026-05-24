@@ -28,6 +28,9 @@ export type TenantJwtPayload = {
 export type TenantRequestUser = {
   userId: string;
   userCode?: string;
+  userName?: string;
+  userEmail?: string;
+  lastLoginAt?: Date | null;
   tenantId: string;
   tenantCode?: string;
   tenantName?: string;

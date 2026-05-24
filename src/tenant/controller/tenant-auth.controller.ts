@@ -78,6 +78,10 @@ export class TenantAuthController {
     const user = req.user as TenantRequestUser;
     return this.tenantAuthService.selectBusiness(dto, {
       userId: user.userId,
+      userCode: user.userCode,
+      userName: user.userName,
+      userEmail: user.userEmail,
+      lastLoginAt: user.lastLoginAt,
       tenantId: user.tenantId,
       tokenType: user.tokenType,
     });

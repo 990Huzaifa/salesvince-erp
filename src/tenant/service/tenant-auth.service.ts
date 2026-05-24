@@ -46,6 +46,13 @@ export type TenantLoginResponse = {
   access_token: string;
   token_type: typeof TENANT_LOGIN_TOKEN;
   isSuperAdmin: boolean;
+  user: {
+    id: string;
+    code: string;
+    name: string;
+    email: string;
+    lastLoginAt: Date | null;
+  };
   capabilities: TenantLoginCapabilities;
   businesses: TenantLoginBusinessRow[];
 };
@@ -140,6 +147,7 @@ export class TenantAuthService {
       businessId: string;
       userBusinessId: string;
       roleId: string;
+      userCode: string;
     },
   ): string {
     const expiresIn = (process.env.JWT_EXPIRES_IN || '7d') as SignOptions['expiresIn'];
@@ -147,6 +155,7 @@ export class TenantAuthService {
       {
         tokenType: BUSINESS_ACCESS_TOKEN,
         sub: userId,
+        userCode: row.userCode,
         tenantId: tenant.id,
         tenantCode: tenant.code,
         tenantStatus: tenant.status,
@@ -169,6 +178,13 @@ export class TenantAuthService {
       access_token: this.signTenantLoginJwt(user.id, tenant),
       token_type: TENANT_LOGIN_TOKEN,
       isSuperAdmin,
+      user: {
+        id: user.id,
+        code: user.code,
+        name: user.name,
+        email: user.email,
+        lastLoginAt: user.lastLoginAt,
+      },
       capabilities: {
         canManageTenant: isSuperAdmin,
         canEnterErp: businesses.length > 0,
@@ -240,6 +256,10 @@ export class TenantAuthService {
     dto: SelectBusinessDto,
     jwtUser: {
       userId: string;
+      userCode: string;
+      userName: string;
+      userEmail: string;
+      lastLoginAt: Date | null;
       tenantId: string;
       tokenType?: string;
     },
@@ -291,6 +311,7 @@ export class TenantAuthService {
         businessId: dto.businessId,
         userBusinessId: ub.id,
         roleId: ub.roleId,
+        userCode: jwtUser.userCode,
       }),
       token_type: BUSINESS_ACCESS_TOKEN,
     };
