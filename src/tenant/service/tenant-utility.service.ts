@@ -90,9 +90,18 @@ export class TenantUtilityService {
       selectedBatch: {
         id: selectedBatch.id,
         batchNumber: selectedBatch.batchNumber,
+        uomId: selectedBatch.uomId,
         batchDate: selectedBatch.batchDate,
       },
     };
+  }
+
+  private stockUomKey(
+    productId: string,
+    warehouseId: string,
+    uomId?: string | null,
+  ): string {
+    return `${productId}:${warehouseId}:${uomId ?? ''}`;
   }
 
   async getRoles(tenantDb: DataSource) {
@@ -173,6 +182,7 @@ export class TenantUtilityService {
       .createQueryBuilder('balance')
       .innerJoinAndSelect('balance.product', 'product')
       .innerJoinAndSelect('balance.warehouse', 'warehouse')
+      .leftJoinAndSelect('balance.uom', 'uom')
       .where('balance.businessId = :businessId', { businessId })
       .andWhere('balance.deletedAt IS NULL')
       .andWhere('balance.quantityOnHand > 0')
@@ -181,6 +191,7 @@ export class TenantUtilityService {
       .andWhere('warehouse.deletedAt IS NULL')
       .orderBy('product.name', 'ASC')
       .addOrderBy('warehouse.name', 'ASC')
+      .addOrderBy('uom.name', 'ASC')
       .getMany();
 
     const batches = await tenantDb
@@ -193,7 +204,11 @@ export class TenantUtilityService {
 
     const batchesByProductWarehouse = new Map<string, Batch[]>();
     for (const batch of batches) {
-      const key = `${batch.productId}:${batch.warehouseId}`;
+      const key = this.stockUomKey(
+        batch.productId,
+        batch.warehouseId,
+        batch.uomId,
+      );
       const rows = batchesByProductWarehouse.get(key) ?? [];
       rows.push(batch);
       batchesByProductWarehouse.set(key, rows);
@@ -203,7 +218,11 @@ export class TenantUtilityService {
       result: stockBalances.map((balance) => {
         const productBatches =
           batchesByProductWarehouse.get(
-            `${balance.productId}:${balance.warehouseId}`,
+            this.stockUomKey(
+              balance.productId,
+              balance.warehouseId,
+              balance.uomId,
+            ),
           ) ?? [];
         const pricing = this.selectStockPricing(
           balance.product.batchPickStrategy,
@@ -211,12 +230,20 @@ export class TenantUtilityService {
         );
 
         return {
+          stockBalanceId: balance.id,
           id: balance.product.id,
           name: balance.product.name,
           skuCode: balance.product.skuCode,
           batchPickStrategy: balance.product.batchPickStrategy,
           warehouseId: balance.warehouse.id,
           warehouseName: balance.warehouse.name,
+          uomId: balance.uomId,
+          uom: balance.uom
+            ? {
+                id: balance.uom.id,
+                name: balance.uom.name,
+              }
+            : null,
           quantityOnHand: balance.quantityOnHand,
           purchaseUnitPrice: pricing.purchaseUnitPrice,
           saleUnitMarginAmount: pricing.saleUnitMarginAmount,

@@ -10,6 +10,7 @@ import {
 
 export type ReceiveStockLineInput = {
   productId: string;
+  uomId: string;
   quantity: number;
   purchaseUnitPrice: number;
   saleUnitMarginAmount: number;
@@ -44,8 +45,9 @@ export class StockService {
     manager: EntityManager,
     prefix: string,
     productId: string,
+    uomId: string,
   ): Promise<string> {
-    const base = `${prefix}-${productId.slice(0, 8)}`;
+    const base = `${prefix}-${productId.slice(0, 8)}-${uomId.slice(0, 8)}`;
     const last = await manager
       .getRepository(Batch)
       .createQueryBuilder('batch')
@@ -68,6 +70,7 @@ export class StockService {
       businessId: string;
       warehouseId: string;
       productId: string;
+      uomId: string;
       quantityDelta: number;
     },
   ): Promise<StockBalance> {
@@ -78,13 +81,14 @@ export class StockService {
           "businessId",
           "warehouseId",
           "productId",
+          "uomId",
           "quantityAvailable",
           "quantityOnHand",
           "quantityReserved",
           "quantityDamaged"
         )
-        VALUES ($1, $2, $3, $4, $4, 0, 0)
-        ON CONFLICT ("businessId", "warehouseId", "productId")
+        VALUES ($1, $2, $3, $4, $5, $5, 0, 0)
+        ON CONFLICT ("businessId", "warehouseId", "productId", "uomId")
         WHERE "deletedAt" IS NULL
         DO UPDATE SET
           "quantityAvailable" = "stock_balances"."quantityAvailable" + EXCLUDED."quantityAvailable",
@@ -96,6 +100,7 @@ export class StockService {
         params.businessId,
         params.warehouseId,
         params.productId,
+        params.uomId,
         params.quantityDelta,
       ],
     )) as StockBalance[];
@@ -110,7 +115,7 @@ export class StockService {
 
   /**
    * Receives stock into inventory: creates batch history, updates one
-   * product/warehouse stock balance, and records an IN movement per line.
+   * product/UOM/warehouse stock balance, and records an IN movement per line.
    */
   async receiveStockIn(
     manager: EntityManager,
@@ -135,6 +140,7 @@ export class StockService {
           manager,
           input.batchNumberPrefix,
           line.productId,
+          line.uomId,
         ));
 
       const batch = await batchRepo.save(
@@ -144,6 +150,7 @@ export class StockService {
           vendorId: input.vendorId,
           batchNumber,
           productId: line.productId,
+          uomId: line.uomId,
           quantity: line.quantity,
           purchaseUnitPrice: this.roundAmount(line.purchaseUnitPrice),
           saleUnitMarginAmount: this.roundAmount(line.saleUnitMarginAmount),
@@ -157,6 +164,7 @@ export class StockService {
         businessId: input.businessId,
         warehouseId: input.warehouseId,
         productId: line.productId,
+        uomId: line.uomId,
         quantityDelta: line.quantity,
       });
 
@@ -165,6 +173,7 @@ export class StockService {
           businessId: input.businessId,
           warehouseId: input.warehouseId,
           productId: line.productId,
+          uomId: line.uomId,
           quantity: line.quantity,
           movementType: StockMovementType.IN,
           referenceType: input.referenceType,

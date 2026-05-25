@@ -164,6 +164,15 @@ export class Uom {
     @OneToMany(() => ProductPricing, (productPricing) => productPricing.uom)
     pricings: ProductPricing[];  
 
+    @OneToMany(() => Batch, (batch) => batch.uom)
+    batches: Batch[];
+
+    @OneToMany(() => StockBalance, (stockBalance) => stockBalance.uom)
+    stockBalances: StockBalance[];
+
+    @OneToMany(() => StockMovement, (stockMovement) => stockMovement.uom)
+    stockMovements: StockMovement[];
+
     @CreateDateColumn()
     createdAt: Date;
 

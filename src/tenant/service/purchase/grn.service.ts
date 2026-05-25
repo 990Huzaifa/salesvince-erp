@@ -174,6 +174,7 @@ export class GrnService {
         .filter((item) => item.receivedQuantity > 0)
         .map((item) => ({
           productId: item.productId,
+          uomId: item.uomId,
           quantity: item.receivedQuantity,
           purchaseUnitPrice: Number(item.purchaseUnitPrice),
           saleUnitMarginAmount: Number(item.saleUnitMarginAmount),

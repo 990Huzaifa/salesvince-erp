@@ -1,7 +1,7 @@
 import { Column, CreateDateColumn, DeleteDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
 import { Business } from "./business.entity";
 import { Warehouse } from "./warehouse.entity";
-import { Product } from "./product.entity";
+import { Product, Uom } from "./product.entity";
 import { Party } from "./party.entity";
 
 export enum StockMovementType {
@@ -55,6 +55,13 @@ export class Batch {
     @JoinColumn({ name: 'productId' })
     product: Product;
 
+    @Column({ type: 'uuid' })
+    uomId: string;
+
+    @ManyToOne(() => Uom, (uom) => uom.batches, { onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'uomId' })
+    uom: Uom;
+
     @Column()
     quantity: number;
 
@@ -85,7 +92,7 @@ export class Batch {
 }   
 
 @Entity({ name: 'stock_balances' })
-@Index('IDX_stock_balances_active_business_warehouse_product', ['businessId', 'warehouseId', 'productId'], {
+@Index('IDX_stock_balances_active_business_warehouse_product_uom', ['businessId', 'warehouseId', 'productId', 'uomId'], {
     unique: true,
     where: '"deletedAt" IS NULL',
 })
@@ -113,6 +120,13 @@ export class StockBalance {
     @ManyToOne(() => Product, (product) => product.stockBalances, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'productId' })
     product: Product;
+
+    @Column({ type: 'uuid' })
+    uomId: string;
+
+    @ManyToOne(() => Uom, (uom) => uom.stockBalances, { onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'uomId' })
+    uom: Uom;
 
     @Column()
     quantityAvailable: number;
@@ -161,6 +175,13 @@ export class StockMovement {
     @ManyToOne(() => Product, (product) => product.stockMovements, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'productId' })
     product: Product;
+
+    @Column({ type: 'uuid' })
+    uomId: string;
+
+    @ManyToOne(() => Uom, (uom) => uom.stockMovements, { onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'uomId' })
+    uom: Uom;
 
     @Column()
     quantity: number;
