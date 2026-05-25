@@ -13,6 +13,7 @@ import { Batch, StockBalance } from 'src/tenant-db/entities/stock.entity';
 import { SaleOrder, OrderStatus as SaleOrderStatus } from 'src/tenant-db/entities/sale-order.entity';
 import { PurchaseOrder } from 'src/tenant-db/entities/purchase-order.entity';
 import { Business } from 'src/tenant-db/entities/business.entity';
+import { ChartOfAccountType } from 'src/tenant-db/chart-of-accounts/constants/chart-of-account-type.enum';
 
 @Injectable()
 export class TenantUtilityService {
@@ -357,16 +358,16 @@ export class TenantUtilityService {
 
   async getAccountTypes(tenantDb: DataSource) {
     const accountTypes = [
-      { parentCode: COA_PARENT_CODES.INVENTORY, label: 'Inventory' },
-      { parentCode: COA_PARENT_CODES.CUSTOMER_RECEIVABLES, label: 'Customer Receivables' },
-      { parentCode: COA_PARENT_CODES.VENDOR_PAYABLES, label: 'Vendor Payables' },
-      { parentCode: COA_PARENT_CODES.BUSINESS_EXPENSE, label: 'Business Expense' },
-      { parentCode: COA_PARENT_CODES.BUSINESS_INCOME, label: 'Business Income' },
-      { parentCode: COA_PARENT_CODES.OWNER_CAPITAL, label: 'Owner Capital' },
-      { parentCode: COA_PARENT_CODES.SALARIES_PAYABLE, label: 'Salaries Payable' },
-      { parentCode: COA_PARENT_CODES.TAX_PAYABLE, label: 'Tax Payable' },
-      { parentCode: COA_PARENT_CODES.SHORT_TERM_LOAN_PAYABLE, label: 'Short-Term Loan Payable' },
-      { parentCode: COA_PARENT_CODES.LONG_TERM_LOAN_PAYABLE, label: 'Long-Term Loan Payable' },
+      { parentCode: COA_PARENT_CODES.INVENTORY, label: 'Inventory', type: ChartOfAccountType.INVENTORY },
+      { parentCode: COA_PARENT_CODES.CASH, label: 'Cash', type: ChartOfAccountType.CASH },
+      { parentCode: COA_PARENT_CODES.BANK, label: 'Bank', type: ChartOfAccountType.BANK },
+      { parentCode: COA_PARENT_CODES.BUSINESS_EXPENSE, label: 'Business Expense', type: ChartOfAccountType.BUSINESS_EXPENSE },
+      { parentCode: COA_PARENT_CODES.BUSINESS_INCOME, label: 'Business Income', type: ChartOfAccountType.BUSINESS_INCOME },
+      { parentCode: COA_PARENT_CODES.OWNER_CAPITAL, label: 'Owner Capital', type: ChartOfAccountType.OWNER_CAPITAL },
+      { parentCode: COA_PARENT_CODES.SALARIES_PAYABLE, label: 'Salaries Payable', type: ChartOfAccountType.SALARIES_PAYABLE },
+      { parentCode: COA_PARENT_CODES.TAX_PAYABLE, label: 'Tax Payable', type: ChartOfAccountType.TAX_PAYABLE },
+      { parentCode: COA_PARENT_CODES.SHORT_TERM_LOAN_PAYABLE, label: 'Short-Term Loan Payable', type: ChartOfAccountType.SHORT_TERM_LOAN_PAYABLE },
+      { parentCode: COA_PARENT_CODES.LONG_TERM_LOAN_PAYABLE, label: 'Long-Term Loan Payable', type: ChartOfAccountType.LONG_TERM_LOAN_PAYABLE },
     ];
     return { result: accountTypes };
   }
