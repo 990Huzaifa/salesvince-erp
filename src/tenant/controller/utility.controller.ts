@@ -38,6 +38,16 @@ export class TenantUtilityController {
         TenantJwtAuthGuard,
         TenantJwtGuard,
         TenantConnectionGuard,
+    )
+    @Get('businesses')
+    async getBusinesses(@TenantConnection() tenantDb: DataSource) {
+        return this.utilityService.getBusinesses(tenantDb);
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
         TenantBusinessAccessGuard,
     )
     @Get('product-categories')

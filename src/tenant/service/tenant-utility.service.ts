@@ -12,6 +12,7 @@ import { PartyType } from 'src/tenant-db/entities/party.entity';
 import { Batch, StockBalance } from 'src/tenant-db/entities/stock.entity';
 import { SaleOrder, OrderStatus as SaleOrderStatus } from 'src/tenant-db/entities/sale-order.entity';
 import { PurchaseOrder } from 'src/tenant-db/entities/purchase-order.entity';
+import { Business } from 'src/tenant-db/entities/business.entity';
 
 @Injectable()
 export class TenantUtilityService {
@@ -126,6 +127,16 @@ export class TenantUtilityService {
     });
 
     return { result: permissions };
+  }
+
+  async getBusinesses(tenantDb: DataSource) {
+    const businesses = await tenantDb.getRepository(Business).find({
+      select: ['id', 'name', 'code', 'legalName', 'currency', 'status'],
+      where: { deletedAt: null },
+      order: { name: 'ASC' },
+    });
+
+    return { result: businesses };
   }
 
   async getProductCategories(tenantDb: DataSource, businessId: string) {
