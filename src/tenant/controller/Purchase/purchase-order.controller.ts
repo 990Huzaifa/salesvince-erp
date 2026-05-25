@@ -21,12 +21,13 @@ import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
-import { GrnStatus } from 'src/tenant-db/entities/grn.entity';
-import { GrnService } from '../service/purchase/grn.service';
-import { CreateGrnDto } from '../dto/grn/create-grn.dto';
-import { UpdateGrnDto } from '../dto/grn/update-grn.dto';
+import { OrderStatus } from 'src/tenant-db/entities/purchase-order.entity';
+import { PurchaseOrderService } from '../../service/purchase/purchase-order.service';
+import { CreatePurchaseOrderDto } from '../../dto/purchase-order/create-purchase-order.dto';
+import { CreateSimplePurchaseOrderDto } from '../../dto/purchase-order/create-simple-purchase-order.dto';
+import { UpdatePurchaseOrderDto } from '../../dto/purchase-order/update-purchase-order.dto';
 
-@Controller('tenant/grns')
+@Controller('tenant/purchase-orders')
 @UseGuards(
   TenantJwtAuthGuard,
   TenantJwtGuard,
@@ -34,18 +35,34 @@ import { UpdateGrnDto } from '../dto/grn/update-grn.dto';
   TenantBusinessAccessGuard,
   TenantPermissionGuard,
 )
-export class GrnController {
-  constructor(private readonly grnService: GrnService) {}
+export class PurchaseOrderController {
+  constructor(private readonly purchaseOrderService: PurchaseOrderService) {}
 
   @Post('create')
-  @RequirePermissions('CREATE_PURCHASE_STOCK')
+  @RequirePermissions('CREATE_PURCHASE_ORDER')
   create(
     @TenantConnection() tenantDb: DataSource,
-    @Body() dto: CreateGrnDto,
+    @Body() dto: CreatePurchaseOrderDto,
     @Req() req: Request,
   ) {
     const user = req.user as TenantRequestUser;
-    return this.grnService.create(
+    return this.purchaseOrderService.create(
+      tenantDb,
+      user.businessId,
+      dto,
+      user.userId,
+    );
+  }
+
+  @Post('create-simple')
+  @RequirePermissions('CREATE_PURCHASE_ORDER')
+  createSimple(
+    @TenantConnection() tenantDb: DataSource,
+    @Body() dto: CreateSimplePurchaseOrderDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.purchaseOrderService.createSimple(
       tenantDb,
       user.businessId,
       dto,
@@ -54,23 +71,39 @@ export class GrnController {
   }
 
   @Post('create-and-approve')
-  @RequirePermissions('APPROVE_PURCHASE_STOCK')
-  createAndApprove(
+  @RequirePermissions('APPROVE_PURCHASE_ORDER')
+  createAndApproved(
     @TenantConnection() tenantDb: DataSource,
-    @Body() dto: CreateGrnDto,
+    @Body() dto: CreatePurchaseOrderDto,
     @Req() req: Request,
   ) {
     const user = req.user as TenantRequestUser;
-    return this.grnService.create(
+    return this.purchaseOrderService.createAndApproved(
       tenantDb,
       user.businessId,
-      { ...dto, status: GrnStatus.APPROVED },
+      dto,
+      user.userId,
+    );
+  }
+
+  @Post('create-approve-and-purchase')
+  @RequirePermissions('APPROVE_PURCHASE_ORDER')
+  createApproveAndPurchase(
+    @TenantConnection() tenantDb: DataSource,
+    @Body() dto: CreatePurchaseOrderDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.purchaseOrderService.createApproveAndPurchase(
+      tenantDb,
+      user.businessId,
+      dto,
       user.userId,
     );
   }
 
   @Get()
-  @RequirePermissions('LIST_PURCHASE_STOCK')
+  @RequirePermissions('LIST_PURCHASE_ORDER')
   list(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -79,11 +112,10 @@ export class GrnController {
     @Query('search') search?: string,
     @Query('vendorId') vendorId?: string,
     @Query('warehouseId') warehouseId?: string,
-    @Query('purchaseOrderId') purchaseOrderId?: string,
-    @Query('status') status?: GrnStatus,
+    @Query('orderStatus') orderStatus?: OrderStatus,
   ) {
     const user = req.user as TenantRequestUser;
-    return this.grnService.list(
+    return this.purchaseOrderService.list(
       tenantDb,
       user.businessId,
       {
@@ -92,22 +124,21 @@ export class GrnController {
         search,
         vendorId,
         warehouseId,
-        purchaseOrderId,
-        status,
+        orderStatus,
       },
       user.userId,
     );
   }
 
   @Get(':id')
-  @RequirePermissions('VIEW_PURCHASE_STOCK')
+  @RequirePermissions('VIEW_PURCHASE_ORDER')
   view(
     @TenantConnection() tenantDb: DataSource,
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: Request,
   ) {
     const user = req.user as TenantRequestUser;
-    return this.grnService.view(
+    return this.purchaseOrderService.view(
       tenantDb,
       user.businessId,
       id,
@@ -116,15 +147,15 @@ export class GrnController {
   }
 
   @Put('update/:id')
-  @RequirePermissions('UPDATE_PURCHASE_STOCK')
+  @RequirePermissions('UPDATE_PURCHASE_ORDER')
   edit(
     @TenantConnection() tenantDb: DataSource,
     @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateGrnDto,
+    @Body() dto: UpdatePurchaseOrderDto,
     @Req() req: Request,
   ) {
     const user = req.user as TenantRequestUser;
-    return this.grnService.edit(
+    return this.purchaseOrderService.edit(
       tenantDb,
       user.businessId,
       id,
@@ -134,14 +165,14 @@ export class GrnController {
   }
 
   @Delete(':id')
-  @RequirePermissions('DELETE_PURCHASE_STOCK')
+  @RequirePermissions('DELETE_PURCHASE_ORDER')
   delete(
     @TenantConnection() tenantDb: DataSource,
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: Request,
   ) {
     const user = req.user as TenantRequestUser;
-    return this.grnService.delete(
+    return this.purchaseOrderService.delete(
       tenantDb,
       user.businessId,
       id,
@@ -150,14 +181,14 @@ export class GrnController {
   }
 
   @Post('approve/:id')
-  @RequirePermissions('APPROVE_PURCHASE_STOCK')
+  @RequirePermissions('APPROVE_PURCHASE_ORDER')
   approve(
     @TenantConnection() tenantDb: DataSource,
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: Request,
   ) {
     const user = req.user as TenantRequestUser;
-    return this.grnService.approve(
+    return this.purchaseOrderService.approve(
       tenantDb,
       user.businessId,
       id,

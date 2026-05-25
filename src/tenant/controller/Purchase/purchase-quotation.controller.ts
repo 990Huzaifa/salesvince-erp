@@ -21,9 +21,9 @@ import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
-import { PurchaseQuotationService } from '../service/purchase/purchase-quotation.service';
-import { CreatePurchaseQuotationDto } from '../dto/purchase-quotation/create-purchase-quotation.dto';
-import { UpdatePurchaseQuotationDto } from '../dto/purchase-quotation/update-purchase-quotation.dto';
+import { PurchaseQuotationService } from '../../service/purchase/purchase-quotation.service';
+import { CreatePurchaseQuotationDto } from '../../dto/purchase-quotation/create-purchase-quotation.dto';
+import { UpdatePurchaseQuotationDto } from '../../dto/purchase-quotation/update-purchase-quotation.dto';
 
 @Controller('tenant/purchase-quotations')
 @UseGuards(

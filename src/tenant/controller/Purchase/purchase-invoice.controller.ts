@@ -17,7 +17,7 @@ import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
-import { PurchaseInvoiceService } from '../service/purchase/purchase-invoice.service';
+import { PurchaseInvoiceService } from '../../service/purchase/purchase-invoice.service';
 
 @Controller('tenant/purchase-invoices')
 @UseGuards(
