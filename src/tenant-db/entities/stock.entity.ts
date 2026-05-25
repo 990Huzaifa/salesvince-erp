@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, DeleteDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
+import { Column, CreateDateColumn, DeleteDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
 import { Business } from "./business.entity";
 import { Warehouse } from "./warehouse.entity";
 import { Product } from "./product.entity";
@@ -85,6 +85,10 @@ export class Batch {
 }   
 
 @Entity({ name: 'stock_balances' })
+@Index('IDX_stock_balances_active_business_warehouse_product', ['businessId', 'warehouseId', 'productId'], {
+    unique: true,
+    where: '"deletedAt" IS NULL',
+})
 export class StockBalance {
     @PrimaryGeneratedColumn('uuid')
     id: string;

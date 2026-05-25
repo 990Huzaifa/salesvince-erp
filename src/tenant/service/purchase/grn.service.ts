@@ -57,6 +57,17 @@ type GrnTotals = {
   totalAmount: number;
 };
 
+type CreateApprovedGrnFromOrderInput = {
+  businessId: string;
+  order: PurchaseOrder;
+  grnDate: Date;
+  deliveryCost?: number;
+  taxPercentage?: number;
+  discountPercentage?: number;
+  notes?: string | null;
+  actorUserId: string;
+};
+
 @Injectable()
 export class GrnService {
   constructor(
@@ -99,11 +110,11 @@ export class GrnService {
   }
 
   private async assertVendorForApproval(
-    tenantDb: DataSource,
+    repositorySource: DataSource | EntityManager,
     businessId: string,
     vendorId: string,
   ): Promise<Party> {
-    const vendor = await tenantDb.getRepository(Party).findOne({
+    const vendor = await repositorySource.getRepository(Party).findOne({
       where: { id: vendorId, businessId, deletedAt: IsNull() },
     });
 
@@ -206,8 +217,10 @@ export class GrnService {
     } as const;
   }
 
-  private async generateGrnNumber(tenantDb: DataSource): Promise<string> {
-    const last = await tenantDb
+  private async generateGrnNumber(
+    repositorySource: DataSource | EntityManager,
+  ): Promise<string> {
+    const last = await repositorySource
       .getRepository(Grn)
       .createQueryBuilder('grn')
       .where('grn.grnNumber LIKE :prefix', {
@@ -467,6 +480,85 @@ export class GrnService {
     }
 
     return order;
+  }
+
+  async createApprovedFromOrder(
+    manager: EntityManager,
+    input: CreateApprovedGrnFromOrderInput,
+  ): Promise<Grn> {
+    const { businessId, order } = input;
+
+    if (order.orderStatus !== OrderStatus.APPROVED) {
+      throw new BadRequestException(
+        'Purchase order must be approved before creating an approved GRN',
+      );
+    }
+
+    if (!order.items?.length) {
+      throw new BadRequestException('Purchase order must have items');
+    }
+
+    const vendor = await this.assertVendorForApproval(
+      manager,
+      businessId,
+      order.vendorId,
+    );
+    const taxPercentage = this.roundAmount(
+      input.taxPercentage ?? Number(order.taxPercentage),
+    );
+    const priorReceived = await this.getApprovedReceivedByPoItem(
+      manager,
+      order.id,
+    );
+    const resolvedLines = this.resolveCreateLines(
+      order,
+      undefined,
+      priorReceived,
+      taxPercentage,
+    );
+    const totals = this.computeGrnTotals(resolvedLines, {
+      deliveryCost: input.deliveryCost ?? Number(order.deliveryCost),
+      taxPercentage,
+      discountPercentage:
+        input.discountPercentage ?? Number(order.discountPercentage),
+    });
+    const grnNumber = await this.generateGrnNumber(manager);
+    const existingNumber = await manager.getRepository(Grn).findOne({
+      where: { grnNumber },
+    });
+    if (existingNumber) {
+      throw new ConflictException('GRN with this number already exists');
+    }
+
+    const grnRepo = manager.getRepository(Grn);
+    const grn = await grnRepo.save(
+      grnRepo.create({
+        purchaseOrderId: order.id,
+        businessId,
+        warehouseId: order.warehouseId,
+        vendorId: order.vendorId,
+        grnNumber,
+        grnDate: input.grnDate,
+        notes: input.notes?.trim() || null,
+        deliveryCost: input.deliveryCost ?? Number(order.deliveryCost),
+        createdBy: input.actorUserId,
+        totalTaxAmount: totals.totalTaxAmount,
+        totalDiscountAmount: totals.totalDiscountAmount,
+        totalAmount: totals.totalAmount,
+        status: GrnStatus.PENDING,
+      }),
+    );
+
+    await manager
+      .getRepository(GrnItem)
+      .save(this.buildItemEntities(manager, grn.id, resolvedLines));
+
+    const loaded = await grnRepo.findOneOrFail({
+      where: { id: grn.id },
+      relations: this.grnRelations(),
+    });
+
+    return this.executeGrnApproval(manager, businessId, loaded, vendor);
   }
 
   private async findGrnForBusiness(

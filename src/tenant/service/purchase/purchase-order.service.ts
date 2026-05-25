@@ -3,7 +3,6 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
-  NotImplementedException,
 } from '@nestjs/common';
 import {
   Brackets,
@@ -17,6 +16,8 @@ import {
   PurchaseOrder,
   PurchaseOrderItem,
 } from 'src/tenant-db/entities/purchase-order.entity';
+import { Grn } from 'src/tenant-db/entities/grn.entity';
+import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity';
 import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
 import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import {
@@ -32,6 +33,7 @@ import { CreateSimplePurchaseOrderItemDto } from '../../dto/purchase-order/creat
 import { UpdatePurchaseOrderDto } from '../../dto/purchase-order/update-purchase-order.dto';
 import { UpdatePurchaseOrderItemDto } from '../../dto/purchase-order/update-purchase-order-item.dto';
 import { ActivityLogService } from '../activity-log.service';
+import { GrnService } from './grn.service';
 
 const ORDER_NUMBER_PREFIX = 'PO';
 
@@ -60,7 +62,10 @@ type OrderTotals = {
 
 @Injectable()
 export class PurchaseOrderService {
-  constructor(private readonly activityLogService: ActivityLogService) {}
+  constructor(
+    private readonly activityLogService: ActivityLogService,
+    private readonly grnService: GrnService,
+  ) {}
 
   private assertBusinessId(businessId?: string): string {
     if (!businessId) {
@@ -392,6 +397,33 @@ export class PurchaseOrderService {
       items,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
+    };
+  }
+
+  private mapPurchaseWorkflowGrn(grn: Grn) {
+    return {
+      id: grn.id,
+      grnNumber: grn.grnNumber,
+      grnDate: grn.grnDate,
+      status: grn.status,
+      totalTaxAmount: grn.totalTaxAmount,
+      totalDiscountAmount: grn.totalDiscountAmount,
+      totalAmount: grn.totalAmount,
+    };
+  }
+
+  private mapPurchaseWorkflowInvoice(invoice: PurchaseInvoice | null) {
+    if (!invoice) {
+      return null;
+    }
+
+    return {
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      invoiceDate: invoice.invoiceDate,
+      totalTaxAmount: invoice.totalTaxAmount,
+      totalDiscountAmount: invoice.totalDiscountAmount,
+      totalAmount: invoice.totalAmount,
     };
   }
 
@@ -780,14 +812,115 @@ export class PurchaseOrderService {
   }
 
   async createApproveAndPurchase(
-    _tenantDb: DataSource,
-    _businessId: string | undefined,
-    _dto: CreatePurchaseOrderDto,
-    _actorUserId: string,
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    dto: CreatePurchaseOrderDto,
+    actorUserId: string,
   ) {
-    throw new NotImplementedException(
-      'Create, approve, and purchase is reserved for future stock/GRN integration',
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    await this.assertWarehouseForBusiness(
+      tenantDb,
+      scopedBusinessId,
+      dto.warehouseId,
     );
+    const vendor = await this.assertVendorForBusiness(
+      tenantDb,
+      scopedBusinessId,
+      dto.vendorId,
+    );
+
+    if (!vendor.payableAccountId) {
+      throw new BadRequestException(
+        'Vendor payable account is required before approving GRN',
+      );
+    }
+
+    const orderNumber = await this.resolveOrderNumber(tenantDb, dto.orderNumber);
+    const pricingByKey = await this.validateLineItems(
+      tenantDb.manager,
+      scopedBusinessId,
+      dto.items,
+    );
+    const resolvedLines = this.buildResolvedLines(dto.items, pricingByKey);
+    const totals = this.computeOrderTotals(resolvedLines, {
+      deliveryCost: dto.deliveryCost,
+      taxPercentage: dto.taxPercentage,
+      discountPercentage: dto.discountPercentage,
+    });
+
+    const created = await tenantDb.transaction(async (manager) => {
+      const orderRepo = manager.getRepository(PurchaseOrder);
+      const order = await orderRepo.save(
+        orderRepo.create({
+          orderNumber,
+          warehouseId: dto.warehouseId,
+          vendorId: dto.vendorId,
+          businessId: scopedBusinessId,
+          orderStatus: OrderStatus.APPROVED,
+          orderTotal: totals.orderTotal,
+          deliveryCost: totals.deliveryCost,
+          taxPercentage: totals.taxPercentage,
+          taxAmount: totals.taxAmount,
+          discountPercentage: totals.discountPercentage,
+          discountAmount: totals.discountAmount,
+          totalAmount: totals.totalAmount,
+          notes: dto.notes?.trim() || null,
+          createdBy: actorUserId,
+          orderDate: new Date(dto.orderDate),
+        }),
+      );
+
+      await manager
+        .getRepository(PurchaseOrderItem)
+        .save(this.buildItemEntities(manager, order.id, resolvedLines));
+
+      const loadedOrder = await orderRepo.findOneOrFail({
+        where: { id: order.id },
+        relations: this.orderRelations(),
+      });
+      const grn = await this.grnService.createApprovedFromOrder(manager, {
+        businessId: scopedBusinessId,
+        order: loadedOrder,
+        grnDate: new Date(dto.orderDate),
+        deliveryCost: dto.deliveryCost,
+        taxPercentage: dto.taxPercentage,
+        discountPercentage: dto.discountPercentage,
+        notes: dto.notes,
+        actorUserId,
+      });
+      const purchaseInvoice = await manager
+        .getRepository(PurchaseInvoice)
+        .findOne({
+          where: { grnId: grn.id, deletedAt: IsNull() },
+        });
+
+      return { order: loadedOrder, grn, purchaseInvoice };
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'PURCHASE_ORDER_CREATED_APPROVED_AND_PURCHASED',
+      description: `Purchase order ${created.order.orderNumber} created, approved, and purchased`,
+      metadata: {
+        purchaseOrderId: created.order.id,
+        orderNumber: created.order.orderNumber,
+        grnId: created.grn.id,
+        grnNumber: created.grn.grnNumber,
+        purchaseInvoiceId: created.purchaseInvoice?.id ?? null,
+        invoiceNumber: created.purchaseInvoice?.invoiceNumber ?? null,
+      },
+    });
+
+    return {
+      data: {
+        purchaseOrder: this.mapPurchaseOrder(created.order),
+        grn: this.mapPurchaseWorkflowGrn(created.grn),
+        purchaseInvoice: this.mapPurchaseWorkflowInvoice(
+          created.purchaseInvoice,
+        ),
+      },
+    };
   }
 
   async list(
