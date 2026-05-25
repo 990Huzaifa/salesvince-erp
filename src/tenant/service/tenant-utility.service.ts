@@ -7,6 +7,8 @@ import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import { ChartOfAccount, ChartOfAccountKind } from 'src/tenant-db/entities/chart-of-account.entity';
 import { COA_PARENT_CODES } from 'src/tenant-db/chart-of-accounts/constants/coa-parent-codes';
 import { Transaction } from 'src/tenant-db/entities/transaction.entity';
+import { Party } from 'src/tenant-db/entities/party.entity';
+import { PartyType } from 'src/tenant-db/entities/party.entity';
 
 @Injectable()
 export class TenantUtilityService {
@@ -168,6 +170,28 @@ export class TenantUtilityService {
         currentBalance: balanceByAccountId.get(account.id) ?? 0,
       })),
     };
+  }
+
+  async getVendors(tenantDb: DataSource, businessId: string) {
+    // party type will be vendor or both
+    const vendors = await tenantDb.getRepository(Party).find({
+      select: ['id', 'name', 'code','payableAccountId'],
+      where: { businessId: businessId, type: In([PartyType.VENDOR, PartyType.BOTH]), deletedAt: null },
+      order: { name: 'ASC' },
+    });
+
+    return { result: vendors };
+  }
+
+  async getCustomers(tenantDb: DataSource, businessId: string) {
+    // party type will be customer or both
+    const customers = await tenantDb.getRepository(Party).find({
+      select: ['id', 'name', 'code','receivableAccountId'],
+      where: { businessId: businessId, type: In([PartyType.CUSTOMER, PartyType.BOTH]), deletedAt: null },
+      order: { name: 'ASC' },
+    });
+
+    return { result: customers };
   }
 
 }
