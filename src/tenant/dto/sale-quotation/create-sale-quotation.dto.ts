@@ -10,9 +10,9 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { CreatePurchaseQuotationItemDto } from './create-purchase-quotation-item.dto';
+import { CreateSaleQuotationItemDto } from './create-sale-quotation-item.dto';
 
-export class CreatePurchaseQuotationDto {
+export class CreateSaleQuotationDto {
   @IsOptional()
   @IsString()
   @MaxLength(50)
@@ -20,7 +20,11 @@ export class CreatePurchaseQuotationDto {
 
   @IsUUID()
   @IsNotEmpty()
-  vendorId: string;
+  customerId: string;
+
+  @IsUUID()
+  @IsNotEmpty()
+  businessId: string;
 
   @IsDateString()
   quotationDate: string;
@@ -33,6 +37,6 @@ export class CreatePurchaseQuotationDto {
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
-  @Type(() => CreatePurchaseQuotationItemDto)
-  items: CreatePurchaseQuotationItemDto[];
+  @Type(() => CreateSaleQuotationItemDto)
+  items: CreateSaleQuotationItemDto[];
 }

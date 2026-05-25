@@ -55,6 +55,8 @@ import { TenantUtilityController } from './controller/utility.controller';
 import { TenantUtilityService } from './service/tenant-utility.service';
 import { PurchaseQuotationController } from './controller/purchase-quotation.controller';
 import { PurchaseQuotationService } from './service/purchase/purchase-quotation.service';
+import { SaleQuotationController } from './controller/sale/sale-quotation.controller';
+import { SaleQuotationService } from './service/sale/sale-quotation.service';
 import { WarehouseController } from './controller/warehouse.controller';
 import { WarehouseService } from './service/warehouse.service';
 import { PurchaseOrderController } from './controller/purchase-order.controller';
@@ -100,6 +102,7 @@ import { TenantNotificationController } from './controller/tenant-notification.c
     TransactionController,
     TenantUtilityController,
     PurchaseQuotationController,
+    SaleQuotationController,
     WarehouseController,
     PurchaseOrderController,
     GrnController,
@@ -134,6 +137,7 @@ import { TenantNotificationController } from './controller/tenant-notification.c
     AssetService,
     TenantUtilityService,
     PurchaseQuotationService,
+    SaleQuotationService,
     WarehouseService,
     PurchaseOrderService,
     GrnService,

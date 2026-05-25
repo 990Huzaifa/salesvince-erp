@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
 import { Role } from 'src/tenant-db/entities/role.entity';
-import { Flavour, Product, ProductBrand, ProductCategory, ProductSubCategory, Uom } from 'src/tenant-db/entities/product.entity';
+import { BatchPickStrategy, Flavour, Product, ProductBrand, ProductCategory, ProductSubCategory, Uom } from 'src/tenant-db/entities/product.entity';
 import { Permission } from 'src/tenant-db/entities/permission.entity';
 import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import { ChartOfAccount, ChartOfAccountKind } from 'src/tenant-db/entities/chart-of-account.entity';
@@ -9,9 +9,93 @@ import { COA_PARENT_CODES } from 'src/tenant-db/chart-of-accounts/constants/coa-
 import { Transaction } from 'src/tenant-db/entities/transaction.entity';
 import { Party } from 'src/tenant-db/entities/party.entity';
 import { PartyType } from 'src/tenant-db/entities/party.entity';
+import { Batch, StockBalance } from 'src/tenant-db/entities/stock.entity';
+
+type StockBatchBalance = StockBalance & { batch: Batch };
 
 @Injectable()
 export class TenantUtilityService {
+  private roundAmount(value: number): number {
+    return Math.round(value * 100) / 100;
+  }
+
+  private selectStockPricing(
+    strategy: BatchPickStrategy,
+    batchBalances: StockBatchBalance[],
+  ) {
+    if (batchBalances.length === 0) {
+      return {
+        purchaseUnitPrice: 0,
+        saleUnitMarginAmount: 0,
+        saleUnitMarginPercentage: 0,
+        selectedBatch: null,
+      };
+    }
+
+    if (strategy === BatchPickStrategy.AVG_COST) {
+      const totalQuantity = batchBalances.reduce(
+        (sum, balance) => sum + Number(balance.quantityOnHand ?? 0),
+        0,
+      );
+
+      if (totalQuantity <= 0) {
+        return {
+          purchaseUnitPrice: 0,
+          saleUnitMarginAmount: 0,
+          saleUnitMarginPercentage: 0,
+          selectedBatch: null,
+        };
+      }
+
+      const weightedAverage = (field: keyof Batch) =>
+        batchBalances.reduce(
+          (sum, balance) =>
+            sum +
+            Number(balance.batch[field] ?? 0) *
+              Number(balance.quantityOnHand ?? 0),
+          0,
+        ) / totalQuantity;
+
+      return {
+        purchaseUnitPrice: this.roundAmount(weightedAverage('purchaseUnitPrice')),
+        saleUnitMarginAmount: this.roundAmount(weightedAverage('saleUnitMarginAmount')),
+        saleUnitMarginPercentage: this.roundAmount(
+          weightedAverage('saleUnitMarginPercentage'),
+        ),
+        selectedBatch: null,
+      };
+    }
+
+    const sortedBatches = [...batchBalances].sort((left, right) => {
+      const leftTime = new Date(left.batch.batchDate).getTime();
+      const rightTime = new Date(right.batch.batchDate).getTime();
+      const direction = strategy === BatchPickStrategy.FIFO ? 1 : -1;
+
+      if (leftTime !== rightTime) {
+        return (leftTime - rightTime) * direction;
+      }
+
+      return (
+        (new Date(left.batch.createdAt).getTime() -
+          new Date(right.batch.createdAt).getTime()) *
+        direction
+      );
+    });
+    const selectedBatch = sortedBatches[0].batch;
+
+    return {
+      purchaseUnitPrice: Number(selectedBatch.purchaseUnitPrice ?? 0),
+      saleUnitMarginAmount: Number(selectedBatch.saleUnitMarginAmount ?? 0),
+      saleUnitMarginPercentage: Number(
+        selectedBatch.saleUnitMarginPercentage ?? 0,
+      ),
+      selectedBatch: {
+        id: selectedBatch.id,
+        batchNumber: selectedBatch.batchNumber,
+        batchDate: selectedBatch.batchDate,
+      },
+    };
+  }
 
   async getRoles(tenantDb: DataSource) {
   const roles = await tenantDb.getRepository(Role).find({
@@ -83,6 +167,70 @@ export class TenantUtilityService {
     });
 
     return { result: productList };
+  }
+
+  async getStockProducts(tenantDb: DataSource, businessId: string) {
+    const aggregateBalances = await tenantDb
+      .getRepository(StockBalance)
+      .createQueryBuilder('balance')
+      .innerJoinAndSelect('balance.product', 'product')
+      .innerJoinAndSelect('balance.warehouse', 'warehouse')
+      .where('balance.businessId = :businessId', { businessId })
+      .andWhere('balance.deletedAt IS NULL')
+      .andWhere('balance.batchId IS NULL')
+      .andWhere('balance.quantityOnHand > 0')
+      .andWhere('product.isDelete = false')
+      .andWhere('product.isActive = true')
+      .andWhere('warehouse.deletedAt IS NULL')
+      .orderBy('product.name', 'ASC')
+      .addOrderBy('warehouse.name', 'ASC')
+      .getMany();
+
+    const batchBalances = (await tenantDb
+      .getRepository(StockBalance)
+      .createQueryBuilder('balance')
+      .innerJoinAndSelect('balance.batch', 'batch')
+      .where('balance.businessId = :businessId', { businessId })
+      .andWhere('balance.deletedAt IS NULL')
+      .andWhere('balance.batchId IS NOT NULL')
+      .andWhere('balance.quantityOnHand > 0')
+      .andWhere('batch.deletedAt IS NULL')
+      .getMany()) as StockBatchBalance[];
+
+    const batchBalancesByProductWarehouse = new Map<string, StockBatchBalance[]>();
+    for (const batchBalance of batchBalances) {
+      const key = `${batchBalance.productId}:${batchBalance.warehouseId}`;
+      const rows = batchBalancesByProductWarehouse.get(key) ?? [];
+      rows.push(batchBalance);
+      batchBalancesByProductWarehouse.set(key, rows);
+    }
+
+    return {
+      result: aggregateBalances.map((balance) => {
+        const batchRows =
+          batchBalancesByProductWarehouse.get(
+            `${balance.productId}:${balance.warehouseId}`,
+          ) ?? [];
+        const pricing = this.selectStockPricing(
+          balance.product.batchPickStrategy,
+          batchRows,
+        );
+
+        return {
+          id: balance.product.id,
+          name: balance.product.name,
+          skuCode: balance.product.skuCode,
+          batchPickStrategy: balance.product.batchPickStrategy,
+          warehouseId: balance.warehouse.id,
+          warehouseName: balance.warehouse.name,
+          quantityOnHand: balance.quantityOnHand,
+          purchaseUnitPrice: pricing.purchaseUnitPrice,
+          saleUnitMarginAmount: pricing.saleUnitMarginAmount,
+          saleUnitMarginPercentage: pricing.saleUnitMarginPercentage,
+          selectedBatch: pricing.selectedBatch,
+        };
+      }),
+    };
   }
 
   async getFlavours(tenantDb: DataSource, businessId: string) {

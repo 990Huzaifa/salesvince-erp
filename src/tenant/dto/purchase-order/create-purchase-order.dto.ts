@@ -26,10 +26,6 @@ export class CreatePurchaseOrderDto {
 
   @IsUUID()
   @IsNotEmpty()
-  businessId: string;
-
-  @IsUUID()
-  @IsNotEmpty()
   vendorId: string;
 
   @IsDateString()
