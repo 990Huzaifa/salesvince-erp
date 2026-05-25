@@ -56,7 +56,7 @@ export class Grn {
     @Column({nullable: true})
     notes: string;
 
-    @Column()
+    @Column({type: 'decimal', precision: 18, scale: 2})
     deliveryCost: number;
 
     @Column('uuid')

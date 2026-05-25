@@ -30,8 +30,7 @@ export type ReceiveStockInput = {
 
 export type ReceiveStockLineResult = {
   batch: Batch;
-  batchBalance: StockBalance;
-  aggregateBalance: StockBalance;
+  stockBalance: StockBalance;
   movement: StockMovement;
 };
 
@@ -63,7 +62,7 @@ export class StockService {
     return `${base}-${String(next).padStart(4, '0')}`;
   }
 
-  private async upsertAggregateBalance(
+  private async upsertStockBalance(
     manager: EntityManager,
     params: {
       businessId: string;
@@ -73,46 +72,45 @@ export class StockService {
     },
   ): Promise<StockBalance> {
     const balanceRepo = manager.getRepository(StockBalance);
-    let aggregate = await balanceRepo
-      .createQueryBuilder('balance')
-      .where('balance.businessId = :businessId', {
-        businessId: params.businessId,
-      })
-      .andWhere('balance.warehouseId = :warehouseId', {
-        warehouseId: params.warehouseId,
-      })
-      .andWhere('balance.productId = :productId', {
-        productId: params.productId,
-      })
-      .andWhere('balance.batchId IS NULL')
-      .getOne();
+    const rows = (await manager.query(
+      `
+        INSERT INTO "stock_balances" (
+          "businessId",
+          "warehouseId",
+          "productId",
+          "quantityAvailable",
+          "quantityOnHand",
+          "quantityReserved",
+          "quantityDamaged"
+        )
+        VALUES ($1, $2, $3, $4, $4, 0, 0)
+        ON CONFLICT ("businessId", "warehouseId", "productId")
+        WHERE "deletedAt" IS NULL
+        DO UPDATE SET
+          "quantityAvailable" = "stock_balances"."quantityAvailable" + EXCLUDED."quantityAvailable",
+          "quantityOnHand" = "stock_balances"."quantityOnHand" + EXCLUDED."quantityOnHand",
+          "updatedAt" = now()
+        RETURNING *
+      `,
+      [
+        params.businessId,
+        params.warehouseId,
+        params.productId,
+        params.quantityDelta,
+      ],
+    )) as StockBalance[];
+    const stockBalance = balanceRepo.create(rows[0] as Partial<StockBalance>);
 
-    if (!aggregate) {
-      aggregate = balanceRepo.create({
-        businessId: params.businessId,
-        warehouseId: params.warehouseId,
-        productId: params.productId,
-        quantityAvailable: params.quantityDelta,
-        quantityOnHand: params.quantityDelta,
-        quantityReserved: 0,
-        quantityDamaged: 0,
-        batch: null,
-      });
-    } else {
-      aggregate.quantityAvailable += params.quantityDelta;
-      aggregate.quantityOnHand += params.quantityDelta;
-    }
-
-    if (aggregate.quantityOnHand < 0 || aggregate.quantityAvailable < 0) {
+    if (stockBalance.quantityOnHand < 0 || stockBalance.quantityAvailable < 0) {
       throw new BadRequestException('Insufficient stock for this operation');
     }
 
-    return balanceRepo.save(aggregate);
+    return stockBalance;
   }
 
   /**
-   * Receives stock into inventory: creates batch, batch-level balance,
-   * aggregate warehouse balance, and an IN movement per line.
+   * Receives stock into inventory: creates batch history, updates one
+   * product/warehouse stock balance, and records an IN movement per line.
    */
   async receiveStockIn(
     manager: EntityManager,
@@ -123,7 +121,6 @@ export class StockService {
     }
 
     const batchRepo = manager.getRepository(Batch);
-    const balanceRepo = manager.getRepository(StockBalance);
     const movementRepo = manager.getRepository(StockMovement);
     const results: ReceiveStockLineResult[] = [];
 
@@ -156,20 +153,7 @@ export class StockService {
         }),
       );
 
-      const batchBalance = await balanceRepo.save(
-        balanceRepo.create({
-          businessId: input.businessId,
-          warehouseId: input.warehouseId,
-          productId: line.productId,
-          quantityAvailable: line.quantity,
-          quantityOnHand: line.quantity,
-          quantityReserved: 0,
-          quantityDamaged: 0,
-          batch,
-        }),
-      );
-
-      const aggregateBalance = await this.upsertAggregateBalance(manager, {
+      const stockBalance = await this.upsertStockBalance(manager, {
         businessId: input.businessId,
         warehouseId: input.warehouseId,
         productId: line.productId,
@@ -187,7 +171,7 @@ export class StockService {
         }),
       );
 
-      results.push({ batch, batchBalance, aggregateBalance, movement });
+      results.push({ batch, stockBalance, movement });
     }
 
     return results;

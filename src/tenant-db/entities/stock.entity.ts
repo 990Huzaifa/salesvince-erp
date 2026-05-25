@@ -1,4 +1,4 @@
-import { Column, CreateDateColumn, DeleteDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
+import { Column, CreateDateColumn, DeleteDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
 import { Business } from "./business.entity";
 import { Warehouse } from "./warehouse.entity";
 import { Product } from "./product.entity";
@@ -58,13 +58,13 @@ export class Batch {
     @Column()
     quantity: number;
 
-    @Column()
+    @Column({ type: 'decimal', precision: 18, scale: 2 })
     purchaseUnitPrice: number;
 
-    @Column()
+    @Column({ type: 'decimal', precision: 18, scale: 2 })
     saleUnitMarginAmount: number;
 
-    @Column()
+    @Column({ type: 'decimal', precision: 18, scale: 2 })
     saleUnitMarginPercentage: number;
 
     @Column()
@@ -82,10 +82,6 @@ export class Batch {
     @DeleteDateColumn({ nullable: true })
     deletedAt: Date | null; 
 
-
-    // relationships
-    @OneToMany(() => StockBalance, (stockBalance) => stockBalance.batch, { onDelete: 'CASCADE' })
-    stockBalances: StockBalance[];
 }   
 
 @Entity({ name: 'stock_balances' })
@@ -134,10 +130,6 @@ export class StockBalance {
 
     @DeleteDateColumn({ nullable: true })
     deletedAt: Date | null;
-
-    // relationships
-    @ManyToOne(() => Batch, (batch) => batch.stockBalances, { onDelete: 'CASCADE' })
-    batch: Batch;
 }
 
 @Entity({ name: 'stock_movements' })

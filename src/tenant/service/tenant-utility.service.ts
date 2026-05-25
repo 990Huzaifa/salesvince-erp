@@ -11,8 +11,6 @@ import { Party } from 'src/tenant-db/entities/party.entity';
 import { PartyType } from 'src/tenant-db/entities/party.entity';
 import { Batch, StockBalance } from 'src/tenant-db/entities/stock.entity';
 
-type StockBatchBalance = StockBalance & { batch: Batch };
-
 @Injectable()
 export class TenantUtilityService {
   private roundAmount(value: number): number {
@@ -21,9 +19,9 @@ export class TenantUtilityService {
 
   private selectStockPricing(
     strategy: BatchPickStrategy,
-    batchBalances: StockBatchBalance[],
+    batches: Batch[],
   ) {
-    if (batchBalances.length === 0) {
+    if (batches.length === 0) {
       return {
         purchaseUnitPrice: 0,
         saleUnitMarginAmount: 0,
@@ -33,8 +31,8 @@ export class TenantUtilityService {
     }
 
     if (strategy === BatchPickStrategy.AVG_COST) {
-      const totalQuantity = batchBalances.reduce(
-        (sum, balance) => sum + Number(balance.quantityOnHand ?? 0),
+      const totalQuantity = batches.reduce(
+        (sum, batch) => sum + Number(batch.quantity ?? 0),
         0,
       );
 
@@ -48,11 +46,11 @@ export class TenantUtilityService {
       }
 
       const weightedAverage = (field: keyof Batch) =>
-        batchBalances.reduce(
+        batches.reduce(
           (sum, balance) =>
             sum +
-            Number(balance.batch[field] ?? 0) *
-              Number(balance.quantityOnHand ?? 0),
+            Number(balance[field] ?? 0) *
+              Number(balance.quantity ?? 0),
           0,
         ) / totalQuantity;
 
@@ -66,9 +64,9 @@ export class TenantUtilityService {
       };
     }
 
-    const sortedBatches = [...batchBalances].sort((left, right) => {
-      const leftTime = new Date(left.batch.batchDate).getTime();
-      const rightTime = new Date(right.batch.batchDate).getTime();
+    const sortedBatches = [...batches].sort((left, right) => {
+      const leftTime = new Date(left.batchDate).getTime();
+      const rightTime = new Date(right.batchDate).getTime();
       const direction = strategy === BatchPickStrategy.FIFO ? 1 : -1;
 
       if (leftTime !== rightTime) {
@@ -76,12 +74,12 @@ export class TenantUtilityService {
       }
 
       return (
-        (new Date(left.batch.createdAt).getTime() -
-          new Date(right.batch.createdAt).getTime()) *
+        (new Date(left.createdAt).getTime() -
+          new Date(right.createdAt).getTime()) *
         direction
       );
     });
-    const selectedBatch = sortedBatches[0].batch;
+    const selectedBatch = sortedBatches[0];
 
     return {
       purchaseUnitPrice: Number(selectedBatch.purchaseUnitPrice ?? 0),
@@ -170,14 +168,13 @@ export class TenantUtilityService {
   }
 
   async getStockProducts(tenantDb: DataSource, businessId: string) {
-    const aggregateBalances = await tenantDb
+    const stockBalances = await tenantDb
       .getRepository(StockBalance)
       .createQueryBuilder('balance')
       .innerJoinAndSelect('balance.product', 'product')
       .innerJoinAndSelect('balance.warehouse', 'warehouse')
       .where('balance.businessId = :businessId', { businessId })
       .andWhere('balance.deletedAt IS NULL')
-      .andWhere('balance.batchId IS NULL')
       .andWhere('balance.quantityOnHand > 0')
       .andWhere('product.isDelete = false')
       .andWhere('product.isActive = true')
@@ -186,34 +183,31 @@ export class TenantUtilityService {
       .addOrderBy('warehouse.name', 'ASC')
       .getMany();
 
-    const batchBalances = (await tenantDb
-      .getRepository(StockBalance)
-      .createQueryBuilder('balance')
-      .innerJoinAndSelect('balance.batch', 'batch')
-      .where('balance.businessId = :businessId', { businessId })
-      .andWhere('balance.deletedAt IS NULL')
-      .andWhere('balance.batchId IS NOT NULL')
-      .andWhere('balance.quantityOnHand > 0')
+    const batches = await tenantDb
+      .getRepository(Batch)
+      .createQueryBuilder('batch')
+      .where('batch.businessId = :businessId', { businessId })
       .andWhere('batch.deletedAt IS NULL')
-      .getMany()) as StockBatchBalance[];
+      .andWhere('batch.quantity > 0')
+      .getMany();
 
-    const batchBalancesByProductWarehouse = new Map<string, StockBatchBalance[]>();
-    for (const batchBalance of batchBalances) {
-      const key = `${batchBalance.productId}:${batchBalance.warehouseId}`;
-      const rows = batchBalancesByProductWarehouse.get(key) ?? [];
-      rows.push(batchBalance);
-      batchBalancesByProductWarehouse.set(key, rows);
+    const batchesByProductWarehouse = new Map<string, Batch[]>();
+    for (const batch of batches) {
+      const key = `${batch.productId}:${batch.warehouseId}`;
+      const rows = batchesByProductWarehouse.get(key) ?? [];
+      rows.push(batch);
+      batchesByProductWarehouse.set(key, rows);
     }
 
     return {
-      result: aggregateBalances.map((balance) => {
-        const batchRows =
-          batchBalancesByProductWarehouse.get(
+      result: stockBalances.map((balance) => {
+        const productBatches =
+          batchesByProductWarehouse.get(
             `${balance.productId}:${balance.warehouseId}`,
           ) ?? [];
         const pricing = this.selectStockPricing(
           balance.product.batchPickStrategy,
-          batchRows,
+          productBatches,
         );
 
         return {
