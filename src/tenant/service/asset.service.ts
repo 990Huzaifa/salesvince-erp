@@ -21,6 +21,13 @@ const MIME_TO_EXTENSION: Record<string, string> = {
     'image/webp': 'webp',
 };
 
+const EXTENSION_TO_MIME: Record<string, string> = {
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    webp: 'image/webp',
+};
+
 export type AssetUploadRequestItemResult = {
     assetId: string;
     preSignedUploadUrl: string;
@@ -210,8 +217,9 @@ export class AssetService {
 
             const oldKey = asset.s3Key;
             const destKey = `tenants/${tenantCode}/${rules.folder}/${asset.id}.${asset.fileExtension}`;
+            const contentType = this.resolveContentType(asset.fileExtension);
 
-            await this.s3Service.copyObject(oldKey, destKey);
+            await this.s3Service.copyObject(oldKey, destKey, contentType);
 
             asset.s3Key = destKey;
             asset.status = AssetStatus.APPROVED;
@@ -262,5 +270,14 @@ export class AssetService {
         }
 
         return fromMime;
+    }
+
+    private resolveContentType(fileExtension: string): string {
+        const contentType = EXTENSION_TO_MIME[fileExtension.toLowerCase()];
+        if (!contentType) {
+            throw new BadRequestException('Unsupported file extension for content type resolution');
+        }
+
+        return contentType;
     }
 }

@@ -68,7 +68,7 @@ export class S3Service {
      * Server-side copy within the same bucket. Source key must exist.
      * CopySource is URL-encoded per S3 requirements.
      */
-    async copyObject(sourceKey: string, destinationKey: string) {
+    async copyObject(sourceKey: string, destinationKey: string, contentType?: string) {
         const encodedSourceKey = sourceKey
             .split('/')
             .map((segment) => encodeURIComponent(segment))
@@ -79,6 +79,8 @@ export class S3Service {
                 Bucket: this.bucketName,
                 Key: destinationKey,
                 CopySource: copySource,
+                ContentType: contentType,
+                MetadataDirective: contentType ? 'REPLACE' : undefined,
             }),
         );
     }
