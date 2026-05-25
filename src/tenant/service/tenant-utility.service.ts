@@ -7,6 +7,7 @@ import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import { ChartOfAccount, ChartOfAccountKind } from 'src/tenant-db/entities/chart-of-account.entity';
 import { ChartOfAccountType } from 'src/tenant-db/chart-of-accounts/constants/chart-of-account-type.enum';
 import { COA_PARENT_CODES } from 'src/tenant-db/chart-of-accounts/constants/coa-parent-codes';
+import { Transaction } from 'src/tenant-db/entities/transaction.entity';
 
 @Injectable()
 export class TenantUtilityService {
@@ -135,7 +136,39 @@ export class TenantUtilityService {
       where: { deletedAt: null, parentCode: parentCode, isPostable: true, businessId: businessId },
       order: { name: 'ASC' },
     });
-    return { result: accountList };
+
+    const accountIds = accountList.map((account) => account.id);
+    if (accountIds.length === 0) {
+      return { result: [] };
+    }
+
+    const latestBalances = await tenantDb
+      .getRepository(Transaction)
+      .createQueryBuilder('tx')
+      .distinctOn(['tx.chartOfAccountId'])
+      .select('tx.chartOfAccountId', 'chartOfAccountId')
+      .addSelect('tx.currentBalance', 'currentBalance')
+      .where('tx.businessId = :businessId', { businessId })
+      .andWhere('tx.chartOfAccountId IN (:...accountIds)', { accountIds })
+      .orderBy('tx.chartOfAccountId', 'ASC')
+      .addOrderBy('tx.transactionDate', 'DESC')
+      .addOrderBy('tx.createdAt', 'DESC')
+      .addOrderBy('tx.id', 'DESC')
+      .getRawMany<{ chartOfAccountId: string; currentBalance: string | number | null }>();
+
+    const balanceByAccountId = new Map(
+      latestBalances.map((balance) => [
+        balance.chartOfAccountId,
+        Number(balance.currentBalance ?? 0),
+      ]),
+    );
+
+    return {
+      result: accountList.map((account) => ({
+        ...account,
+        currentBalance: balanceByAccountId.get(account.id) ?? 0,
+      })),
+    };
   }
 
 }
