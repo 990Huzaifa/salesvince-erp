@@ -14,7 +14,7 @@ export enum GrnStatus {
     REVERSED = 'REVERSED',
 }
 
-@Entity('goods-receive-notes')
+@Entity('goods_receive_notes')
 export class Grn {
     @PrimaryGeneratedColumn('uuid')
     id: string;
@@ -95,7 +95,7 @@ export class Grn {
     purchaseInvoices: PurchaseInvoice[];
 }
 
-@Entity('grn-items')
+@Entity('grn_items')
 export class GrnItem {
     @PrimaryGeneratedColumn('uuid')
     id: string;

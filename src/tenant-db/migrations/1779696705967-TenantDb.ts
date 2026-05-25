@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class TenantDb1779696057834 implements MigrationInterface {
-    name = 'TenantDb1779696057834'
+export class TenantDb1779696705967 implements MigrationInterface {
+    name = 'TenantDb1779696705967'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`CREATE TYPE "public"."chart_of_accounts_accountkind_enum" AS ENUM('SYSTEM', 'BUSINESS', 'PARTY_RECEIVABLE', 'PARTY_PAYABLE', 'PRODUCT_CATEGORY', 'PRODUCT_SUB_CATEGORY', 'PRODUCT_INVENTORY')`);
@@ -39,8 +39,8 @@ export class TenantDb1779696057834 implements MigrationInterface {
         await queryRunner.query(`CREATE TYPE "public"."parties_partyclass_enum" AS ENUM('A', 'B', 'C')`);
         await queryRunner.query(`CREATE TABLE "parties" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "businessId" uuid NOT NULL, "code" character varying(50) NOT NULL, "receivableAccountId" uuid, "payableAccountId" uuid, "name" character varying(200) NOT NULL, "type" "public"."parties_type_enum" NOT NULL, "partyClass" "public"."parties_partyclass_enum", "email" character varying(150), "phone" character varying(50), "whatsAppNumber" character varying(50), "alternatePhone" character varying(50), "ntnNumber" character varying(50), "strnNumber" character varying(50), "cnic" character varying(20), "taxNumber" character varying(50), "address" text, "countryId" character varying, "stateId" character varying, "cityId" character varying, "creditLimit" numeric(18,2), "payableOpeningBalance" numeric(18,2) NOT NULL DEFAULT '0', "receivableOpeningBalance" numeric(18,2) NOT NULL DEFAULT '0', "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "PK_da698299dca60d55f0050dde935" PRIMARY KEY ("id"))`);
         await queryRunner.query(`CREATE UNIQUE INDEX "IDX_18bcff4d4f291cadef07331a46" ON "parties" ("businessId", "code") `);
-        await queryRunner.query(`CREATE TABLE "goods-receive-notes" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "purchaseOrderId" uuid NOT NULL, "businessId" uuid NOT NULL, "warehouseId" uuid NOT NULL, "vendorId" uuid NOT NULL, "grnNumber" character varying NOT NULL, "grnDate" TIMESTAMP NOT NULL, "notes" character varying, "deliveryCost" numeric(18,2) NOT NULL, "createdBy" uuid NOT NULL, "totalTaxAmount" numeric(18,2) NOT NULL, "totalDiscountAmount" numeric(18,2) NOT NULL, "totalAmount" numeric(18,2) NOT NULL, "status" character varying NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "UQ_6435fb67a69c33b74185c1047a2" UNIQUE ("grnNumber"), CONSTRAINT "PK_be232a4514ac40bf82ffb2e354f" PRIMARY KEY ("id"))`);
-        await queryRunner.query(`CREATE TABLE "grn-items" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "grnId" uuid NOT NULL, "productId" uuid NOT NULL, "productFlavourId" integer, "uomId" uuid NOT NULL, "orderedQuantity" integer NOT NULL, "receivedQuantity" integer NOT NULL, "purchaseUnitPrice" numeric(18,2) NOT NULL, "saleUnitMarginAmount" numeric(18,2) NOT NULL, "saleUnitMarginPercentage" numeric(18,2) NOT NULL, "discountPercentage" numeric(18,2) NOT NULL, "discountAmount" numeric(18,2) NOT NULL, "taxPercentage" numeric(18,2) NOT NULL, "taxAmount" numeric(18,2) NOT NULL, "totalAmount" numeric(18,2) NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_22e6758b7a801ad5a9b0842a8ec" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "goods_receive_notes" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "purchaseOrderId" uuid NOT NULL, "businessId" uuid NOT NULL, "warehouseId" uuid NOT NULL, "vendorId" uuid NOT NULL, "grnNumber" character varying NOT NULL, "grnDate" TIMESTAMP NOT NULL, "notes" character varying, "deliveryCost" numeric(18,2) NOT NULL, "createdBy" uuid NOT NULL, "totalTaxAmount" numeric(18,2) NOT NULL, "totalDiscountAmount" numeric(18,2) NOT NULL, "totalAmount" numeric(18,2) NOT NULL, "status" character varying NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "UQ_d5ca35e2597bbf0c9ef55b2592c" UNIQUE ("grnNumber"), CONSTRAINT "PK_b9c5ca4ad97a32031e8ccb555b7" PRIMARY KEY ("id"))`);
+        await queryRunner.query(`CREATE TABLE "grn_items" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "grnId" uuid NOT NULL, "productId" uuid NOT NULL, "productFlavourId" integer, "uomId" uuid NOT NULL, "orderedQuantity" integer NOT NULL, "receivedQuantity" integer NOT NULL, "purchaseUnitPrice" numeric(18,2) NOT NULL, "saleUnitMarginAmount" numeric(18,2) NOT NULL, "saleUnitMarginPercentage" numeric(18,2) NOT NULL, "discountPercentage" numeric(18,2) NOT NULL, "discountAmount" numeric(18,2) NOT NULL, "taxPercentage" numeric(18,2) NOT NULL, "taxAmount" numeric(18,2) NOT NULL, "totalAmount" numeric(18,2) NOT NULL, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), CONSTRAINT "PK_f6a5723d6cf2d0c66985fb833c9" PRIMARY KEY ("id"))`);
         await queryRunner.query(`CREATE TYPE "public"."users_status_enum" AS ENUM('ACTIVE', 'INACTIVE', 'SUSPENDED')`);
         await queryRunner.query(`CREATE TABLE "users" ("id" uuid NOT NULL DEFAULT uuid_generate_v4(), "code" character varying NOT NULL, "name" character varying(150) NOT NULL, "email" character varying(150) NOT NULL, "password" character varying(255), "status" "public"."users_status_enum" NOT NULL DEFAULT 'ACTIVE', "phone" character varying, "avatar" character varying, "cnic" character varying, "address" character varying, "fcmToken" character varying, "deviceId" character varying, "appVersion" character varying, "isSuperAdmin" boolean NOT NULL DEFAULT false, "lastLoginAt" TIMESTAMP, "createdAt" TIMESTAMP NOT NULL DEFAULT now(), "updatedAt" TIMESTAMP NOT NULL DEFAULT now(), "deletedAt" TIMESTAMP, CONSTRAINT "UQ_1f7a2b11e29b1422a2622beab36" UNIQUE ("code"), CONSTRAINT "PK_a3ffb1c0c8416b9fc6f907b7433" PRIMARY KEY ("id"))`);
         await queryRunner.query(`CREATE UNIQUE INDEX "IDX_97672ac88f789774dd47f7c8be" ON "users" ("email") `);
@@ -117,7 +117,7 @@ export class TenantDb1779696057834 implements MigrationInterface {
         await queryRunner.query(`ALTER TABLE "stock_movements" ADD CONSTRAINT "FK_a3acb59db67e977be45e382fc56" FOREIGN KEY ("productId") REFERENCES "products"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "stock_movements" ADD CONSTRAINT "FK_28dc554de7559b16be2e2a82b15" FOREIGN KEY ("uomId") REFERENCES "uoms"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "purchase-invoices" ADD CONSTRAINT "FK_2c719b11099d1acb589d47cae88" FOREIGN KEY ("businessId") REFERENCES "businesses"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "purchase-invoices" ADD CONSTRAINT "FK_cf327a55ca96b70bfc473322300" FOREIGN KEY ("grnId") REFERENCES "goods-receive-notes"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "purchase-invoices" ADD CONSTRAINT "FK_cf327a55ca96b70bfc473322300" FOREIGN KEY ("grnId") REFERENCES "goods_receive_notes"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "purchase-invoices" ADD CONSTRAINT "FK_47fc2115cd4854d03e038ff514a" FOREIGN KEY ("purchaseOrderId") REFERENCES "purchase_orders"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "purchase-invoice-items" ADD CONSTRAINT "FK_da5b92cdf5f35cb68e067dcc666" FOREIGN KEY ("purchaseInvoiceId") REFERENCES "purchase-invoices"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "purchase-invoice-items" ADD CONSTRAINT "FK_5d7d87ef8d3164927d63e2af07d" FOREIGN KEY ("productId") REFERENCES "products"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
@@ -161,15 +161,15 @@ export class TenantDb1779696057834 implements MigrationInterface {
         await queryRunner.query(`ALTER TABLE "parties" ADD CONSTRAINT "FK_e84e33a64bed346ea260371fdcd" FOREIGN KEY ("businessId") REFERENCES "businesses"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "parties" ADD CONSTRAINT "FK_24b15ab9bfb00d8f0a407110a4b" FOREIGN KEY ("receivableAccountId") REFERENCES "chart_of_accounts"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "parties" ADD CONSTRAINT "FK_5d580c86dc1fbcbf226b32d1f7d" FOREIGN KEY ("payableAccountId") REFERENCES "chart_of_accounts"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "goods-receive-notes" ADD CONSTRAINT "FK_fced4317e949200d3b852bb5bfb" FOREIGN KEY ("purchaseOrderId") REFERENCES "purchase_orders"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "goods-receive-notes" ADD CONSTRAINT "FK_d742411fcfc8be9841af54827bb" FOREIGN KEY ("businessId") REFERENCES "businesses"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "goods-receive-notes" ADD CONSTRAINT "FK_140c0a44387bbcca88125e4d2fa" FOREIGN KEY ("warehouseId") REFERENCES "warehouses"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "goods-receive-notes" ADD CONSTRAINT "FK_10a662b5f571a4d7d30448e43ec" FOREIGN KEY ("vendorId") REFERENCES "parties"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "goods-receive-notes" ADD CONSTRAINT "FK_2d1e884b85c5b4671b144da9549" FOREIGN KEY ("createdBy") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "grn-items" ADD CONSTRAINT "FK_32707ab038ef653dcd6b3ad2add" FOREIGN KEY ("grnId") REFERENCES "goods-receive-notes"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "grn-items" ADD CONSTRAINT "FK_c6284bfd27ea93356fdec0dc2ba" FOREIGN KEY ("productId") REFERENCES "products"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "grn-items" ADD CONSTRAINT "FK_513ea4a5cc906ac718832215d94" FOREIGN KEY ("productFlavourId") REFERENCES "product_flavours"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
-        await queryRunner.query(`ALTER TABLE "grn-items" ADD CONSTRAINT "FK_bc238619cbf1c25820485e912e7" FOREIGN KEY ("uomId") REFERENCES "uoms"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "goods_receive_notes" ADD CONSTRAINT "FK_e78bd8e53d79272bb17ce0118b9" FOREIGN KEY ("purchaseOrderId") REFERENCES "purchase_orders"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "goods_receive_notes" ADD CONSTRAINT "FK_326f0ef5de4ebbe8c808dcce586" FOREIGN KEY ("businessId") REFERENCES "businesses"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "goods_receive_notes" ADD CONSTRAINT "FK_a0fd2f1746f8fd2151221d792e1" FOREIGN KEY ("warehouseId") REFERENCES "warehouses"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "goods_receive_notes" ADD CONSTRAINT "FK_895bdf5c8ae68cbf4f19cc6a987" FOREIGN KEY ("vendorId") REFERENCES "parties"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "goods_receive_notes" ADD CONSTRAINT "FK_142cddb4fa29bbd3ce20f2bc92e" FOREIGN KEY ("createdBy") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "grn_items" ADD CONSTRAINT "FK_106b209f935c117cb7f07af84c7" FOREIGN KEY ("grnId") REFERENCES "goods_receive_notes"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "grn_items" ADD CONSTRAINT "FK_a43bf15a923e101631a6ed90513" FOREIGN KEY ("productId") REFERENCES "products"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "grn_items" ADD CONSTRAINT "FK_39866a46f4f8582e4f388f9006e" FOREIGN KEY ("productFlavourId") REFERENCES "product_flavours"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "grn_items" ADD CONSTRAINT "FK_48ecfb46ab338855b6647e92ea3" FOREIGN KEY ("uomId") REFERENCES "uoms"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "role_permissions" ADD CONSTRAINT "FK_b4599f8b8f548d35850afa2d12c" FOREIGN KEY ("roleId") REFERENCES "roles"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "role_permissions" ADD CONSTRAINT "FK_06792d0c62ce6b0203c03643cdd" FOREIGN KEY ("permissionId") REFERENCES "permissions"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
         await queryRunner.query(`ALTER TABLE "user_businesses" ADD CONSTRAINT "FK_1a2fd3e163cd1d20912b87bc35c" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
@@ -239,15 +239,15 @@ export class TenantDb1779696057834 implements MigrationInterface {
         await queryRunner.query(`ALTER TABLE "user_businesses" DROP CONSTRAINT "FK_1a2fd3e163cd1d20912b87bc35c"`);
         await queryRunner.query(`ALTER TABLE "role_permissions" DROP CONSTRAINT "FK_06792d0c62ce6b0203c03643cdd"`);
         await queryRunner.query(`ALTER TABLE "role_permissions" DROP CONSTRAINT "FK_b4599f8b8f548d35850afa2d12c"`);
-        await queryRunner.query(`ALTER TABLE "grn-items" DROP CONSTRAINT "FK_bc238619cbf1c25820485e912e7"`);
-        await queryRunner.query(`ALTER TABLE "grn-items" DROP CONSTRAINT "FK_513ea4a5cc906ac718832215d94"`);
-        await queryRunner.query(`ALTER TABLE "grn-items" DROP CONSTRAINT "FK_c6284bfd27ea93356fdec0dc2ba"`);
-        await queryRunner.query(`ALTER TABLE "grn-items" DROP CONSTRAINT "FK_32707ab038ef653dcd6b3ad2add"`);
-        await queryRunner.query(`ALTER TABLE "goods-receive-notes" DROP CONSTRAINT "FK_2d1e884b85c5b4671b144da9549"`);
-        await queryRunner.query(`ALTER TABLE "goods-receive-notes" DROP CONSTRAINT "FK_10a662b5f571a4d7d30448e43ec"`);
-        await queryRunner.query(`ALTER TABLE "goods-receive-notes" DROP CONSTRAINT "FK_140c0a44387bbcca88125e4d2fa"`);
-        await queryRunner.query(`ALTER TABLE "goods-receive-notes" DROP CONSTRAINT "FK_d742411fcfc8be9841af54827bb"`);
-        await queryRunner.query(`ALTER TABLE "goods-receive-notes" DROP CONSTRAINT "FK_fced4317e949200d3b852bb5bfb"`);
+        await queryRunner.query(`ALTER TABLE "grn_items" DROP CONSTRAINT "FK_48ecfb46ab338855b6647e92ea3"`);
+        await queryRunner.query(`ALTER TABLE "grn_items" DROP CONSTRAINT "FK_39866a46f4f8582e4f388f9006e"`);
+        await queryRunner.query(`ALTER TABLE "grn_items" DROP CONSTRAINT "FK_a43bf15a923e101631a6ed90513"`);
+        await queryRunner.query(`ALTER TABLE "grn_items" DROP CONSTRAINT "FK_106b209f935c117cb7f07af84c7"`);
+        await queryRunner.query(`ALTER TABLE "goods_receive_notes" DROP CONSTRAINT "FK_142cddb4fa29bbd3ce20f2bc92e"`);
+        await queryRunner.query(`ALTER TABLE "goods_receive_notes" DROP CONSTRAINT "FK_895bdf5c8ae68cbf4f19cc6a987"`);
+        await queryRunner.query(`ALTER TABLE "goods_receive_notes" DROP CONSTRAINT "FK_a0fd2f1746f8fd2151221d792e1"`);
+        await queryRunner.query(`ALTER TABLE "goods_receive_notes" DROP CONSTRAINT "FK_326f0ef5de4ebbe8c808dcce586"`);
+        await queryRunner.query(`ALTER TABLE "goods_receive_notes" DROP CONSTRAINT "FK_e78bd8e53d79272bb17ce0118b9"`);
         await queryRunner.query(`ALTER TABLE "parties" DROP CONSTRAINT "FK_5d580c86dc1fbcbf226b32d1f7d"`);
         await queryRunner.query(`ALTER TABLE "parties" DROP CONSTRAINT "FK_24b15ab9bfb00d8f0a407110a4b"`);
         await queryRunner.query(`ALTER TABLE "parties" DROP CONSTRAINT "FK_e84e33a64bed346ea260371fdcd"`);
@@ -368,8 +368,8 @@ export class TenantDb1779696057834 implements MigrationInterface {
         await queryRunner.query(`DROP INDEX "public"."IDX_97672ac88f789774dd47f7c8be"`);
         await queryRunner.query(`DROP TABLE "users"`);
         await queryRunner.query(`DROP TYPE "public"."users_status_enum"`);
-        await queryRunner.query(`DROP TABLE "grn-items"`);
-        await queryRunner.query(`DROP TABLE "goods-receive-notes"`);
+        await queryRunner.query(`DROP TABLE "grn_items"`);
+        await queryRunner.query(`DROP TABLE "goods_receive_notes"`);
         await queryRunner.query(`DROP INDEX "public"."IDX_18bcff4d4f291cadef07331a46"`);
         await queryRunner.query(`DROP TABLE "parties"`);
         await queryRunner.query(`DROP TYPE "public"."parties_partyclass_enum"`);
