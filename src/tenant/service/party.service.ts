@@ -210,7 +210,7 @@ export class PartyService {
     }
 
     if (options.type) {
-      qb.andWhere('p.type = :type', { type: options.type });
+      qb.andWhere('p.type IN (:...types)', { types: [options.type,'BOTH'] });
     }
 
     const [parties, total] = await qb.getManyAndCount();
