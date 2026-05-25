@@ -57,8 +57,6 @@ import { PurchaseQuotationController } from './controller/Purchase/purchase-quot
 import { PurchaseQuotationService } from './service/purchase/purchase-quotation.service';
 import { SaleQuotationController } from './controller/sale/sale-quotation.controller';
 import { SaleQuotationService } from './service/sale/sale-quotation.service';
-import { SaleOrderController } from './controller/sale/sale-order.controller';
-import { SaleOrderService } from './service/sale/sale-order.service';
 import { WarehouseController } from './controller/warehouse.controller';
 import { WarehouseService } from './service/warehouse.service';
 import { PurchaseOrderController } from './controller/Purchase/purchase-order.controller';
@@ -71,6 +69,9 @@ import { PurchaseInvoiceService } from './service/purchase/purchase-invoice.serv
 import { FinanceController } from './controller/finance.controller';
 import { FinanceService } from './service/finance.service';
 import { TenantNotificationController } from './controller/tenant-notification.controller';
+import { MasterGeoHelperService } from './service/master-geo-helper.service';
+import { SaleOrderController } from './controller/sale/sale-order.controller';
+import { SaleOrderService } from './service/sale/sale-order.service';
 @Module({
   imports: [
     HttpModule,
@@ -148,6 +149,7 @@ import { TenantNotificationController } from './controller/tenant-notification.c
     StockService,
     PurchaseInvoiceService,
     FinanceService,
+    MasterGeoHelperService,
   ],
 })
 export class TenantModule {}
