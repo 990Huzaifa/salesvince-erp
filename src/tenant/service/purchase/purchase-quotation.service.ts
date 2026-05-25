@@ -320,6 +320,7 @@ export class PurchaseQuotationService {
         manager.getRepository(PurchaseQuotation).create({
           quotationNumber,
           vendorId: dto.vendorId,
+          businessId: scopedBusinessId,
           quotationDate: new Date(dto.quotationDate),
           notes: dto.notes?.trim() || null,
           createdBy: actorUserId,
@@ -375,9 +376,10 @@ export class PurchaseQuotationService {
       .leftJoinAndSelect('pq.items', 'items')
       .leftJoinAndSelect('items.product', 'product')
       .leftJoinAndSelect('items.uom', 'uom')
-      .where('vendor.businessId = :businessId', {
+      .where('pq.businessId = :businessId', {
         businessId: scopedBusinessId,
-      });
+      })
+      .andWhere('pq.deletedAt IS NULL');
 
     if (options.vendorId) {
       qb.andWhere('pq.vendorId = :vendorId', { vendorId: options.vendorId });
