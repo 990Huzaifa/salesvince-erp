@@ -2,6 +2,8 @@ import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, Pri
 import { User } from "./user.entity";
 import { Product, ProductFlavour, ProductPricing, Uom } from "./product.entity";
 import { Business } from "./business.entity";
+import { Party } from "./party.entity";
+import { Warehouse } from "./warehouse.entity";
 
 
 export enum OrderStatus {
@@ -22,6 +24,20 @@ export class SaleOrder {
     @ManyToOne(() => Business, (business) => business.saleOrders, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'businessId' })
     business: Business;
+
+    @Column({ type: 'uuid', nullable: true })
+    warehouseId: string | null;
+
+    @ManyToOne(() => Warehouse, { nullable: true, onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'warehouseId' })
+    warehouse: Warehouse | null;
+
+    @Column({ type: 'uuid', nullable: true })
+    customerId: string | null;
+
+    @ManyToOne(() => Party, { nullable: true, onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'customerId' })
+    customer: Party | null;
 
     @Column({ unique: true })
     orderNumber: string;

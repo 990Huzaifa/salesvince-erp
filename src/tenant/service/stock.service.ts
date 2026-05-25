@@ -35,6 +35,24 @@ export type ReceiveStockLineResult = {
   movement: StockMovement;
 };
 
+export type ConsumeStockLineInput = {
+  productId: string;
+  uomId: string;
+  quantity: number;
+};
+
+export type ConsumeStockInput = {
+  businessId: string;
+  warehouseId: string;
+  referenceType: ReferenceType;
+  lines: ConsumeStockLineInput[];
+};
+
+export type ConsumeStockLineResult = {
+  stockBalance: StockBalance;
+  movement: StockMovement;
+};
+
 @Injectable()
 export class StockService {
   private roundAmount(value: number): number {
@@ -181,6 +199,51 @@ export class StockService {
       );
 
       results.push({ batch, stockBalance, movement });
+    }
+
+    return results;
+  }
+
+  /**
+   * Issues stock out of inventory and records an OUT movement per line.
+   */
+  async consumeStockOut(
+    manager: EntityManager,
+    input: ConsumeStockInput,
+  ): Promise<ConsumeStockLineResult[]> {
+    if (!input.lines.length) {
+      throw new BadRequestException('At least one stock line is required');
+    }
+
+    const movementRepo = manager.getRepository(StockMovement);
+    const results: ConsumeStockLineResult[] = [];
+
+    for (const line of input.lines) {
+      if (line.quantity <= 0) {
+        throw new BadRequestException('Issued quantity must be greater than zero');
+      }
+
+      const stockBalance = await this.upsertStockBalance(manager, {
+        businessId: input.businessId,
+        warehouseId: input.warehouseId,
+        productId: line.productId,
+        uomId: line.uomId,
+        quantityDelta: -line.quantity,
+      });
+
+      const movement = await movementRepo.save(
+        movementRepo.create({
+          businessId: input.businessId,
+          warehouseId: input.warehouseId,
+          productId: line.productId,
+          uomId: line.uomId,
+          quantity: line.quantity,
+          movementType: StockMovementType.OUT,
+          referenceType: input.referenceType,
+        }),
+      );
+
+      results.push({ stockBalance, movement });
     }
 
     return results;

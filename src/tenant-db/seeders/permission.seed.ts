@@ -88,6 +88,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'APPROVE_EXPENSE_VOUCHER', name: 'Approve Expense Voucher' },
   { key: 'APPROVE_CONTRA_VOUCHER', name: 'Approve Contra Voucher' },
   { key: 'APPROVE_PURCHASE_ORDER', name: 'Approve Purchase Order' },
+  { key: 'APPROVE_SALE_ORDER', name: 'Approve Sale Order' },
   { key: 'UPDATE_OPENING_STOCK', name: 'Update Opening Stock' },
   { key: 'UPDATE_PURCHASE_STOCK', name: 'Update Purchase Stock' },
   { key: 'UPDATE_TRANSFER_STOCK', name: 'Update Transfer Stock' },
