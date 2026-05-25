@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, In } from 'typeorm';
+import { DataSource, In, IsNull } from 'typeorm';
 import { Role } from 'src/tenant-db/entities/role.entity';
 import { BatchPickStrategy, Flavour, Product, ProductBrand, ProductCategory, ProductSubCategory, Uom } from 'src/tenant-db/entities/product.entity';
 import { Permission } from 'src/tenant-db/entities/permission.entity';
@@ -345,11 +345,11 @@ export class TenantUtilityService {
     return { result: uoms };
   }
 
-  async warehouses(tenantDb: DataSource, businessId: string) {
+  async getWarehouseList(tenantDb: DataSource, businessId: string) {
     const warehouses = await tenantDb.getRepository(Warehouse).find({
-      select: ['id', 'name'],
+      select: ['id', 'name', 'code'],
       order: { name: 'ASC' },
-      where: { businessId: businessId },
+      where: { businessId: businessId, deletedAt: IsNull() },
     });
 
     return { result: warehouses };

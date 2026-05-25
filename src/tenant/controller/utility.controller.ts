@@ -154,6 +154,21 @@ export class TenantUtilityController {
         TenantConnectionGuard,
         TenantBusinessAccessGuard,
     )
+    @Get('warehouse-list')
+    async getWarehouseList(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.utilityService.getWarehouseList(tenantDb, user.businessId);
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+    )
     @Get('product-list')
     async getProductList(
         @TenantConnection() tenantDb: DataSource,
