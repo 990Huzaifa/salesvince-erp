@@ -72,6 +72,9 @@ import { TenantNotificationController } from './controller/tenant-notification.c
 import { MasterGeoHelperService } from './service/master-geo-helper.service';
 import { SaleOrderController } from './controller/sale/sale-order.controller';
 import { SaleOrderService } from './service/sale/sale-order.service';
+import { Country } from 'src/master-db/entities/country.entity';
+import { State } from 'src/master-db/entities/state.entity';
+import { City } from 'src/master-db/entities/city.entity';
 @Module({
   imports: [
     HttpModule,
@@ -79,7 +82,7 @@ import { SaleOrderService } from './service/sale/sale-order.service';
     MailModule,
     CommonModule,
     TenantRuntimeModule,
-    TypeOrmModule.forFeature([Tenant]),
+    TypeOrmModule.forFeature([Tenant, Country, State, City]),
   ],
   controllers: [
     AssetController,

@@ -233,6 +233,7 @@ export class PartyService {
     }
 
     const [parties, total] = await qb.getManyAndCount();
+    const data = await Promise.all(parties.map((party) => this.mapParty(party)));
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
@@ -243,7 +244,7 @@ export class PartyService {
     });
 
     return {
-      data: parties.map((p) => this.mapParty(p)),
+      data,
       meta: { total, page, limit },
     };
   }
@@ -270,7 +271,7 @@ export class PartyService {
       metadata: { businessId: scopedBusinessId, partyId: party.id },
     });
 
-    return { data: this.mapParty(party) };
+    return { data: await this.mapParty(party) };
   }
 
   async createParty(
@@ -377,7 +378,7 @@ export class PartyService {
       },
     });
 
-    return { data: this.mapParty(saved!) };
+    return { data: await this.mapParty(saved!) };
   }
 
   async updateParty(
@@ -447,7 +448,7 @@ export class PartyService {
       metadata: { businessId: scopedBusinessId, partyId: saved.id },
     });
 
-    return { data: this.mapParty(withAccounts!) };
+    return { data: await this.mapParty(withAccounts!) };
   }
 
   async deleteParty(
