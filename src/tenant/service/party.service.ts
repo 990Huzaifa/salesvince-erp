@@ -118,6 +118,8 @@ export class PartyService {
             name: party.payableAccount.name,
           }
         : null,
+      code: party.code,
+      name: party.name,
       email: party.email,
       phone: party.phone,
       whatsAppNumber: party.whatsAppNumber,
