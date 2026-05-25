@@ -10,6 +10,8 @@ import { Transaction } from 'src/tenant-db/entities/transaction.entity';
 import { Party } from 'src/tenant-db/entities/party.entity';
 import { PartyType } from 'src/tenant-db/entities/party.entity';
 import { Batch, StockBalance } from 'src/tenant-db/entities/stock.entity';
+import { SaleOrder, OrderStatus as SaleOrderStatus } from 'src/tenant-db/entities/sale-order.entity';
+import { PurchaseOrder } from 'src/tenant-db/entities/purchase-order.entity';
 
 @Injectable()
 export class TenantUtilityService {
@@ -136,14 +138,72 @@ export class TenantUtilityService {
     return { result: productCategories };
   }
 
-  async getProductSubCategories(tenantDb: DataSource, businessId: string) {
+  async getProductSubCategories(tenantDb: DataSource, businessId: string, categoryId?: string) {
+    const where: { businessId: string; categoryId?: string } = { businessId };
+    if (categoryId) {
+      where.categoryId = categoryId;
+    }
+
     const productSubCategories = await tenantDb.getRepository(ProductSubCategory).find({
-      select: ['id', 'name', 'slug'],
+      select: ['id', 'name', 'slug', 'categoryId'],
       order: { name: 'ASC' },
-      where: { businessId: businessId },
+      where,
     });
 
     return { result: productSubCategories };
+  }
+
+  async getApprovedSaleOrders(tenantDb: DataSource, businessId: string) {
+    const orders = await tenantDb
+      .getRepository(SaleOrder)
+      .createQueryBuilder('saleOrder')
+      .leftJoin('saleOrder.customer', 'customer')
+      .leftJoin('saleOrder.warehouse', 'warehouse')
+      .select('saleOrder.id', 'id')
+      .addSelect('saleOrder.orderNumber', 'orderNumber')
+      .addSelect('saleOrder.orderDate', 'orderDate')
+      .addSelect('saleOrder.orderStatus', 'orderStatus')
+      .addSelect('saleOrder.totalAmount', 'totalAmount')
+      .addSelect('saleOrder.customerId', 'customerId')
+      .addSelect('customer.name', 'customerName')
+      .addSelect('customer.code', 'customerCode')
+      .addSelect('saleOrder.warehouseId', 'warehouseId')
+      .addSelect('warehouse.name', 'warehouseName')
+      .addSelect('warehouse.code', 'warehouseCode')
+      .where('saleOrder.businessId = :businessId', { businessId })
+      .andWhere('saleOrder.orderStatus = :orderStatus', {
+        orderStatus: SaleOrderStatus.APPROVED,
+      })
+      .orderBy('saleOrder.orderDate', 'DESC')
+      .addOrderBy('saleOrder.createdAt', 'DESC')
+      .getRawMany();
+
+    return { result: orders };
+  }
+
+  async getPurchaseOrders(tenantDb: DataSource, businessId: string) {
+    const orders = await tenantDb
+      .getRepository(PurchaseOrder)
+      .createQueryBuilder('purchaseOrder')
+      .leftJoin('purchaseOrder.vendor', 'vendor')
+      .leftJoin('purchaseOrder.warehouse', 'warehouse')
+      .select('purchaseOrder.id', 'id')
+      .addSelect('purchaseOrder.orderNumber', 'orderNumber')
+      .addSelect('purchaseOrder.orderDate', 'orderDate')
+      .addSelect('purchaseOrder.orderStatus', 'orderStatus')
+      .addSelect('purchaseOrder.totalAmount', 'totalAmount')
+      .addSelect('purchaseOrder.vendorId', 'vendorId')
+      .addSelect('vendor.name', 'vendorName')
+      .addSelect('vendor.code', 'vendorCode')
+      .addSelect('purchaseOrder.warehouseId', 'warehouseId')
+      .addSelect('warehouse.name', 'warehouseName')
+      .addSelect('warehouse.code', 'warehouseCode')
+      .where('purchaseOrder.businessId = :businessId', { businessId })
+      .orderBy('purchaseOrder.orderDate', 'DESC')
+      .addOrderBy('purchaseOrder.createdAt', 'DESC')
+      .getRawMany();
+
+    return { result: orders };
   }
 
   async getProductBrands(tenantDb: DataSource, businessId: string) {

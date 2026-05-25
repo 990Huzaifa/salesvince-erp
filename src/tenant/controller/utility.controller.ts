@@ -60,9 +60,40 @@ export class TenantUtilityController {
     async getProductSubCategories(
         @TenantConnection() tenantDb: DataSource,
         @Req() req: Request,
+        @Query('categoryId') categoryId?: string,
     ) {
         const user = req.user as TenantRequestUser;
-        return this.utilityService.getProductSubCategories(tenantDb, user.businessId);
+        return this.utilityService.getProductSubCategories(tenantDb, user.businessId, categoryId);
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+    )
+    @Get('approved-sale-orders')
+    async getApprovedSaleOrders(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.utilityService.getApprovedSaleOrders(tenantDb, user.businessId);
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+    )
+    @Get('purchase-orders')
+    async getPurchaseOrders(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.utilityService.getPurchaseOrders(tenantDb, user.businessId);
     }
 
     @UseGuards(
