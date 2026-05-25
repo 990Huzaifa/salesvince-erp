@@ -378,8 +378,7 @@ export class PurchaseQuotationService {
       .leftJoinAndSelect('items.uom', 'uom')
       .where('pq.businessId = :businessId', {
         businessId: scopedBusinessId,
-      })
-      .andWhere('pq.deletedAt IS NULL');
+      });
 
     if (options.vendorId) {
       qb.andWhere('pq.vendorId = :vendorId', { vendorId: options.vendorId });
