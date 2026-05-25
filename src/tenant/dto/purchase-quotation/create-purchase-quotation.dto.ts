@@ -2,6 +2,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsDateString,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
@@ -18,7 +19,12 @@ export class CreatePurchaseQuotationDto {
   quotationNumber?: string;
 
   @IsUUID()
+  @IsNotEmpty()
   vendorId: string;
+
+  @IsUUID()
+  @IsNotEmpty()
+  businessId: string;
 
   @IsDateString()
   quotationDate: string;

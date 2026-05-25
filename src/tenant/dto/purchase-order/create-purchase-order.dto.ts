@@ -2,6 +2,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsDateString,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
@@ -20,9 +21,15 @@ export class CreatePurchaseOrderDto {
   orderNumber?: string;
 
   @IsUUID()
+  @IsNotEmpty()
   warehouseId: string;
 
   @IsUUID()
+  @IsNotEmpty()
+  businessId: string;
+
+  @IsUUID()
+  @IsNotEmpty()
   vendorId: string;
 
   @IsDateString()
