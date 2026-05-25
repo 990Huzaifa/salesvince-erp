@@ -533,6 +533,7 @@ export class PurchaseOrderService {
           orderNumber: params.header.orderNumber,
           warehouseId: params.header.warehouseId,
           vendorId: params.header.vendorId,
+          businessId: params.businessId,
           orderStatus: params.orderStatus,
           orderTotal: params.header.totals.orderTotal,
           deliveryCost: params.header.totals.deliveryCost,
