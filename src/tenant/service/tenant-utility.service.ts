@@ -5,7 +5,6 @@ import { Flavour, Product, ProductBrand, ProductCategory, ProductSubCategory, Uo
 import { Permission } from 'src/tenant-db/entities/permission.entity';
 import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import { ChartOfAccount, ChartOfAccountKind } from 'src/tenant-db/entities/chart-of-account.entity';
-import { ChartOfAccountType } from 'src/tenant-db/chart-of-accounts/constants/chart-of-account-type.enum';
 import { COA_PARENT_CODES } from 'src/tenant-db/chart-of-accounts/constants/coa-parent-codes';
 import { Transaction } from 'src/tenant-db/entities/transaction.entity';
 
