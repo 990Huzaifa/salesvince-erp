@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
 
 export class CreateTenantBusinessDto {
   @IsString()
@@ -8,4 +8,8 @@ export class CreateTenantBusinessDto {
   @IsOptional()
   @IsString()
   legalName?: string;
+
+  @IsOptional()
+  @IsUUID('4')
+  assetId?: string;
 }

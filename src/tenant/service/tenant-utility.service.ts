@@ -12,6 +12,7 @@ import { PartyType } from 'src/tenant-db/entities/party.entity';
 import { Batch, StockBalance } from 'src/tenant-db/entities/stock.entity';
 import { SaleOrder, OrderStatus as SaleOrderStatus } from 'src/tenant-db/entities/sale-order.entity';
 import { PurchaseOrder } from 'src/tenant-db/entities/purchase-order.entity';
+import { Grn } from 'src/tenant-db/entities/grn.entity';
 import { Business } from 'src/tenant-db/entities/business.entity';
 import { ChartOfAccountType } from 'src/tenant-db/chart-of-accounts/constants/chart-of-account-type.enum';
 
@@ -211,6 +212,18 @@ export class TenantUtilityService {
       .addSelect('warehouse.name', 'warehouseName')
       .addSelect('warehouse.code', 'warehouseCode')
       .where('purchaseOrder.businessId = :businessId', { businessId })
+      .andWhere((qb) => {
+        const usedInGrnSubQuery = qb
+          .subQuery()
+          .select('1')
+          .from(Grn, 'grn')
+          .where('grn.purchaseOrderId = purchaseOrder.id')
+          .andWhere('grn.businessId = :businessId')
+          .andWhere('grn.deletedAt IS NULL')
+          .getQuery();
+
+        return `NOT EXISTS ${usedInGrnSubQuery}`;
+      })
       .orderBy('purchaseOrder.orderDate', 'DESC')
       .addOrderBy('purchaseOrder.createdAt', 'DESC')
       .getRawMany();

@@ -1,4 +1,5 @@
 export enum AssetPurpose {
+    BUSINESS_LOGO = 'BUSINESS_LOGO',
     USER_AVATAR = 'USER_AVATAR',
     PRODUCT_IMAGE = 'PRODUCT_IMAGE',
     RETAILER_IMAGE = 'RETAILER_IMAGE',
@@ -7,6 +8,7 @@ export enum AssetPurpose {
 }
 
 export enum AssetEntityType {
+    BUSINESS = 'BUSINESS',
     USER = 'USER',
     PRODUCT = 'PRODUCT',
     RETAILER = 'RETAILER',
@@ -15,6 +17,14 @@ export enum AssetEntityType {
 }
 
 export const ASSET_RULES = {
+    [AssetPurpose.BUSINESS_LOGO]: {
+        allowedEntityTypes: [AssetEntityType.BUSINESS],
+        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+        maxSizeBytes: 2 * 1024 * 1024, // 2MB
+        maxFiles: 1,
+        folder: 'businesses/logo',
+    },
+
     [AssetPurpose.USER_AVATAR]: {
         allowedEntityTypes: [AssetEntityType.USER],
         allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],

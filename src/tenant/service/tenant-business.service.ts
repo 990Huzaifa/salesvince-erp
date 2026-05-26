@@ -1,25 +1,36 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import { DataSource, EntityManager, IsNull, Repository } from 'typeorm';
 import { User } from 'src/tenant-db/entities/user.entity';
 import { Business, BusinessStatus } from 'src/tenant-db/entities/business.entity';
 import { Role } from 'src/tenant-db/entities/role.entity';
+import { Asset, AssetStatus } from 'src/tenant-db/entities/asset.entity';
 import {
   ensureSuperAdminRole,
   linkUserToBusiness,
 } from 'src/tenant-db/helpers/tenant-business-bootstrap.helper';
 import { seedDefaultChartOfAccountsForBusiness } from 'src/tenant-db/helpers/chart-of-account-bootstrap.helper';
+import { S3Service } from 'src/common/s3/s3.service';
+import {
+  ASSET_RULES,
+  AssetEntityType,
+  AssetPurpose,
+} from '../config/asset-rules.config';
 import { CreateTenantBusinessDto } from '../dto/business/create-tenant-business.dto';
 import { AssignBusinessMemberDto } from '../dto/business/assign-business-member.dto';
 import { ActivityLogService } from './activity-log.service';
 
 @Injectable()
 export class TenantBusinessService {
-  constructor(private readonly activityLogService: ActivityLogService) {}
+  constructor(
+    private readonly activityLogService: ActivityLogService,
+    private readonly s3Service: S3Service,
+  ) {}
 
   private async generateUniqueBusinessCode(
     businessRepo: Repository<Business>,
@@ -44,6 +55,44 @@ export class TenantBusinessService {
     if (!user?.isSuperAdmin) {
       throw new ForbiddenException('Super admin only');
     }
+  }
+
+  private async getApprovedBusinessLogoAsset(
+    manager: EntityManager,
+    tenantCode: string,
+    assetId: string,
+    actorUserId: string,
+  ): Promise<Asset> {
+    const asset = await manager.getRepository(Asset).findOne({ where: { id: assetId } });
+    if (!asset) {
+      throw new NotFoundException(`Asset ${assetId} not found`);
+    }
+    if (asset.uploadedById !== actorUserId) {
+      throw new ForbiddenException(`Not allowed to use asset ${assetId}`);
+    }
+    if (asset.status !== AssetStatus.APPROVED) {
+      throw new BadRequestException(
+        `Asset ${assetId} must be confirmed (APPROVED) before attaching as a business logo`,
+      );
+    }
+    if (asset.purpose !== AssetPurpose.BUSINESS_LOGO) {
+      throw new BadRequestException(`Asset ${assetId} is not a business logo`);
+    }
+    if (asset.entityType && asset.entityType !== AssetEntityType.BUSINESS) {
+      throw new BadRequestException(`Asset ${assetId} is not allowed for a business`);
+    }
+    if (asset.entityId != null || asset.attachedAt != null) {
+      throw new BadRequestException(`Asset ${assetId} is already linked to an entity`);
+    }
+
+    const businessLogoRules = ASSET_RULES[AssetPurpose.BUSINESS_LOGO];
+    const tempPrefix = `tenants/${tenantCode}/temp/uploads/${asset.id}.`;
+    const finalPrefix = `tenants/${tenantCode}/${businessLogoRules.folder}/${asset.id}.`;
+    if (!asset.s3Key.startsWith(tempPrefix) && !asset.s3Key.startsWith(finalPrefix)) {
+      throw new BadRequestException(`Asset ${assetId} has an unexpected storage key`);
+    }
+
+    return asset;
   }
 
   async listBusinesses(tenantDb: DataSource, actorUserId: string, page: number, limit: number) {
@@ -71,10 +120,12 @@ export class TenantBusinessService {
     tenantDb: DataSource,
     dto: CreateTenantBusinessDto,
     actorUserId: string,
+    tenantCode: string,
   ) {
     await this.assertSuperAdmin(tenantDb, actorUserId);
 
     const name = dto.name.trim();
+    const logoAssetId = dto.assetId?.trim() || null;
     const businessRepo = tenantDb.getRepository(Business);
 
     const existing = await businessRepo.findOne({
@@ -88,14 +139,34 @@ export class TenantBusinessService {
     const code = await this.generateUniqueBusinessCode(businessRepo);
 
     const saved = await tenantDb.transaction(async (manager) => {
+      const logoAsset = logoAssetId
+        ? await this.getApprovedBusinessLogoAsset(
+            manager,
+            tenantCode,
+            logoAssetId,
+            actorUserId,
+          )
+        : null;
       const business = await manager.save(
         manager.create(Business, {
           name,
           code,
           legalName: dto.legalName?.trim() ?? null,
+          logo: logoAsset ? this.s3Service.getObjectUrl(logoAsset.s3Key) : null,
           status: BusinessStatus.ACTIVE,
         }),
       );
+
+      if (logoAsset) {
+        await manager.getRepository(Asset).update(
+          { id: logoAsset.id },
+          {
+            entityType: AssetEntityType.BUSINESS,
+            entityId: business.id,
+            attachedAt: new Date(),
+          },
+        );
+      }
 
       const chartOfAccounts = await seedDefaultChartOfAccountsForBusiness(
         manager,
@@ -119,6 +190,7 @@ export class TenantBusinessService {
       description: `Business ${saved.business.name} created`,
       metadata: {
         businessId: saved.business.id,
+        logoAssetId,
         chartOfAccountCount: saved.chartOfAccounts.length,
         roleId: saved.superAdminRole.id,
         userBusinessId: saved.membership.id,
