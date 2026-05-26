@@ -72,6 +72,8 @@ import { TenantNotificationController } from './controller/tenant-notification.c
 import { MasterGeoHelperService } from './service/master-geo-helper.service';
 import { SaleOrderController } from './controller/sale/sale-order.controller';
 import { SaleOrderService } from './service/sale/sale-order.service';
+import { ReportController } from './controller/report.controller';
+import { ReportService } from './service/report.service';
 import { Country } from 'src/master-db/entities/country.entity';
 import { State } from 'src/master-db/entities/state.entity';
 import { City } from 'src/master-db/entities/city.entity';
@@ -115,6 +117,7 @@ import { City } from 'src/master-db/entities/city.entity';
     GrnController,
     PurchaseInvoiceController,
     FinanceController,
+    ReportController,
   ],
   providers: [
     TenantAuthService,
@@ -153,6 +156,7 @@ import { City } from 'src/master-db/entities/city.entity';
     PurchaseInvoiceService,
     FinanceService,
     MasterGeoHelperService,
+    ReportService,
   ],
 })
 export class TenantModule {}
