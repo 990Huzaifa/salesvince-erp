@@ -22,10 +22,6 @@ export class CreateSaleQuotationDto {
   @IsNotEmpty()
   customerId: string;
 
-  @IsUUID()
-  @IsNotEmpty()
-  businessId: string;
-
   @IsDateString()
   quotationDate: string;
 
