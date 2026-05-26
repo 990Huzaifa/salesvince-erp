@@ -11,6 +11,7 @@ import {
   Transaction,
 } from 'src/tenant-db/entities/transaction.entity';
 import { computeBalanceMovement } from 'src/tenant-db/helpers/transaction-balance.helper';
+import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
 import { ActivityLogService } from './activity-log.service';
 
 type BalanceRow = {
@@ -21,6 +22,16 @@ type BalanceRow = {
 type ReportAccountType = 'CASH' | 'BANK';
 
 type PartyBalanceMode = 'CUSTOMER' | 'VENDOR';
+
+type ProfitReportOptions = {
+  startDate?: string;
+  endDate?: string;
+};
+
+type CostSnapshot = {
+  purchaseUnitPrice: number;
+  quantity: number;
+};
 
 @Injectable()
 export class ReportService {
@@ -35,6 +46,34 @@ export class ReportService {
 
   private roundAmount(value: number): number {
     return Math.round(value * 100) / 100;
+  }
+
+  private parseDateParam(value: string, field: string): Date {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException(`Invalid ${field}`);
+    }
+    return parsed;
+  }
+
+  private parseDateRange(
+    startDateStr?: string,
+    endDateStr?: string,
+  ): { startDate?: Date; endDate?: Date } {
+    const startDate = startDateStr
+      ? this.parseDateParam(startDateStr, 'startDate')
+      : undefined;
+    const endDate = endDateStr
+      ? this.parseDateParam(endDateStr, 'endDate')
+      : undefined;
+
+    if (startDate && endDate && startDate > endDate) {
+      throw new BadRequestException(
+        'startDate must be on or before endDate',
+      );
+    }
+
+    return { startDate, endDate };
   }
 
   private accountTypeFromParentCode(parentCode: string | null): ReportAccountType {
@@ -135,6 +174,53 @@ export class ReportService {
       partyType: party.type,
       balanceType: mode,
     };
+  }
+
+  private saleLineKey(
+    productId: string,
+    uomId: string,
+    productFlavourId?: string | null,
+  ): string {
+    return `${productId}:${uomId}:${productFlavourId ?? ''}`;
+  }
+
+  private profitGroupKey(
+    productId: string,
+    uomId: string,
+    productFlavourId?: string | null,
+  ): string {
+    return this.saleLineKey(productId, uomId, productFlavourId);
+  }
+
+  private buildCostSnapshots(invoice: SaleInvoice): Map<string, CostSnapshot> {
+    const snapshots = new Map<string, CostSnapshot>();
+    const orderItems = invoice.saleOrder?.items ?? [];
+
+    for (const item of orderItems) {
+      const key = this.saleLineKey(
+        item.productId,
+        item.uomId,
+        item.productFlavourId,
+      );
+      const existing = snapshots.get(key) ?? {
+        purchaseUnitPrice: 0,
+        quantity: 0,
+      };
+      const quantity = Number(item.quantity ?? 0);
+      const previousCost = existing.purchaseUnitPrice * existing.quantity;
+      const nextCost = Number(item.purchaseUnitPrice ?? 0) * quantity;
+      const nextQuantity = existing.quantity + quantity;
+
+      snapshots.set(key, {
+        purchaseUnitPrice:
+          nextQuantity > 0
+            ? this.roundAmount((previousCost + nextCost) / nextQuantity)
+            : 0,
+        quantity: nextQuantity,
+      });
+    }
+
+    return snapshots;
   }
 
   async getCashAndBankBalances(
@@ -304,6 +390,147 @@ export class ReportService {
           data.reduce((sum, party) => sum + party.currentBalance, 0),
         ),
       },
+      meta: { total: data.length },
+    };
+  }
+
+  async getProfitReport(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    options: ProfitReportOptions,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const { startDate, endDate } = this.parseDateRange(
+      options.startDate,
+      options.endDate,
+    );
+
+    const qb = tenantDb
+      .getRepository(SaleInvoice)
+      .createQueryBuilder('invoice')
+      .leftJoinAndSelect('invoice.items', 'items')
+      .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
+      .leftJoinAndSelect('items.uom', 'uom')
+      .leftJoinAndSelect('invoice.saleOrder', 'saleOrder')
+      .leftJoinAndSelect('saleOrder.items', 'saleOrderItems')
+      .where('invoice.businessId = :businessId', {
+        businessId: scopedBusinessId,
+      })
+      .andWhere('invoice.deletedAt IS NULL')
+      .andWhere('items.deletedAt IS NULL');
+
+    if (startDate) {
+      qb.andWhere('invoice.invoiceDate >= :startDate', { startDate });
+    }
+    if (endDate) {
+      qb.andWhere('invoice.invoiceDate <= :endDate', { endDate });
+    }
+
+    const invoices = await qb
+      .orderBy('invoice.invoiceDate', 'ASC')
+      .addOrderBy('invoice.createdAt', 'ASC')
+      .getMany();
+
+    const reportRows = new Map<
+      string,
+      {
+        productId: string;
+        productName: string;
+        skuCode: string | null;
+        productFlavourId: string | null;
+        flavourName: string | null;
+        uomId: string;
+        uomName: string | null;
+        totalQuantity: number;
+        totalSale: number;
+        totalCost: number;
+        profit: number;
+      }
+    >();
+
+    for (const invoice of invoices) {
+      const costSnapshots = this.buildCostSnapshots(invoice);
+
+      for (const item of invoice.items ?? []) {
+        const costSnapshot = costSnapshots.get(
+          this.saleLineKey(item.productId, item.uomId, item.productFlavourId),
+        );
+        const quantity = Number(item.quantity ?? 0);
+        const totalSale = Number(item.totalAmount ?? 0);
+        const totalCost = this.roundAmount(
+          (costSnapshot?.purchaseUnitPrice ?? 0) * quantity,
+        );
+        const key = this.profitGroupKey(
+          item.productId,
+          item.uomId,
+          item.productFlavourId,
+        );
+        const existing = reportRows.get(key);
+        const next = existing ?? {
+          productId: item.productId,
+          productName: item.product?.name ?? '',
+          skuCode: item.product?.skuCode ?? null,
+          productFlavourId: item.productFlavourId ?? null,
+          flavourName: item.productFlavour?.flavour?.name ?? null,
+          uomId: item.uomId,
+          uomName: item.uom?.name ?? null,
+          totalQuantity: 0,
+          totalSale: 0,
+          totalCost: 0,
+          profit: 0,
+        };
+
+        next.totalQuantity = this.roundAmount(next.totalQuantity + quantity);
+        next.totalSale = this.roundAmount(next.totalSale + totalSale);
+        next.totalCost = this.roundAmount(next.totalCost + totalCost);
+        next.profit = this.roundAmount(next.totalSale - next.totalCost);
+        reportRows.set(key, next);
+      }
+    }
+
+    const data = [...reportRows.values()]
+      .map((row) => ({
+        ...row,
+        profitPercentage:
+          row.totalSale > 0
+            ? this.roundAmount((row.profit / row.totalSale) * 100)
+            : 0,
+      }))
+      .sort((left, right) => right.profit - left.profit);
+
+    const totals = data.reduce(
+      (sum, row) => {
+        sum.totalSale = this.roundAmount(sum.totalSale + row.totalSale);
+        sum.totalCost = this.roundAmount(sum.totalCost + row.totalCost);
+        sum.profit = this.roundAmount(sum.totalSale - sum.totalCost);
+        return sum;
+      },
+      { totalSale: 0, totalCost: 0, profit: 0 },
+    );
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'PROFIT_REPORT_VIEWED',
+      description: 'Profit report viewed',
+      metadata: {
+        startDate: options.startDate ?? null,
+        endDate: options.endDate ?? null,
+        count: data.length,
+        totals,
+      },
+    });
+
+    return {
+      totals,
+      period: {
+        startDate: options.startDate ?? null,
+        endDate: options.endDate ?? null,
+      },
+      data,
       meta: { total: data.length },
     };
   }
