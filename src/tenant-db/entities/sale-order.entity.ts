@@ -2,8 +2,10 @@ import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, Pri
 import { User } from "./user.entity";
 import { Product, ProductFlavour, ProductPricing, Uom } from "./product.entity";
 import { Business } from "./business.entity";
-import { Party } from "./party.entity";
 import { Warehouse } from "./warehouse.entity";
+import { DeliveryNote } from "./delivery-note.entity";
+import { Party } from "./party.entity";
+import { SaleInvoice } from "./sale-invoice.entity";
 
 
 export enum OrderStatus {
@@ -25,19 +27,19 @@ export class SaleOrder {
     @JoinColumn({ name: 'businessId' })
     business: Business;
 
-    @Column({ type: 'uuid', nullable: true })
-    warehouseId: string | null;
+    @Column({ type: 'uuid'})
+    warehouseId: string;
 
-    @ManyToOne(() => Warehouse, { nullable: true, onDelete: 'CASCADE' })
+    @ManyToOne(() => Warehouse, (warehouse) => warehouse.saleOrders, {onDelete: 'CASCADE' })
     @JoinColumn({ name: 'warehouseId' })
-    warehouse: Warehouse | null;
+    warehouse: Warehouse;
 
-    @Column({ type: 'uuid', nullable: true })
-    customerId: string | null;
+    @Column({ type: 'uuid'})
+    customerId: string;
 
-    @ManyToOne(() => Party, { nullable: true, onDelete: 'CASCADE' })
+    @ManyToOne(() => Party, (party) => party.saleOrders, {onDelete: 'CASCADE' })
     @JoinColumn({ name: 'customerId' })
-    customer: Party | null;
+    customer: Party;
 
     @Column({ unique: true })
     orderNumber: string;
@@ -81,6 +83,12 @@ export class SaleOrder {
 
     @UpdateDateColumn()
     updatedAt: Date;
+
+    @OneToMany(() => DeliveryNote, (deliveryNote) => deliveryNote.saleOrder, { onDelete: 'CASCADE' })
+    deliveryNotes: DeliveryNote[];
+
+    @OneToMany(() => SaleInvoice, (saleInvoice) => saleInvoice.saleOrder, { onDelete: 'CASCADE' })
+    saleInvoices: SaleInvoice[];
 
     @OneToMany(() => SaleOrderItem, (item) => item.saleOrder)
     items: SaleOrderItem[];

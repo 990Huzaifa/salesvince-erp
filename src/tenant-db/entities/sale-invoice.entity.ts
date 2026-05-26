@@ -1,44 +1,44 @@
 import { Column, CreateDateColumn, DeleteDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
 import { Business } from "./business.entity";
-import { Grn } from "./grn.entity";
-import { PurchaseOrder } from "./purchase-order.entity";
+import { SaleOrder } from "./sale-order.entity";
 import { Product, ProductFlavour, Uom } from "./product.entity";
-import { PurchaseReturn } from "./purchase-return.entity";
+import { DeliveryNote } from "./delivery-note.entity";
+import { SaleReturn } from "./sale-return.entity";
 import { Party } from "./party.entity";
 
 
-@Entity('purchase-invoices')
-export class PurchaseInvoice {
+@Entity('sale-invoices')
+export class SaleInvoice {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
     @Column()
     businessId: string;
 
-    @ManyToOne(() => Business, (business) => business.purchaseInvoices, { onDelete: 'CASCADE' })
+    @ManyToOne(() => Business, (business) => business.saleInvoices, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'businessId' })
     business: Business;
 
     @Column()
-    grnId: string;
+    deliveryNoteId: string;
 
-    @ManyToOne(() => Grn, (grn) => grn.purchaseInvoices, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'grnId' })
-    grn: Grn;
-
-    @Column()
-    vendorId: string;
-    
-    @ManyToOne(() => Party, (party) => party.purchaseInvoices, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'vendorId' })
-    vendor: Party;
+    @ManyToOne(() => DeliveryNote, (deliveryNote) => deliveryNote.saleInvoices, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'deliveryNoteId' })
+    deliveryNote: DeliveryNote;
 
     @Column()
-    purchaseOrderId: string;
+    customerId: string;
 
-    @ManyToOne(() => PurchaseOrder, (purchaseOrder) => purchaseOrder.purchaseInvoices, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'purchaseOrderId' })
-    purchaseOrder: PurchaseOrder;
+    @ManyToOne(() => Party, (party) => party.saleInvoices, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'customerId' })
+    customer: Party;
+
+    @Column()
+    saleOrderId: string;
+
+    @ManyToOne(() => SaleOrder, (saleOrder) => saleOrder.saleInvoices, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'saleOrderId' })
+    saleOrder: SaleOrder;
 
     @Column()
     invoiceNumber: string;
@@ -66,43 +66,43 @@ export class PurchaseInvoice {
 
     // relationships
 
-    @OneToMany(() => PurchaseReturn, (purchaseReturn) => purchaseReturn.purchaseInvoice)
-    purchaseReturns: PurchaseReturn[];
+    @OneToMany(() => SaleReturn, (saleReturn) => saleReturn.saleInvoice, { onDelete: 'CASCADE' })
+    saleReturns: SaleReturn[];
 
-    @OneToMany(() => PurchaseInvoiceItem, (item) => item.purchaseInvoice, { onDelete: 'CASCADE' })
-    items: PurchaseInvoiceItem[];
+    @OneToMany(() => SaleInvoiceItem, (item) => item.saleInvoice, { onDelete: 'CASCADE' })
+    items: SaleInvoiceItem[];
 }
 
-@Entity('purchase-invoice-items')
-export class PurchaseInvoiceItem {
+@Entity('sale-invoice-items')
+export class SaleInvoiceItem {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
     @Column()
-    purchaseInvoiceId: string;
+    saleInvoiceId: string;
 
-    @ManyToOne(() => PurchaseInvoice, (purchaseInvoice) => purchaseInvoice.items, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'purchaseInvoiceId' })
-    purchaseInvoice: PurchaseInvoice;
+    @ManyToOne(() => SaleInvoice, (saleInvoice) => saleInvoice.items, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'saleInvoiceId' })
+    saleInvoice: SaleInvoice;
 
     @Column()
     productId: string;
 
-    @ManyToOne(() => Product, (product) => product.purchaseInvoiceItems, { onDelete: 'CASCADE' })
+    @ManyToOne(() => Product, (product) => product.saleInvoiceItems, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'productId' })
     product: Product;
 
     @Column()
     uomId: string;
 
-    @ManyToOne(() => Uom, (uom) => uom.purchaseInvoiceItems, { onDelete: 'CASCADE' })
+    @ManyToOne(() => Uom, (uom) => uom.saleInvoiceItems, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'uomId' })
     uom: Uom;
 
     @Column({nullable: true})
     productFlavourId: string;
 
-    @ManyToOne(() => ProductFlavour, (productFlavour) => productFlavour.purchaseInvoiceItems, { onDelete: 'CASCADE' })
+    @ManyToOne(() => ProductFlavour, (productFlavour) => productFlavour.saleInvoiceItems, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'productFlavourId' })
     productFlavour: ProductFlavour;
 
@@ -110,7 +110,7 @@ export class PurchaseInvoiceItem {
     quantity: number;   
 
     @Column({type: 'decimal', precision: 18, scale: 2})
-    purchaseUnitPrice: number;
+    saleUnitPrice: number;
 
     @Column({type: 'decimal', precision: 18, scale: 2})
     discountPercentage: number;

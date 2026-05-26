@@ -22,6 +22,10 @@ import { PurchaseInvoice } from './purchase-invoice.entity';
 import { SaleQuotation } from './sale-quotation.entity';
 import { PurchaseQuotation } from './purchase-quotation.entity';
 import { SaleOrder } from './sale-order.entity';
+import { PurchaseReturn } from './purchase-return.entity';
+import { DeliveryNote } from './delivery-note.entity';
+import { SaleInvoice } from './sale-invoice.entity';
+import { SaleReturn } from './sale-return.entity';
 export enum BusinessStatus {
     ACTIVE = 'ACTIVE',
     INACTIVE = 'INACTIVE',
@@ -124,11 +128,23 @@ export class Business {
     @OneToMany(() => PurchaseInvoice, (purchaseInvoice) => purchaseInvoice.business, { onDelete: 'CASCADE' })
     purchaseInvoices: PurchaseInvoice[];
 
+    @OneToMany(() => PurchaseReturn, (purchaseReturn) => purchaseReturn.business, { onDelete: 'CASCADE' })
+    purchaseReturns: PurchaseReturn[];
+
     @OneToMany(() => SaleQuotation, (saleQuotation) => saleQuotation.business, { onDelete: 'CASCADE' })
     saleQuotations: SaleQuotation[];
 
     @OneToMany(() => SaleOrder, (saleOrder) => saleOrder.business, { onDelete: 'CASCADE' })
     saleOrders: SaleOrder[];
+
+    @OneToMany(() => DeliveryNote, (deliveryNote) => deliveryNote.business, { onDelete: 'CASCADE' })
+    deliveryNotes: DeliveryNote[];
+
+    @OneToMany(() => SaleInvoice, (saleInvoice) => saleInvoice.business, { onDelete: 'CASCADE' })
+    saleInvoices: SaleInvoice[];
+
+    @OneToMany(() => SaleReturn, (saleReturn) => saleReturn.business, { onDelete: 'CASCADE' })
+    saleReturns: SaleReturn[];
 
     @OneToMany(() => Batch, (batch) => batch.business, { onDelete: 'CASCADE' })
     batches: Batch[];

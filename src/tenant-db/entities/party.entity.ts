@@ -17,6 +17,10 @@ import { PurchaseOrder } from './purchase-order.entity';
 import { PurchaseQuotation } from './purchase-quotation.entity';
 import { Batch } from './stock.entity';
 import { SaleQuotation } from './sale-quotation.entity';
+import { SaleOrder } from './sale-order.entity';
+import { DeliveryNote } from './delivery-note.entity';
+import { PurchaseInvoice } from './purchase-invoice.entity';
+import { SaleInvoice } from './sale-invoice.entity';
 
 export enum PartyType {
   CUSTOMER = 'CUSTOMER',
@@ -136,9 +140,21 @@ export class Party {
   @OneToMany(() => Grn, (grn) => grn.vendor, { onDelete: 'CASCADE' })
   grns: Grn[];
 
+  @OneToMany(() => PurchaseInvoice, (purchaseInvoice) => purchaseInvoice.vendor, { onDelete: 'CASCADE' })
+  purchaseInvoices: PurchaseInvoice[];
+
   @OneToMany(() => SaleQuotation, (saleQuotation) => saleQuotation.customer, { onDelete: 'CASCADE' })
   saleQuotations: SaleQuotation[];
 
   @OneToMany(() => Batch, (batch) => batch.vendor, { onDelete: 'CASCADE' })
   batches: Batch[];
+
+  @OneToMany(() => SaleOrder, (saleOrder) => saleOrder.customer, { onDelete: 'CASCADE' })
+  saleOrders: SaleOrder[];
+
+  @OneToMany(() => DeliveryNote, (deliveryNote) => deliveryNote.customer, { onDelete: 'CASCADE' })
+  deliveryNotes: DeliveryNote[];
+
+  @OneToMany(() => SaleInvoice, (saleInvoice) => saleInvoice.customer, { onDelete: 'CASCADE' })
+  saleInvoices: SaleInvoice[];
 }

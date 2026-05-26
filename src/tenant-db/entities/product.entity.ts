@@ -23,6 +23,10 @@ import { PurchaseQuotationItem } from './purchase-quotation.entity';
 import { Batch, StockMovement, StockBalance } from './stock.entity';
 import { PurchaseInvoiceItem } from './purchase-invoice.entity';
 import { SaleQuotationItem } from './sale-quotation.entity';
+import { PurchaseReturnItem } from './purchase-return.entity';
+import { SaleInvoiceItem } from './sale-invoice.entity';
+import { DeliveryNoteItem } from './delivery-note.entity';
+import { SaleReturnItem } from './sale-return.entity';
 
 export enum BatchPickStrategy {
     FIFO = 'FIFO',
@@ -188,13 +192,23 @@ export class Uom {
     grnItems: GrnItem[];
     @OneToMany(() => PurchaseInvoiceItem, (purchaseInvoiceItem) => purchaseInvoiceItem.uom)
     purchaseInvoiceItems: PurchaseInvoiceItem[];
-    
+    @OneToMany(() => PurchaseReturnItem, (purchaseReturnItem) => purchaseReturnItem.uom)
+    purchaseReturnItems: PurchaseReturnItem[];
 
     @OneToMany(() => SaleQuotationItem, (saleQuotationItem) => saleQuotationItem.uom)
     saleQuotationItems: SaleQuotationItem[];
 
     @OneToMany(() => SaleOrderItem, (saleOrderItem) => saleOrderItem.uom)
     saleOrderItems: SaleOrderItem[];
+
+    @OneToMany(() => DeliveryNoteItem, (deliveryNoteItem) => deliveryNoteItem.uom)
+    deliveryNoteItems: DeliveryNoteItem[];
+
+    @OneToMany(() => SaleInvoiceItem, (saleInvoiceItem) => saleInvoiceItem.uom)
+    saleInvoiceItems: SaleInvoiceItem[];
+
+    @OneToMany(() => SaleReturnItem, (saleReturnItem) => saleReturnItem.uom)
+    saleReturnItems: SaleReturnItem[];
 }
 
 @Entity('product_brands')
@@ -322,11 +336,23 @@ export class Product {
     @OneToMany(() => PurchaseInvoiceItem, (purchaseInvoiceItem) => purchaseInvoiceItem.product)
     purchaseInvoiceItems: PurchaseInvoiceItem[];
 
+    @OneToMany(() => PurchaseReturnItem, (purchaseReturnItem) => purchaseReturnItem.product)
+    purchaseReturnItems: PurchaseReturnItem[];
+
     @OneToMany(() => SaleQuotationItem, (saleQuotationItem) => saleQuotationItem.product)
     saleQuotationItems: SaleQuotationItem[];
 
     @OneToMany(() => SaleOrderItem, (saleOrderItem) => saleOrderItem.product)
     saleOrderItems: SaleOrderItem[];
+
+    @OneToMany(() => DeliveryNoteItem, (deliveryNoteItem) => deliveryNoteItem.product)
+    deliveryNoteItems: DeliveryNoteItem[];
+
+    @OneToMany(() => SaleInvoiceItem, (saleInvoiceItem) => saleInvoiceItem.product)
+    saleInvoiceItems: SaleInvoiceItem[];
+
+    @OneToMany(() => SaleReturnItem, (saleReturnItem) => saleReturnItem.product)
+    saleReturnItems: SaleReturnItem[];
 
     @OneToMany(() => Batch, (batch) => batch.product, { onDelete: 'CASCADE' })
     batches: Batch[];
@@ -369,11 +395,26 @@ export class ProductFlavour {
     @OneToMany(() => PurchaseOrderItem, (purchaseOrderItem) => purchaseOrderItem.productFlavour)
     purchaseOrderItems: PurchaseOrderItem[];
 
+    @OneToMany(() => GrnItem, (grnItem) => grnItem.productFlavour)
+    grnItems: GrnItem[];
+
+    @OneToMany(() => PurchaseInvoiceItem, (purchaseInvoiceItem) => purchaseInvoiceItem.productFlavour)
+    purchaseInvoiceItems: PurchaseInvoiceItem[];
+
+    @OneToMany(() => PurchaseReturnItem, (purchaseReturnItem) => purchaseReturnItem.productFlavour)
+    purchaseReturnItems: PurchaseReturnItem[];
+
     @OneToMany(() => SaleOrderItem, (saleOrderItem) => saleOrderItem.productFlavour)
     saleOrderItems: SaleOrderItem[];
 
-    @OneToMany(() => GrnItem, (grnItem) => grnItem.productFlavour)
-    grnItems: GrnItem[];
+    @OneToMany(() => DeliveryNoteItem, (deliveryNoteItem) => deliveryNoteItem.productFlavour)
+    deliveryNoteItems: DeliveryNoteItem[];
+
+    @OneToMany(() => SaleInvoiceItem, (saleInvoiceItem) => saleInvoiceItem.productFlavour)
+    saleInvoiceItems: SaleInvoiceItem[];
+
+    @OneToMany(() => SaleReturnItem, (saleReturnItem) => saleReturnItem.productFlavour)
+    saleReturnItems: SaleReturnItem[];
 }
 
 @Entity('product_pricings')
