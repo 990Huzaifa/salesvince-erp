@@ -9,13 +9,32 @@ import {
   PurchaseInvoice,
   PurchaseInvoiceItem,
 } from 'src/tenant-db/entities/purchase-invoice.entity';
+import {
+  AccountTransactionReferenceType,
+  Transaction,
+} from 'src/tenant-db/entities/transaction.entity';
 import { ActivityLogService } from '../activity-log.service';
+import { MasterGeoHelperService } from '../master-geo-helper.service';
 
 const INVOICE_NUMBER_PREFIX = 'PI';
 
+type VendorGeoNames = {
+  countryName: string | null;
+  stateName: string | null;
+  cityName: string | null;
+};
+
+type VendorBalanceSnapshot = {
+  previousBalance: number;
+  currentBalance: number;
+};
+
 @Injectable()
 export class PurchaseInvoiceService {
-  constructor(private readonly activityLogService: ActivityLogService) {}
+  constructor(
+    private readonly activityLogService: ActivityLogService,
+    private readonly masterGeoHelperService: MasterGeoHelperService,
+  ) {}
 
   private assertBusinessId(businessId?: string): string {
     if (!businessId) {
@@ -59,7 +78,109 @@ export class PurchaseInvoiceService {
     return `${INVOICE_NUMBER_PREFIX}-${String(next).padStart(5, '0')}`;
   }
 
-  private mapPurchaseInvoice(invoice: PurchaseInvoice) {
+  private roundAmount(value: number): number {
+    return Math.round(value * 100) / 100;
+  }
+
+  private mapVendor(
+    invoice: PurchaseInvoice,
+    options?: {
+      vendorGeoNames?: VendorGeoNames;
+      vendorBalance?: VendorBalanceSnapshot | null;
+    },
+  ) {
+    if (!invoice.vendor) {
+      return null;
+    }
+
+    return {
+      id: invoice.vendor.id,
+      code: invoice.vendor.code,
+      name: invoice.vendor.name,
+      address: invoice.vendor.address,
+      email: invoice.vendor.email,
+      phone: invoice.vendor.phone,
+      countryId: invoice.vendor.countryId,
+      stateId: invoice.vendor.stateId,
+      cityId: invoice.vendor.cityId,
+      countryName: options?.vendorGeoNames?.countryName ?? null,
+      stateName: options?.vendorGeoNames?.stateName ?? null,
+      cityName: options?.vendorGeoNames?.cityName ?? null,
+      previousBalance: options?.vendorBalance?.previousBalance ?? null,
+      currentBalance: options?.vendorBalance?.currentBalance ?? null,
+    };
+  }
+
+  private async getVendorGeoNames(
+    invoice: PurchaseInvoice,
+  ): Promise<VendorGeoNames> {
+    const vendor = invoice.vendor;
+    const [countryName, stateName, cityName] = await Promise.all([
+      this.masterGeoHelperService.getCountryNameById(vendor?.countryId),
+      this.masterGeoHelperService.getStateNameById(vendor?.stateId),
+      this.masterGeoHelperService.getCityNameById(vendor?.cityId),
+    ]);
+
+    return { countryName, stateName, cityName };
+  }
+
+  private async getVendorBalanceSnapshot(
+    tenantDb: DataSource,
+    businessId: string,
+    invoice: PurchaseInvoice,
+  ): Promise<VendorBalanceSnapshot | null> {
+    if (!invoice.vendor?.payableAccountId) {
+      return null;
+    }
+
+    const transaction = await tenantDb.getRepository(Transaction).findOne({
+      where: {
+        businessId,
+        chartOfAccountId: invoice.vendor.payableAccountId,
+        referenceType: AccountTransactionReferenceType.GRN,
+        referenceId: invoice.grnId,
+      },
+      order: {
+        transactionDate: 'DESC',
+        createdAt: 'DESC',
+        id: 'DESC',
+      },
+      select: [
+        'id',
+        'debitAmount',
+        'creditAmount',
+        'currentBalance',
+        'transactionDate',
+        'createdAt',
+      ],
+    });
+
+    if (!transaction) {
+      return null;
+    }
+
+    const debitAmount = Number(transaction.debitAmount ?? 0);
+    const creditAmount = Number(transaction.creditAmount ?? 0);
+    const currentBalance = this.roundAmount(
+      Number(transaction.currentBalance ?? 0),
+    );
+
+    return {
+      previousBalance: this.roundAmount(
+        currentBalance - creditAmount + debitAmount,
+      ),
+      currentBalance,
+    };
+  }
+
+  private mapPurchaseInvoice(
+    invoice: PurchaseInvoice,
+    options?: {
+      vendorGeoNames?: VendorGeoNames;
+      vendorBalance?: VendorBalanceSnapshot | null;
+    },
+  ) {
+    const vendor = this.mapVendor(invoice, options);
     const items = (invoice.items ?? []).map((item) => ({
       id: item.id,
       productId: item.productId,
@@ -70,6 +191,21 @@ export class PurchaseInvoiceService {
             skuCode: item.product.skuCode,
           }
         : null,
+      productFlavourId: item.productFlavourId,
+      productFlavour: item.productFlavour
+        ? {
+            id: item.productFlavour.id,
+            flavourId: item.productFlavour.flavourId,
+            flavour: item.productFlavour.flavour
+              ? {
+                  id: item.productFlavour.flavour.id,
+                  name: item.productFlavour.flavour.name,
+                }
+              : null,
+          }
+        : null,
+      vendorId: invoice.vendorId,
+      vendor,
       uomId: item.uomId,
       uom: item.uom ? { id: item.uom.id, name: item.uom.name } : null,
       quantity: item.quantity,
@@ -95,6 +231,9 @@ export class PurchaseInvoiceService {
             status: invoice.grn.status,
           }
         : null,
+      vendorId: invoice.vendorId,
+      vendor,
+      vendorBalance: options?.vendorBalance ?? null,
       purchaseOrderId: invoice.purchaseOrderId,
       purchaseOrder: invoice.purchaseOrder
         ? {
@@ -149,6 +288,7 @@ export class PurchaseInvoiceService {
         businessId: grn.businessId,
         grnId: grn.id,
         purchaseOrderId: grn.purchaseOrderId,
+        vendorId: grn.vendorId,
         invoiceNumber,
         invoiceDate: grn.grnDate,
         totalTaxAmount: grn.totalTaxAmount,
@@ -207,7 +347,10 @@ export class PurchaseInvoiceService {
       .leftJoinAndSelect('invoice.purchaseOrder', 'purchaseOrder')
       .leftJoinAndSelect('invoice.items', 'items')
       .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .leftJoinAndSelect('items.uom', 'uom')
+      .leftJoinAndSelect('invoice.vendor', 'vendor')
       .where('invoice.businessId = :businessId', {
         businessId: scopedBusinessId,
       })
@@ -267,7 +410,10 @@ export class PurchaseInvoiceService {
       .leftJoinAndSelect('invoice.purchaseOrder', 'purchaseOrder')
       .leftJoinAndSelect('invoice.items', 'items')
       .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .leftJoinAndSelect('items.uom', 'uom')
+      .leftJoinAndSelect('invoice.vendor', 'vendor')
       .where('invoice.id = :invoiceId', { invoiceId })
       .andWhere('invoice.businessId = :businessId', {
         businessId: scopedBusinessId,
@@ -279,6 +425,11 @@ export class PurchaseInvoiceService {
       throw new NotFoundException('Purchase invoice not found');
     }
 
+    const [vendorGeoNames, vendorBalance] = await Promise.all([
+      this.getVendorGeoNames(invoice),
+      this.getVendorBalanceSnapshot(tenantDb, scopedBusinessId, invoice),
+    ]);
+
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
       businessId: scopedBusinessId,
@@ -287,6 +438,11 @@ export class PurchaseInvoiceService {
       metadata: { purchaseInvoiceId: invoice.id },
     });
 
-    return { data: this.mapPurchaseInvoice(invoice) };
+    return {
+      data: this.mapPurchaseInvoice(invoice, {
+        vendorGeoNames,
+        vendorBalance,
+      }),
+    };
   }
 }

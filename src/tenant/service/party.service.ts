@@ -218,7 +218,7 @@ export class PartyService {
       .leftJoinAndSelect('p.receivableAccount', 'ra')
       .leftJoinAndSelect('p.payableAccount', 'pa');
 
-      if(options.type === PartyType.VENDOR) {
+      if(options.type === PartyType.CUSTOMER) {
         qb.where('p.businessId = :businessId', { businessId: scopedBusinessId });
       }
       qb.andWhere('p.deletedAt IS NULL')
