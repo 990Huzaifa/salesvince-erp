@@ -534,6 +534,7 @@ export class SaleOrderService {
           warehouseId: params.dto.warehouseId,
           customerId: params.dto.customerId,
           businessId: params.businessId,
+          deliveryCost: params.dto.deliveryCost,
           orderStatus: params.orderStatus,
           orderTotal: totals.orderTotal,
           taxPercentage: totals.taxPercentage,
@@ -882,6 +883,9 @@ export class SaleOrderService {
         order.orderNumber = nextNumber;
       }
     }
+    if (dto.deliveryCost !== undefined) {
+      order.deliveryCost = dto.deliveryCost;
+    }
 
     if (dto.orderDate !== undefined) {
       order.orderDate = new Date(dto.orderDate);
@@ -931,6 +935,7 @@ export class SaleOrderService {
 
       await manager.getRepository(SaleOrder).update(order.id, {
         orderNumber: order.orderNumber,
+        deliveryCost: order.deliveryCost,
         warehouseId: order.warehouseId,
         customerId: order.customerId,
         orderDate: order.orderDate,

@@ -16,6 +16,11 @@ import { CreateSaleOrderItemDto } from './create-sale-order-item.dto';
 
 export class CreateSaleOrderDto {
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  deliveryCost?: number;
+
+  @IsOptional()
   @IsString()
   @MaxLength(50)
   orderNumber?: string;
