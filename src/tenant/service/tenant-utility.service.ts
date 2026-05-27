@@ -270,7 +270,7 @@ export class TenantUtilityService {
       .leftJoinAndSelect('balance.uom', 'uom')
       .where('balance.businessId = :businessId', { businessId })
       .andWhere('balance.deletedAt IS NULL')
-      .andWhere('balance.quantityOnHand > 0')
+      .andWhere('balance.availableQuantity > 0')
       .andWhere('product.isDelete = false')
       .andWhere('product.isActive = true')
       .andWhere('warehouse.deletedAt IS NULL')
