@@ -72,6 +72,8 @@ import { TenantNotificationController } from './controller/tenant-notification.c
 import { MasterGeoHelperService } from './service/master-geo-helper.service';
 import { SaleOrderController } from './controller/sale/sale-order.controller';
 import { SaleOrderService } from './service/sale/sale-order.service';
+import { DeliveryNoteController } from './controller/sale/delivery-note.controller';
+import { DeliveryNoteService } from './service/sale/delivery-note.service';
 import { ReportController } from './controller/report.controller';
 import { ReportService } from './service/report.service';
 import { Country } from 'src/master-db/entities/country.entity';
@@ -112,6 +114,7 @@ import { City } from 'src/master-db/entities/city.entity';
     PurchaseQuotationController,
     SaleQuotationController,
     SaleOrderController,
+    DeliveryNoteController,
     WarehouseController,
     PurchaseOrderController,
     GrnController,
@@ -149,6 +152,7 @@ import { City } from 'src/master-db/entities/city.entity';
     PurchaseQuotationService,
     SaleQuotationService,
     SaleOrderService,
+    DeliveryNoteService,
     WarehouseService,
     PurchaseOrderService,
     GrnService,

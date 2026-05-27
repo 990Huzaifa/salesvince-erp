@@ -53,6 +53,16 @@ export type ConsumeStockLineResult = {
   movement: StockMovement;
 };
 
+export type ReserveStockInput = {
+  businessId: string;
+  warehouseId: string;
+  lines: ConsumeStockLineInput[];
+};
+
+export type ReserveStockLineResult = {
+  stockBalance: StockBalance;
+};
+
 @Injectable()
 export class StockService {
   private roundAmount(value: number): number {
@@ -125,6 +135,62 @@ export class StockService {
     const stockBalance = balanceRepo.create(rows[0] as Partial<StockBalance>);
 
     if (stockBalance.quantityOnHand < 0 || stockBalance.quantityAvailable < 0) {
+      throw new BadRequestException('Insufficient stock for this operation');
+    }
+
+    return stockBalance;
+  }
+
+  private async updateReservedStockBalance(
+    manager: EntityManager,
+    params: {
+      businessId: string;
+      warehouseId: string;
+      productId: string;
+      uomId: string;
+      availableDelta: number;
+      onHandDelta: number;
+      reservedDelta: number;
+    },
+  ): Promise<StockBalance> {
+    const balanceRepo = manager.getRepository(StockBalance);
+    const rows = (await manager.query(
+      `
+        UPDATE "stock_balances"
+        SET
+          "quantityAvailable" = "quantityAvailable" + $5,
+          "quantityOnHand" = "quantityOnHand" + $6,
+          "quantityReserved" = "quantityReserved" + $7,
+          "updatedAt" = now()
+        WHERE "businessId" = $1
+          AND "warehouseId" = $2
+          AND "productId" = $3
+          AND "uomId" = $4
+          AND "deletedAt" IS NULL
+        RETURNING *
+      `,
+      [
+        params.businessId,
+        params.warehouseId,
+        params.productId,
+        params.uomId,
+        params.availableDelta,
+        params.onHandDelta,
+        params.reservedDelta,
+      ],
+    )) as StockBalance[];
+
+    if (!rows.length) {
+      throw new BadRequestException('Insufficient stock for this operation');
+    }
+
+    const stockBalance = balanceRepo.create(rows[0] as Partial<StockBalance>);
+
+    if (
+      stockBalance.quantityOnHand < 0 ||
+      stockBalance.quantityAvailable < 0 ||
+      stockBalance.quantityReserved < 0
+    ) {
       throw new BadRequestException('Insufficient stock for this operation');
     }
 
@@ -229,6 +295,87 @@ export class StockService {
         productId: line.productId,
         uomId: line.uomId,
         quantityDelta: -line.quantity,
+      });
+
+      const movement = await movementRepo.save(
+        movementRepo.create({
+          businessId: input.businessId,
+          warehouseId: input.warehouseId,
+          productId: line.productId,
+          uomId: line.uomId,
+          quantity: line.quantity,
+          movementType: StockMovementType.OUT,
+          referenceType: input.referenceType,
+        }),
+      );
+
+      results.push({ stockBalance, movement });
+    }
+
+    return results;
+  }
+
+  /**
+   * Reserves available inventory for an approved sale order.
+   */
+  async reserveStock(
+    manager: EntityManager,
+    input: ReserveStockInput,
+  ): Promise<ReserveStockLineResult[]> {
+    if (!input.lines.length) {
+      throw new BadRequestException('At least one stock line is required');
+    }
+
+    const results: ReserveStockLineResult[] = [];
+
+    for (const line of input.lines) {
+      if (line.quantity <= 0) {
+        throw new BadRequestException('Reserved quantity must be greater than zero');
+      }
+
+      const stockBalance = await this.updateReservedStockBalance(manager, {
+        businessId: input.businessId,
+        warehouseId: input.warehouseId,
+        productId: line.productId,
+        uomId: line.uomId,
+        availableDelta: -line.quantity,
+        onHandDelta: 0,
+        reservedDelta: line.quantity,
+      });
+
+      results.push({ stockBalance });
+    }
+
+    return results;
+  }
+
+  /**
+   * Issues previously reserved sale inventory out of stock.
+   */
+  async consumeReservedStockOut(
+    manager: EntityManager,
+    input: ConsumeStockInput,
+  ): Promise<ConsumeStockLineResult[]> {
+    if (!input.lines.length) {
+      throw new BadRequestException('At least one stock line is required');
+    }
+
+    const movementRepo = manager.getRepository(StockMovement);
+    const results: ConsumeStockLineResult[] = [];
+
+    for (const line of input.lines) {
+      if (line.quantity <= 0) {
+        throw new BadRequestException('Issued quantity must be greater than zero');
+      }
+
+      const stockBalance = await this.updateReservedStockBalance(manager, {
+        businessId: input.businessId,
+        warehouseId: input.warehouseId,
+        productId: line.productId,
+        uomId: line.uomId,
+        availableDelta: 0,
+        onHandDelta: -line.quantity,
+        reservedDelta: -line.quantity,
       });
 
       const movement = await movementRepo.save(

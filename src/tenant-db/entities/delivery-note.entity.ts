@@ -1,5 +1,5 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn } from "typeorm";
-import { SaleOrder } from "./sale-order.entity";
+import { SaleOrder, SaleOrderItem } from "./sale-order.entity";
 import { Party} from "./party.entity";
 import { Business } from "./business.entity";
 import { Warehouse } from "./warehouse.entity";
@@ -96,6 +96,13 @@ export class DeliveryNoteItem {
     deliveryNote: DeliveryNote;
 
     @Column()
+    saleOrderItemId: string;
+
+    @ManyToOne(() => SaleOrderItem, { onDelete: 'CASCADE' })
+    @JoinColumn({ name: 'saleOrderItemId' })
+    saleOrderItem: SaleOrderItem;
+
+    @Column()
     productId: string;
 
     @ManyToOne(() => Product, (product) => product.deliveryNoteItems, { onDelete: 'CASCADE' })
@@ -115,4 +122,28 @@ export class DeliveryNoteItem {
     @ManyToOne(() => Uom, (uom) => uom.deliveryNoteItems, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'uomId' })
     uom: Uom;
+
+    @Column()
+    orderedQuantity: number;
+
+    @Column()
+    deliveredQuantity: number;
+
+    @Column({type: 'decimal', precision: 18, scale: 2})
+    saleUnitPrice: number;
+
+    @Column({type: 'decimal', precision: 18, scale: 2})
+    discountPercentage: number;
+
+    @Column({type: 'decimal', precision: 18, scale: 2})
+    discountAmount: number;
+
+    @Column({type: 'decimal', precision: 18, scale: 2})
+    taxPercentage: number;
+
+    @Column({type: 'decimal', precision: 18, scale: 2})
+    taxAmount: number;
+
+    @Column({type: 'decimal', precision: 18, scale: 2})
+    totalAmount: number;
 }       

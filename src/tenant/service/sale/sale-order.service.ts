@@ -29,6 +29,7 @@ import { CreateSaleOrderItemDto } from '../../dto/sale-order/create-sale-order-i
 import { UpdateSaleOrderDto } from '../../dto/sale-order/update-sale-order.dto';
 import { UpdateSaleOrderItemDto } from '../../dto/sale-order/update-sale-order-item.dto';
 import { ActivityLogService } from '../activity-log.service';
+import { StockService } from '../stock.service';
 
 const ORDER_NUMBER_PREFIX = 'SO';
 
@@ -56,7 +57,10 @@ type SaleOrderTotals = {
 
 @Injectable()
 export class SaleOrderService {
-  constructor(private readonly activityLogService: ActivityLogService) {}
+  constructor(
+    private readonly activityLogService: ActivityLogService,
+    private readonly stockService: StockService,
+  ) {}
 
   private assertBusinessId(businessId?: string): string {
     if (!businessId) {
@@ -458,6 +462,31 @@ export class SaleOrderService {
     return order;
   }
 
+  private async reserveSaleOrderStock(
+    manager: EntityManager,
+    businessId: string,
+    order: SaleOrder,
+  ): Promise<void> {
+    const items = order.items ?? [];
+    if (!items.length) {
+      throw new BadRequestException(
+        'Sale order must have at least one item to approve',
+      );
+    }
+
+    await this.stockService.reserveStock(manager, {
+      businessId,
+      warehouseId: order.warehouseId,
+      lines: items
+        .filter((item) => item.quantity > 0)
+        .map((item) => ({
+          productId: item.productId,
+          uomId: item.uomId,
+          quantity: item.quantity,
+        })),
+    });
+  }
+
   private async createOrderWithStatus(
     tenantDb: DataSource,
     params: {
@@ -522,10 +551,16 @@ export class SaleOrderService {
         .getRepository(SaleOrderItem)
         .save(this.buildItemEntities(manager, order.id, resolvedLines));
 
-      return orderRepo.findOneOrFail({
+      const loaded = await orderRepo.findOneOrFail({
         where: { id: order.id },
         relations: this.orderRelations(),
       });
+
+      if (params.orderStatus === OrderStatus.APPROVED) {
+        await this.reserveSaleOrderStock(manager, params.businessId, loaded);
+      }
+
+      return loaded;
     });
   }
 
@@ -644,7 +679,7 @@ export class SaleOrderService {
       actorId: actorUserId,
       businessId: scopedBusinessId,
       action: 'SALE_ORDER_CREATED_AND_APPROVED',
-      description: `Sale order ${created.orderNumber} created and approved`,
+      description: `Sale order ${created.orderNumber} created, approved, and stock reserved`,
       metadata: {
         saleOrderId: created.id,
         orderNumber: created.orderNumber,
@@ -672,7 +707,7 @@ export class SaleOrderService {
       actorId: actorUserId,
       businessId: scopedBusinessId,
       action: 'SALE_ORDER_CREATED_APPROVED_AND_SALE_RESERVED',
-      description: `Sale order ${created.orderNumber} created and approved; sale workflow is reserved for future implementation`,
+      description: `Sale order ${created.orderNumber} created, approved, and stock reserved`,
       metadata: {
         saleOrderId: created.id,
         orderNumber: created.orderNumber,
@@ -684,7 +719,7 @@ export class SaleOrderService {
         saleOrder: this.mapSaleOrder(created),
         sale: null,
       },
-      message: 'Sale workflow is reserved for future implementation',
+      message: 'Sale order approved and stock reserved for delivery',
     };
   }
 
@@ -978,19 +1013,28 @@ export class SaleOrderService {
       );
     }
 
-    order.orderStatus = OrderStatus.APPROVED;
-    const approved = await tenantDb.getRepository(SaleOrder).save(order);
+    const loaded = await tenantDb.transaction(async (manager) => {
+      order.orderStatus = OrderStatus.APPROVED;
+      const approved = await manager.getRepository(SaleOrder).save(order);
+      const approvedOrder = await manager.getRepository(SaleOrder).findOneOrFail({
+        where: { id: approved.id },
+        relations: this.orderRelations(),
+      });
 
-    const loaded = await tenantDb.getRepository(SaleOrder).findOneOrFail({
-      where: { id: approved.id },
-      relations: this.orderRelations(),
+      await this.reserveSaleOrderStock(
+        manager,
+        scopedBusinessId,
+        approvedOrder,
+      );
+
+      return approvedOrder;
     });
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
       businessId: scopedBusinessId,
       action: 'SALE_ORDER_APPROVED',
-      description: `Sale order ${loaded.orderNumber} approved`,
+      description: `Sale order ${loaded.orderNumber} approved and stock reserved`,
       metadata: { saleOrderId: loaded.id },
     });
 

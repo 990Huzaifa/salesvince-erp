@@ -50,6 +50,9 @@ export class SaleOrder {
     @Column({ type: 'decimal', precision: 18, scale: 2})
     orderTotal: number;
 
+    @Column({type: 'decimal', precision: 18, scale: 2, default: 0})
+    deliveryCost: number;
+
     @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
     taxPercentage: number;
 
