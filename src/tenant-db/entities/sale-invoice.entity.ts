@@ -7,7 +7,7 @@ import { SaleReturn } from "./sale-return.entity";
 import { Party } from "./party.entity";
 
 
-@Entity('sale-invoices')
+@Entity('sale_invoices')
 export class SaleInvoice {
     @PrimaryGeneratedColumn('uuid')
     id: string;
@@ -73,7 +73,7 @@ export class SaleInvoice {
     items: SaleInvoiceItem[];
 }
 
-@Entity('sale-invoice-items')
+@Entity('sale_invoice_items')
 export class SaleInvoiceItem {
     @PrimaryGeneratedColumn('uuid')
     id: string;

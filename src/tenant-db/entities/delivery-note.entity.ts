@@ -75,7 +75,7 @@ export class DeliveryNote {
     saleInvoices: SaleInvoice[];
 }
 
-@Entity('delivery-note-items')
+@Entity('delivery_note_items')
 export class DeliveryNoteItem {
     @PrimaryGeneratedColumn('uuid')
     id: string;
