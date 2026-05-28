@@ -2,7 +2,6 @@ import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, Pri
 import { SaleOrder, SaleOrderItem } from "./sale-order.entity";
 import { Party} from "./party.entity";
 import { Business } from "./business.entity";
-import { Warehouse } from "./warehouse.entity";
 import { Product, ProductFlavour, Uom } from "./product.entity";
 import { SaleInvoice } from "./sale-invoice.entity";
 
@@ -31,13 +30,6 @@ export class DeliveryNote {
     @ManyToOne(() => SaleOrder, (saleOrder) => saleOrder.deliveryNotes, {onDelete: 'CASCADE' })
     @JoinColumn({ name: 'saleOrderId' })
     saleOrder: SaleOrder;
-
-    @Column({ type: 'uuid'})
-    warehouseId: string;
-
-    @ManyToOne(() => Warehouse, (warehouse) => warehouse.deliveryNotes, {onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'warehouseId' })
-    warehouse: Warehouse;
 
     @Column({ type: 'uuid'})
     customerId: string;

@@ -75,7 +75,6 @@ export class DeliveryNoteController {
     @Query('limit') limit: number = 10,
     @Query('search') search?: string,
     @Query('customerId') customerId?: string,
-    @Query('warehouseId') warehouseId?: string,
     @Query('saleOrderId') saleOrderId?: string,
     @Query('status') status?: DeliveryNoteStatus,
   ) {
@@ -88,7 +87,6 @@ export class DeliveryNoteController {
         limit: Number(limit),
         search,
         customerId,
-        warehouseId,
         saleOrderId,
         status,
       },

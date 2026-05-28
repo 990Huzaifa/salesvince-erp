@@ -82,7 +82,6 @@ export class DeliveryNoteService {
   private deliveryNoteRelations() {
     return {
       saleOrder: true,
-      warehouse: true,
       customer: true,
       items: {
         saleOrderItem: true,
@@ -346,7 +345,6 @@ export class DeliveryNoteService {
     const order = await tenantDb
       .getRepository(SaleOrder)
       .createQueryBuilder('so')
-      .innerJoin('so.warehouse', 'warehouse')
       .leftJoinAndSelect('so.items', 'items')
       .leftJoinAndSelect('so.customer', 'customer')
       .where('so.id = :saleOrderId', { saleOrderId })
@@ -381,7 +379,6 @@ export class DeliveryNoteService {
       .getRepository(DeliveryNote)
       .createQueryBuilder('deliveryNote')
       .leftJoinAndSelect('deliveryNote.saleOrder', 'saleOrder')
-      .leftJoinAndSelect('deliveryNote.warehouse', 'warehouse')
       .leftJoinAndSelect('deliveryNote.customer', 'customer')
       .leftJoinAndSelect('deliveryNote.items', 'items')
       .leftJoinAndSelect('items.saleOrderItem', 'saleOrderItem')
@@ -448,14 +445,6 @@ export class DeliveryNoteService {
             orderStatus: deliveryNote.saleOrder.orderStatus,
           }
         : null,
-      warehouseId: deliveryNote.warehouseId,
-      warehouse: deliveryNote.warehouse
-        ? {
-            id: deliveryNote.warehouse.id,
-            name: deliveryNote.warehouse.name,
-            code: deliveryNote.warehouse.code,
-          }
-        : null,
       customerId: deliveryNote.customerId,
       customer: deliveryNote.customer
         ? {
@@ -503,7 +492,6 @@ export class DeliveryNoteService {
 
     await this.stockService.consumeReservedStockOut(manager, {
       businessId,
-      warehouseId: deliveryNote.warehouseId,
       referenceType: ReferenceType.SALE,
       lines: items
         .filter((item) => item.deliveredQuantity > 0)
@@ -595,7 +583,6 @@ export class DeliveryNoteService {
         deliveryNoteRepo.create({
           businessId: scopedBusinessId,
           saleOrderId: order.id,
-          warehouseId: order.warehouseId,
           customerId: order.customerId,
           deliveryNoteNumber,
           deliveryNoteDate: new Date(dto.deliveryNoteDate),
@@ -657,7 +644,6 @@ export class DeliveryNoteService {
       limit: number;
       search?: string;
       customerId?: string;
-      warehouseId?: string;
       saleOrderId?: string;
       status?: DeliveryNoteStatus;
     },
@@ -672,7 +658,6 @@ export class DeliveryNoteService {
       .getRepository(DeliveryNote)
       .createQueryBuilder('deliveryNote')
       .leftJoinAndSelect('deliveryNote.saleOrder', 'saleOrder')
-      .leftJoinAndSelect('deliveryNote.warehouse', 'warehouse')
       .leftJoinAndSelect('deliveryNote.customer', 'customer')
       .leftJoinAndSelect('deliveryNote.items', 'items')
       .leftJoinAndSelect('items.product', 'product')
@@ -683,11 +668,6 @@ export class DeliveryNoteService {
     if (options.customerId) {
       qb.andWhere('deliveryNote.customerId = :customerId', {
         customerId: options.customerId,
-      });
-    }
-    if (options.warehouseId) {
-      qb.andWhere('deliveryNote.warehouseId = :warehouseId', {
-        warehouseId: options.warehouseId,
       });
     }
     if (options.saleOrderId) {

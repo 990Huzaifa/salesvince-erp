@@ -27,10 +27,6 @@ export class CreateSaleOrderDto {
 
   @IsUUID()
   @IsNotEmpty()
-  warehouseId: string;
-
-  @IsUUID()
-  @IsNotEmpty()
   customerId: string;
 
   @IsDateString()

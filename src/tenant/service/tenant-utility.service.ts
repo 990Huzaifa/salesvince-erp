@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, In, IsNull } from 'typeorm';
 import { Role } from 'src/tenant-db/entities/role.entity';
-import { BatchPickStrategy, Flavour, Product, ProductBrand, ProductCategory, ProductSubCategory, Uom } from 'src/tenant-db/entities/product.entity';
+import { Flavour, Product, ProductBrand, ProductCategory, ProductSubCategory, Uom } from 'src/tenant-db/entities/product.entity';
 import { Permission } from 'src/tenant-db/entities/permission.entity';
 import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import { ChartOfAccount, ChartOfAccountKind } from 'src/tenant-db/entities/chart-of-account.entity';
@@ -10,6 +10,7 @@ import { Transaction } from 'src/tenant-db/entities/transaction.entity';
 import { Party } from 'src/tenant-db/entities/party.entity';
 import { PartyType } from 'src/tenant-db/entities/party.entity';
 import { Batch, StockBalance } from 'src/tenant-db/entities/stock.entity';
+import { selectStockPricing } from '../utils/stock-batch.util';
 import { SaleOrder, OrderStatus as SaleOrderStatus } from 'src/tenant-db/entities/sale-order.entity';
 import { PurchaseOrder } from 'src/tenant-db/entities/purchase-order.entity';
 import { Grn } from 'src/tenant-db/entities/grn.entity';
@@ -18,95 +19,8 @@ import { ChartOfAccountType } from 'src/tenant-db/chart-of-accounts/constants/ch
 
 @Injectable()
 export class TenantUtilityService {
-  private roundAmount(value: number): number {
-    return Math.round(value * 100) / 100;
-  }
-
-  private selectStockPricing(
-    strategy: BatchPickStrategy,
-    batches: Batch[],
-  ) {
-    if (batches.length === 0) {
-      return {
-        purchaseUnitPrice: 0,
-        saleUnitMarginAmount: 0,
-        saleUnitMarginPercentage: 0,
-        selectedBatch: null,
-      };
-    }
-
-    if (strategy === BatchPickStrategy.AVG_COST) {
-      const totalQuantity = batches.reduce(
-        (sum, batch) => sum + Number(batch.quantity ?? 0),
-        0,
-      );
-
-      if (totalQuantity <= 0) {
-        return {
-          purchaseUnitPrice: 0,
-          saleUnitMarginAmount: 0,
-          saleUnitMarginPercentage: 0,
-          selectedBatch: null,
-        };
-      }
-
-      const weightedAverage = (field: keyof Batch) =>
-        batches.reduce(
-          (sum, balance) =>
-            sum +
-            Number(balance[field] ?? 0) *
-              Number(balance.quantity ?? 0),
-          0,
-        ) / totalQuantity;
-
-      return {
-        purchaseUnitPrice: this.roundAmount(weightedAverage('purchaseUnitPrice')),
-        saleUnitMarginAmount: this.roundAmount(weightedAverage('saleUnitMarginAmount')),
-        saleUnitMarginPercentage: this.roundAmount(
-          weightedAverage('saleUnitMarginPercentage'),
-        ),
-        selectedBatch: null,
-      };
-    }
-
-    const sortedBatches = [...batches].sort((left, right) => {
-      const leftTime = new Date(left.batchDate).getTime();
-      const rightTime = new Date(right.batchDate).getTime();
-      const direction = strategy === BatchPickStrategy.FIFO ? 1 : -1;
-
-      if (leftTime !== rightTime) {
-        return (leftTime - rightTime) * direction;
-      }
-
-      return (
-        (new Date(left.createdAt).getTime() -
-          new Date(right.createdAt).getTime()) *
-        direction
-      );
-    });
-    const selectedBatch = sortedBatches[0];
-
-    return {
-      purchaseUnitPrice: Number(selectedBatch.purchaseUnitPrice ?? 0),
-      saleUnitMarginAmount: Number(selectedBatch.saleUnitMarginAmount ?? 0),
-      saleUnitMarginPercentage: Number(
-        selectedBatch.saleUnitMarginPercentage ?? 0,
-      ),
-      selectedBatch: {
-        id: selectedBatch.id,
-        batchNumber: selectedBatch.batchNumber,
-        uomId: selectedBatch.uomId,
-        batchDate: selectedBatch.batchDate,
-      },
-    };
-  }
-
-  private stockUomKey(
-    productId: string,
-    warehouseId: string,
-    uomId?: string | null,
-  ): string {
-    return `${productId}:${warehouseId}:${uomId ?? ''}`;
+  private productUomKey(productId: string, uomId: string): string {
+    return `${productId}:${uomId}`;
   }
 
   async getRoles(tenantDb: DataSource) {
@@ -171,7 +85,6 @@ export class TenantUtilityService {
       .getRepository(SaleOrder)
       .createQueryBuilder('saleOrder')
       .leftJoin('saleOrder.customer', 'customer')
-      .leftJoin('saleOrder.warehouse', 'warehouse')
       .select('saleOrder.id', 'id')
       .addSelect('saleOrder.orderNumber', 'orderNumber')
       .addSelect('saleOrder.orderDate', 'orderDate')
@@ -180,9 +93,6 @@ export class TenantUtilityService {
       .addSelect('saleOrder.customerId', 'customerId')
       .addSelect('customer.name', 'customerName')
       .addSelect('customer.code', 'customerCode')
-      .addSelect('saleOrder.warehouseId', 'warehouseId')
-      .addSelect('warehouse.name', 'warehouseName')
-      .addSelect('warehouse.code', 'warehouseCode')
       .where('saleOrder.businessId = :businessId', { businessId })
       .andWhere('saleOrder.orderStatus = :orderStatus', {
         orderStatus: SaleOrderStatus.APPROVED,
@@ -266,16 +176,15 @@ export class TenantUtilityService {
       .getRepository(StockBalance)
       .createQueryBuilder('balance')
       .innerJoinAndSelect('balance.product', 'product')
-      .innerJoinAndSelect('balance.warehouse', 'warehouse')
+      .innerJoin('balance.warehouse', 'warehouse')
       .leftJoinAndSelect('balance.uom', 'uom')
       .where('balance.businessId = :businessId', { businessId })
       .andWhere('balance.deletedAt IS NULL')
-      .andWhere('balance.availableQuantity > 0')
+      .andWhere('balance.quantityAvailable > 0')
       .andWhere('product.isDelete = false')
       .andWhere('product.isActive = true')
       .andWhere('warehouse.deletedAt IS NULL')
       .orderBy('product.name', 'ASC')
-      .addOrderBy('warehouse.name', 'ASC')
       .addOrderBy('uom.name', 'ASC')
       .getMany();
 
@@ -287,49 +196,70 @@ export class TenantUtilityService {
       .andWhere('batch.quantity > 0')
       .getMany();
 
-    const batchesByProductWarehouse = new Map<string, Batch[]>();
+    const batchesByProductUom = new Map<string, Batch[]>();
     for (const batch of batches) {
-      const key = this.stockUomKey(
-        batch.productId,
-        batch.warehouseId,
-        batch.uomId,
-      );
-      const rows = batchesByProductWarehouse.get(key) ?? [];
+      const key = this.productUomKey(batch.productId, batch.uomId);
+      const rows = batchesByProductUom.get(key) ?? [];
       rows.push(batch);
-      batchesByProductWarehouse.set(key, rows);
+      batchesByProductUom.set(key, rows);
+    }
+
+    type AggregatedStock = {
+      productId: string;
+      name: string;
+      skuCode: string;
+      batchPickStrategy: Product['batchPickStrategy'];
+      uomId: string;
+      uom: { id: string; name: string } | null;
+      quantityAvailable: number;
+      quantityOnHand: number;
+    };
+
+    const aggregated = new Map<string, AggregatedStock>();
+
+    for (const balance of stockBalances) {
+      const key = this.productUomKey(balance.productId, balance.uomId);
+      const existing = aggregated.get(key);
+
+      if (existing) {
+        existing.quantityAvailable += Number(balance.quantityAvailable);
+        existing.quantityOnHand += Number(balance.quantityOnHand);
+        continue;
+      }
+
+      aggregated.set(key, {
+        productId: balance.productId,
+        name: balance.product.name,
+        skuCode: balance.product.skuCode,
+        batchPickStrategy: balance.product.batchPickStrategy,
+        uomId: balance.uomId,
+        uom: balance.uom
+          ? {
+              id: balance.uom.id,
+              name: balance.uom.name,
+            }
+          : null,
+        quantityAvailable: Number(balance.quantityAvailable),
+        quantityOnHand: Number(balance.quantityOnHand),
+      });
     }
 
     return {
-      result: stockBalances.map((balance) => {
+      result: [...aggregated.values()].map((row) => {
         const productBatches =
-          batchesByProductWarehouse.get(
-            this.stockUomKey(
-              balance.productId,
-              balance.warehouseId,
-              balance.uomId,
-            ),
-          ) ?? [];
-        const pricing = this.selectStockPricing(
-          balance.product.batchPickStrategy,
-          productBatches,
-        );
+          batchesByProductUom.get(this.productUomKey(row.productId, row.uomId)) ??
+          [];
+        const pricing = selectStockPricing(row.batchPickStrategy, productBatches);
 
         return {
-          stockBalanceId: balance.id,
-          id: balance.product.id,
-          name: balance.product.name,
-          skuCode: balance.product.skuCode,
-          batchPickStrategy: balance.product.batchPickStrategy,
-          warehouseId: balance.warehouse.id,
-          warehouseName: balance.warehouse.name,
-          uomId: balance.uomId,
-          uom: balance.uom
-            ? {
-                id: balance.uom.id,
-                name: balance.uom.name,
-              }
-            : null,
-          quantityOnHand: balance.quantityOnHand,
+          id: row.productId,
+          name: row.name,
+          skuCode: row.skuCode,
+          batchPickStrategy: row.batchPickStrategy,
+          uomId: row.uomId,
+          uom: row.uom,
+          quantityAvailable: row.quantityAvailable,
+          quantityOnHand: row.quantityOnHand,
           purchaseUnitPrice: pricing.purchaseUnitPrice,
           saleUnitMarginAmount: pricing.saleUnitMarginAmount,
           saleUnitMarginPercentage: pricing.saleUnitMarginPercentage,

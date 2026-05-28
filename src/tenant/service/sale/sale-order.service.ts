@@ -4,20 +4,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import {
-  Brackets,
-  DataSource,
-  EntityManager,
-  In,
-  IsNull,
-} from 'typeorm';
-import {
-  OrderStatus,
-  SaleOrder,
-  SaleOrderItem,
-} from 'src/tenant-db/entities/sale-order.entity';
+import { Brackets, DataSource, EntityManager, In, IsNull } from 'typeorm';
+import { OrderStatus, SaleOrder, SaleOrderItem } from 'src/tenant-db/entities/sale-order.entity';
 import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
-import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import {
   Product,
   ProductFlavour,
@@ -110,22 +99,6 @@ export class SaleOrderService {
     }
 
     return resolved;
-  }
-
-  private async assertWarehouseForBusiness(
-    tenantDb: DataSource,
-    businessId: string,
-    warehouseId: string,
-  ): Promise<Warehouse> {
-    const warehouse = await tenantDb.getRepository(Warehouse).findOne({
-      where: { id: warehouseId, businessId, deletedAt: IsNull() },
-    });
-
-    if (!warehouse) {
-      throw new NotFoundException('Warehouse not found');
-    }
-
-    return warehouse;
   }
 
   private async assertCustomerForBusiness(
@@ -339,7 +312,6 @@ export class SaleOrderService {
 
   private orderRelations() {
     return {
-      warehouse: true,
       customer: true,
       createdByUser: true,
       items: {
@@ -395,14 +367,6 @@ export class SaleOrderService {
     return {
       id: order.id,
       orderNumber: order.orderNumber,
-      warehouseId: order.warehouseId,
-      warehouse: order.warehouse
-        ? {
-            id: order.warehouse.id,
-            name: order.warehouse.name,
-            code: order.warehouse.code,
-          }
-        : null,
       customerId: order.customerId,
       customer: order.customer
         ? {
@@ -443,7 +407,6 @@ export class SaleOrderService {
     const order = await tenantDb
       .getRepository(SaleOrder)
       .createQueryBuilder('so')
-      .leftJoinAndSelect('so.warehouse', 'warehouse')
       .leftJoinAndSelect('so.customer', 'customer')
       .leftJoinAndSelect('so.createdByUser', 'createdByUser')
       .leftJoinAndSelect('so.items', 'items')
@@ -476,7 +439,6 @@ export class SaleOrderService {
 
     await this.stockService.reserveStock(manager, {
       businessId,
-      warehouseId: order.warehouseId,
       lines: items
         .filter((item) => item.quantity > 0)
         .map((item) => ({
@@ -495,12 +457,7 @@ export class SaleOrderService {
       orderStatus: OrderStatus;
       dto: CreateSaleOrderDto;
     },
-  ): Promise<SaleOrder> {
-    await this.assertWarehouseForBusiness(
-      tenantDb,
-      params.businessId,
-      params.dto.warehouseId,
-    );
+  ): Promise<SaleOrder> { 
     await this.assertCustomerForBusiness(
       tenantDb,
       params.businessId,
@@ -531,10 +488,9 @@ export class SaleOrderService {
       const order = await orderRepo.save(
         orderRepo.create({
           orderNumber,
-          warehouseId: params.dto.warehouseId,
+          deliveryCost: params.dto.deliveryCost,
           customerId: params.dto.customerId,
           businessId: params.businessId,
-          deliveryCost: params.dto.deliveryCost,
           orderStatus: params.orderStatus,
           orderTotal: totals.orderTotal,
           taxPercentage: totals.taxPercentage,
@@ -732,7 +688,6 @@ export class SaleOrderService {
       limit: number;
       search?: string;
       customerId?: string;
-      warehouseId?: string;
       orderStatus?: OrderStatus;
     },
     actorUserId: string,
@@ -745,7 +700,6 @@ export class SaleOrderService {
     const qb = tenantDb
       .getRepository(SaleOrder)
       .createQueryBuilder('so')
-      .leftJoinAndSelect('so.warehouse', 'warehouse')
       .leftJoinAndSelect('so.customer', 'customer')
       .leftJoinAndSelect('so.createdByUser', 'createdByUser')
       .leftJoinAndSelect('so.items', 'items')
@@ -763,12 +717,6 @@ export class SaleOrderService {
       });
     }
 
-    if (options.warehouseId) {
-      qb.andWhere('so.warehouseId = :warehouseId', {
-        warehouseId: options.warehouseId,
-      });
-    }
-
     if (options.orderStatus) {
       qb.andWhere('so.orderStatus = :orderStatus', {
         orderStatus: options.orderStatus,
@@ -783,8 +731,7 @@ export class SaleOrderService {
             .where('so.orderNumber ILIKE :search', { search })
             .orWhere('customer.name ILIKE :search', { search })
             .orWhere('customer.code ILIKE :search', { search })
-            .orWhere('warehouse.name ILIKE :search', { search })
-            .orWhere('warehouse.code ILIKE :search', { search });
+            ;
         }),
       );
     }
@@ -847,24 +794,6 @@ export class SaleOrderService {
       orderId,
     );
     this.assertPendingStatus(order);
-
-    if (dto.warehouseId !== undefined) {
-      await this.assertWarehouseForBusiness(
-        tenantDb,
-        scopedBusinessId,
-        dto.warehouseId,
-      );
-      order.warehouseId = dto.warehouseId;
-    }
-
-    if (dto.customerId !== undefined) {
-      await this.assertCustomerForBusiness(
-        tenantDb,
-        scopedBusinessId,
-        dto.customerId,
-      );
-      order.customerId = dto.customerId;
-    }
 
     if (dto.orderNumber !== undefined) {
       const nextNumber = dto.orderNumber.trim();
@@ -936,7 +865,6 @@ export class SaleOrderService {
       await manager.getRepository(SaleOrder).update(order.id, {
         orderNumber: order.orderNumber,
         deliveryCost: order.deliveryCost,
-        warehouseId: order.warehouseId,
         customerId: order.customerId,
         orderDate: order.orderDate,
         notes: order.notes,

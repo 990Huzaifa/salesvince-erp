@@ -94,7 +94,6 @@ export class SaleOrderController {
     @Query('limit') limit: number = 10,
     @Query('search') search?: string,
     @Query('customerId') customerId?: string,
-    @Query('warehouseId') warehouseId?: string,
     @Query('orderStatus') orderStatus?: OrderStatus,
   ) {
     const user = req.user as TenantRequestUser;
@@ -106,7 +105,6 @@ export class SaleOrderController {
         limit: Number(limit),
         search,
         customerId,
-        warehouseId,
         orderStatus,
       },
       user.userId,

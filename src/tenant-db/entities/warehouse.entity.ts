@@ -3,8 +3,6 @@ import { Business } from "./business.entity";
 import { PurchaseOrder } from "./purchase-order.entity";
 import { Grn } from "./grn.entity";
 import { StockBalance, Batch, StockMovement } from "./stock.entity";
-import { SaleOrder } from "./sale-order.entity";
-import { DeliveryNote } from "./delivery-note.entity";
 
 @Entity('warehouses')
 export class Warehouse {
@@ -78,10 +76,4 @@ export class Warehouse {
 
     @OneToMany(() => StockMovement, (stockMovement) => stockMovement.warehouse, { onDelete: 'CASCADE' })
     stockMovements: StockMovement[];
-
-    @OneToMany(() => SaleOrder, (saleOrder) => saleOrder.warehouse, { onDelete: 'CASCADE' })
-    saleOrders: SaleOrder[];
-
-    @OneToMany(() => DeliveryNote, (deliveryNote) => deliveryNote.warehouse, { onDelete: 'CASCADE' })
-    deliveryNotes: DeliveryNote[];
-}   
+}    
