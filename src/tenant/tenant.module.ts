@@ -76,6 +76,8 @@ import { DeliveryNoteController } from './controller/sale/delivery-note.controll
 import { DeliveryNoteService } from './service/sale/delivery-note.service';
 import { ReportController } from './controller/report.controller';
 import { ReportService } from './service/report.service';
+import { DashboardController } from './controller/dashboard.controller';
+import { DashboardService } from './service/dashboard.service';
 import { Country } from 'src/master-db/entities/country.entity';
 import { State } from 'src/master-db/entities/state.entity';
 import { City } from 'src/master-db/entities/city.entity';
@@ -121,6 +123,7 @@ import { City } from 'src/master-db/entities/city.entity';
     PurchaseInvoiceController,
     FinanceController,
     ReportController,
+    DashboardController,
   ],
   providers: [
     TenantAuthService,
@@ -161,6 +164,7 @@ import { City } from 'src/master-db/entities/city.entity';
     FinanceService,
     MasterGeoHelperService,
     ReportService,
+    DashboardService,
   ],
 })
 export class TenantModule {}
