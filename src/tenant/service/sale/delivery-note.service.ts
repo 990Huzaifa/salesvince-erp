@@ -23,6 +23,7 @@ import { CreateDeliveryNoteItemDto } from '../../dto/delivery-note/create-delive
 import { ActivityLogService } from '../activity-log.service';
 import { StockService } from '../stock.service';
 import { TransactionService } from '../transaction.service';
+import { SaleInvoiceService } from './sale-invoice.service';
 
 const DELIVERY_NOTE_NUMBER_PREFIX = 'DN';
 
@@ -53,6 +54,7 @@ export class DeliveryNoteService {
     private readonly activityLogService: ActivityLogService,
     private readonly stockService: StockService,
     private readonly transactionService: TransactionService,
+    private readonly saleInvoiceService: SaleInvoiceService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -474,6 +476,15 @@ export class DeliveryNoteService {
     deliveryNote: DeliveryNote,
     customer: Party,
   ): Promise<DeliveryNote> {
+    if (deliveryNote.status === DeliveryNoteStatus.APPROVED) {
+      const loaded = await manager.getRepository(DeliveryNote).findOneOrFail({
+        where: { id: deliveryNote.id },
+        relations: this.deliveryNoteRelations(),
+      });
+      await this.saleInvoiceService.createFromDeliveryNote(manager, loaded);
+      return loaded;
+    }
+
     if (deliveryNote.status !== DeliveryNoteStatus.PENDING) {
       throw new BadRequestException('Only pending delivery notes can be approved');
     }
@@ -516,10 +527,14 @@ export class DeliveryNoteService {
     deliveryNote.status = DeliveryNoteStatus.APPROVED;
     await manager.getRepository(DeliveryNote).save(deliveryNote);
 
-    return manager.getRepository(DeliveryNote).findOneOrFail({
+    const approved = await manager.getRepository(DeliveryNote).findOneOrFail({
       where: { id: deliveryNote.id },
       relations: this.deliveryNoteRelations(),
     });
+
+    await this.saleInvoiceService.createFromDeliveryNote(manager, approved);
+
+    return approved;
   }
 
   async create(
