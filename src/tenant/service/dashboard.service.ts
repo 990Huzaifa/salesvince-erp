@@ -292,7 +292,7 @@ export class DashboardService {
     limit = 50,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
-    const perTypeLimit = Math.max(limit, 50);
+    const perTypeLimit = limit;
 
     const [
       saleOrders,
