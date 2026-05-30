@@ -7,6 +7,8 @@ import {
 import { Brackets, DataSource, EntityManager, In, IsNull } from 'typeorm';
 import { OrderStatus, SaleOrder, SaleOrderItem } from 'src/tenant-db/entities/sale-order.entity';
 import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
+import { DeliveryNote } from 'src/tenant-db/entities/delivery-note.entity';
+import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
 import {
   Product,
   ProductFlavour,
@@ -19,6 +21,7 @@ import { UpdateSaleOrderDto } from '../../dto/sale-order/update-sale-order.dto';
 import { UpdateSaleOrderItemDto } from '../../dto/sale-order/update-sale-order-item.dto';
 import { ActivityLogService } from '../activity-log.service';
 import { StockService } from '../stock.service';
+import { DeliveryNoteService } from './delivery-note.service';
 
 const ORDER_NUMBER_PREFIX = 'SO';
 
@@ -49,6 +52,7 @@ export class SaleOrderService {
   constructor(
     private readonly activityLogService: ActivityLogService,
     private readonly stockService: StockService,
+    private readonly deliveryNoteService: DeliveryNoteService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -320,6 +324,33 @@ export class SaleOrderService {
         uom: true,
       },
     } as const;
+  }
+
+  private mapSaleWorkflowDeliveryNote(deliveryNote: DeliveryNote) {
+    return {
+      id: deliveryNote.id,
+      deliveryNoteNumber: deliveryNote.deliveryNoteNumber,
+      deliveryNoteDate: deliveryNote.deliveryNoteDate,
+      status: deliveryNote.status,
+      totalTaxAmount: deliveryNote.totalTaxAmount,
+      totalDiscountAmount: deliveryNote.totalDiscountAmount,
+      totalAmount: deliveryNote.totalAmount,
+    };
+  }
+
+  private mapSaleWorkflowInvoice(invoice: SaleInvoice | null) {
+    if (!invoice) {
+      return null;
+    }
+
+    return {
+      id: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      invoiceDate: invoice.invoiceDate,
+      totalTaxAmount: invoice.totalTaxAmount,
+      totalDiscountAmount: invoice.totalDiscountAmount,
+      totalAmount: invoice.totalAmount,
+    };
   }
 
   private mapSaleOrder(order: SaleOrder) {
@@ -653,30 +684,107 @@ export class SaleOrderService {
     actorUserId: string,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
-    const created = await this.createOrderWithStatus(tenantDb, {
-      businessId: scopedBusinessId,
-      actorUserId,
-      orderStatus: OrderStatus.APPROVED,
-      dto,
+    const customer = await this.assertCustomerForBusiness(
+      tenantDb,
+      scopedBusinessId,
+      dto.customerId,
+    );
+
+    if (!customer.receivableAccountId) {
+      throw new BadRequestException(
+        'Customer receivable account is required before approving delivery note',
+      );
+    }
+
+    const orderNumber = await this.resolveOrderNumber(
+      tenantDb,
+      dto.orderNumber,
+    );
+    const pricingByKey = await this.validateLineItems(
+      tenantDb.manager,
+      scopedBusinessId,
+      dto.items,
+    );
+    const resolvedLines = this.buildResolvedLines(dto.items, pricingByKey);
+    const totals = this.computeOrderTotals(resolvedLines, {
+      taxPercentage: dto.taxPercentage,
+      discountPercentage: dto.discountPercentage,
+    });
+
+    const created = await tenantDb.transaction(async (manager) => {
+      const orderRepo = manager.getRepository(SaleOrder);
+      const order = await orderRepo.save(
+        orderRepo.create({
+          orderNumber,
+          deliveryCost: dto.deliveryCost ?? 0,
+          customerId: dto.customerId,
+          businessId: scopedBusinessId,
+          orderStatus: OrderStatus.APPROVED,
+          orderTotal: totals.orderTotal,
+          taxPercentage: totals.taxPercentage,
+          taxAmount: totals.taxAmount,
+          discountPercentage: totals.discountPercentage,
+          discountAmount: totals.discountAmount,
+          totalAmount: totals.totalAmount,
+          notes: dto.notes?.trim() || null,
+          createdBy: actorUserId,
+          orderDate: new Date(dto.orderDate),
+        }),
+      );
+
+      await manager
+        .getRepository(SaleOrderItem)
+        .save(this.buildItemEntities(manager, order.id, resolvedLines));
+
+      const loadedOrder = await orderRepo.findOneOrFail({
+        where: { id: order.id },
+        relations: this.orderRelations(),
+      });
+
+      await this.reserveSaleOrderStock(manager, scopedBusinessId, loadedOrder);
+
+      const deliveryNote = await this.deliveryNoteService.createApprovedFromOrder(
+        manager,
+        {
+          businessId: scopedBusinessId,
+          order: loadedOrder,
+          deliveryNoteDate: new Date(dto.orderDate),
+          deliveryCost: dto.deliveryCost,
+          taxPercentage: dto.taxPercentage,
+          discountPercentage: dto.discountPercentage,
+          notes: dto.notes,
+          actorUserId,
+        },
+      );
+
+      const saleInvoice = await manager.getRepository(SaleInvoice).findOne({
+        where: { deliveryNoteId: deliveryNote.id, deletedAt: IsNull() },
+      });
+
+      return { order: loadedOrder, deliveryNote, saleInvoice };
     });
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
       businessId: scopedBusinessId,
-      action: 'SALE_ORDER_CREATED_APPROVED_AND_SALE_RESERVED',
-      description: `Sale order ${created.orderNumber} created, approved, and stock reserved`,
+      action: 'SALE_ORDER_CREATED_APPROVED_AND_SOLD',
+      description: `Sale order ${created.order.orderNumber} created, approved, and sold`,
       metadata: {
-        saleOrderId: created.id,
-        orderNumber: created.orderNumber,
+        saleOrderId: created.order.id,
+        orderNumber: created.order.orderNumber,
+        deliveryNoteId: created.deliveryNote.id,
+        deliveryNoteNumber: created.deliveryNote.deliveryNoteNumber,
+        saleInvoiceId: created.saleInvoice?.id ?? null,
+        invoiceNumber: created.saleInvoice?.invoiceNumber ?? null,
       },
     });
 
     return {
       data: {
-        saleOrder: this.mapSaleOrder(created),
-        sale: null,
+        saleOrder: this.mapSaleOrder(created.order),
+        deliveryNote: this.mapSaleWorkflowDeliveryNote(created.deliveryNote),
+        saleInvoice: this.mapSaleWorkflowInvoice(created.saleInvoice),
       },
-      message: 'Sale order approved and stock reserved for delivery',
     };
   }
 

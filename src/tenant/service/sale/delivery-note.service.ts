@@ -48,6 +48,17 @@ type DeliveryNoteTotals = {
   totalAmount: number;
 };
 
+type CreateApprovedDeliveryNoteFromOrderInput = {
+  businessId: string;
+  order: SaleOrder;
+  deliveryNoteDate: Date;
+  deliveryCost?: number;
+  taxPercentage?: number;
+  discountPercentage?: number;
+  notes?: string | null;
+  actorUserId: string;
+};
+
 @Injectable()
 export class DeliveryNoteService {
   constructor(
@@ -370,6 +381,90 @@ export class DeliveryNoteService {
     }
 
     return order;
+  }
+
+  async createApprovedFromOrder(
+    manager: EntityManager,
+    input: CreateApprovedDeliveryNoteFromOrderInput,
+  ): Promise<DeliveryNote> {
+    const { businessId, order } = input;
+
+    if (order.orderStatus !== OrderStatus.APPROVED) {
+      throw new BadRequestException(
+        'Sale order must be approved before creating an approved delivery note',
+      );
+    }
+
+    if (!order.items?.length) {
+      throw new BadRequestException('Sale order must have items');
+    }
+
+    const customer = await this.assertCustomerForApproval(
+      manager,
+      businessId,
+      order.customerId,
+    );
+    const taxPercentage = this.roundAmount(
+      input.taxPercentage ?? Number(order.taxPercentage),
+    );
+    const priorDelivered = await this.getApprovedDeliveredBySaleOrderItem(
+      manager,
+      order.id,
+    );
+    const resolvedLines = this.resolveCreateLines(
+      order,
+      undefined,
+      priorDelivered,
+      taxPercentage,
+    );
+    const totals = this.computeDeliveryNoteTotals(resolvedLines, {
+      deliveryCost: input.deliveryCost ?? Number(order.deliveryCost),
+      taxPercentage,
+      discountPercentage:
+        input.discountPercentage ?? Number(order.discountPercentage),
+    });
+    const deliveryNoteNumber = await this.generateDeliveryNoteNumber(manager);
+    const existingNumber = await manager.getRepository(DeliveryNote).findOne({
+      where: { deliveryNoteNumber },
+    });
+    if (existingNumber) {
+      throw new ConflictException(
+        'Delivery note with this number already exists',
+      );
+    }
+
+    const deliveryNoteRepo = manager.getRepository(DeliveryNote);
+    const deliveryNote = await deliveryNoteRepo.save(
+      deliveryNoteRepo.create({
+        businessId,
+        saleOrderId: order.id,
+        customerId: order.customerId,
+        deliveryNoteNumber,
+        deliveryNoteDate: input.deliveryNoteDate,
+        notes: input.notes?.trim() || null,
+        deliveryCost: input.deliveryCost ?? Number(order.deliveryCost),
+        totalTaxAmount: totals.totalTaxAmount,
+        totalDiscountAmount: totals.totalDiscountAmount,
+        totalAmount: totals.totalAmount,
+        status: DeliveryNoteStatus.PENDING,
+      }),
+    );
+
+    await manager
+      .getRepository(DeliveryNoteItem)
+      .save(this.buildItemEntities(manager, deliveryNote.id, resolvedLines));
+
+    const loaded = await deliveryNoteRepo.findOneOrFail({
+      where: { id: deliveryNote.id },
+      relations: this.deliveryNoteRelations(),
+    });
+
+    return this.executeDeliveryNoteApproval(
+      manager,
+      businessId,
+      loaded,
+      customer,
+    );
   }
 
   private async findDeliveryNoteForBusiness(
