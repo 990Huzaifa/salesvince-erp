@@ -12,6 +12,8 @@ import { DashboardService } from '../service/dashboard.service';
 import { DashboardDateRangeQueryDto } from '../dto/dashboard/dashboard-date-range.query.dto';
 import { SaleAnalyticsQueryDto } from '../dto/dashboard/sale-analytics.query.dto';
 import { ThingsToReviewQueryDto } from '../dto/dashboard/things-to-review.query.dto';
+import { SaleByProductQueryDto } from '../dto/dashboard/sale-by-product.query.dto';
+import { LowPaymentCustomersQueryDto } from '../dto/dashboard/low-payment-customers.query.dto';
 
 @Controller('tenant/dashboard')
 @UseGuards(
@@ -75,5 +77,34 @@ export class DashboardController {
       date: query.date,
       graph_filter: query.graph_filter ?? 'daily',
     });
+  }
+
+  @Get('sale-by-product')
+  getSaleByProduct(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: SaleByProductQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.dashboardService.getSaleByProduct(tenantDb, user.businessId, {
+      startDate: query.startDate,
+      endDate: query.endDate,
+      limit: query.limit ?? 10,
+    });
+  }
+
+  @Get('low-payment-customers')
+  getLowPaymentCustomers(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: LowPaymentCustomersQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.dashboardService.getLowPaymentCustomers(
+      tenantDb,
+      user.businessId,
+      user.userId,
+      query.limit ?? 10,
+    );
   }
 }

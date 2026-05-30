@@ -796,6 +796,58 @@ export class DashboardService {
     }));
   }
 
+  async getSaleByProduct(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    options: { startDate: string; endDate?: string; limit?: number },
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const start = this.parseDateParam(options.startDate, 'startDate');
+    const end = options.endDate
+      ? this.parseDateParam(options.endDate, 'endDate')
+      : new Date();
+
+    if (start > end) {
+      throw new BadRequestException('startDate must be on or before endDate');
+    }
+
+    const endOfDay = new Date(end);
+    endOfDay.setUTCHours(23, 59, 59, 999);
+
+    const data = await this.getTopSaleByProduct(
+      tenantDb,
+      scopedBusinessId,
+      start,
+      endOfDay,
+      options.limit ?? 10,
+    );
+
+    return { data };
+  }
+
+  async getLowPaymentCustomers(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    actorUserId: string,
+    limit = 10,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const customerBalances = await this.reportService.getCustomerBalances(
+      tenantDb,
+      scopedBusinessId,
+      actorUserId,
+    );
+
+    const data = await this.buildLowPaymentCustomers(
+      tenantDb,
+      scopedBusinessId,
+      customerBalances.data,
+      limit,
+    );
+
+    return { data };
+  }
+
   private async buildLowPaymentCustomers(
     tenantDb: DataSource,
     businessId: string,
