@@ -20,6 +20,8 @@ import { ReferenceType } from 'src/tenant-db/entities/stock.entity';
 import { AccountTransactionReferenceType } from 'src/tenant-db/entities/transaction.entity';
 import { CreateDeliveryNoteDto } from '../../dto/delivery-note/create-delivery-note.dto';
 import { CreateDeliveryNoteItemDto } from '../../dto/delivery-note/create-delivery-note-item.dto';
+import { UpdateDeliveryNoteDto } from '../../dto/delivery-note/update-delivery-note.dto';
+import { UpdateDeliveryNoteItemDto } from '../../dto/delivery-note/update-delivery-note-item.dto';
 import { ActivityLogService } from '../activity-log.service';
 import { StockService } from '../stock.service';
 import { TransactionService } from '../transaction.service';
@@ -77,6 +79,14 @@ export class DeliveryNoteService {
 
   private roundAmount(value: number): number {
     return Math.round(value * 100) / 100;
+  }
+
+  private assertPendingStatus(deliveryNote: DeliveryNote): void {
+    if (deliveryNote.status !== DeliveryNoteStatus.PENDING) {
+      throw new BadRequestException(
+        'Only pending delivery notes can be modified',
+      );
+    }
   }
 
   private resolveCreateStatus(status?: DeliveryNoteStatus): DeliveryNoteStatus {
@@ -255,15 +265,24 @@ export class DeliveryNoteService {
   private async getApprovedDeliveredBySaleOrderItem(
     manager: EntityManager,
     saleOrderId: string,
+    excludeDeliveryNoteId?: string,
   ): Promise<Map<string, number>> {
-    const rows = await manager
+    const qb = manager
       .getRepository(DeliveryNoteItem)
       .createQueryBuilder('item')
       .innerJoin('item.deliveryNote', 'deliveryNote')
       .where('deliveryNote.saleOrderId = :saleOrderId', { saleOrderId })
       .andWhere('deliveryNote.status = :status', {
         status: DeliveryNoteStatus.APPROVED,
-      })
+      });
+
+    if (excludeDeliveryNoteId) {
+      qb.andWhere('deliveryNote.id != :excludeDeliveryNoteId', {
+        excludeDeliveryNoteId,
+      });
+    }
+
+    const rows = await qb
       .select('item.saleOrderItemId', 'saleOrderItemId')
       .addSelect('SUM(item.deliveredQuantity)', 'delivered')
       .groupBy('item.saleOrderItemId')
@@ -348,6 +367,23 @@ export class DeliveryNoteService {
     }
 
     return lines;
+  }
+
+  private resolveUpdateLines(
+    order: SaleOrder,
+    dtoItems: UpdateDeliveryNoteItemDto[],
+    priorDelivered: Map<string, number>,
+    headerTaxPercentage: number,
+  ): ResolvedDeliveryNoteLine[] {
+    return this.resolveCreateLines(
+      order,
+      dtoItems.map((item) => ({
+        saleOrderItemId: item.saleOrderItemId,
+        deliveredQuantity: item.deliveredQuantity,
+      })),
+      priorDelivered,
+      headerTaxPercentage,
+    );
   }
 
   private async findApprovedSaleOrder(
@@ -894,5 +930,138 @@ export class DeliveryNoteService {
     });
 
     return { data: this.mapDeliveryNote(approved) };
+  }
+
+  async edit(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    deliveryNoteId: string,
+    dto: UpdateDeliveryNoteDto,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const deliveryNote = await this.findDeliveryNoteForBusiness(
+      tenantDb,
+      scopedBusinessId,
+      deliveryNoteId,
+    );
+    this.assertPendingStatus(deliveryNote);
+
+    const order = await this.findApprovedSaleOrder(
+      tenantDb,
+      scopedBusinessId,
+      deliveryNote.saleOrderId,
+    );
+
+    const taxPercentage = this.roundAmount(
+      dto.taxPercentage ?? Number(order.taxPercentage),
+    );
+
+    const updated = await tenantDb.transaction(async (manager) => {
+      const deliveryNoteRepo = manager.getRepository(DeliveryNote);
+
+      if (dto.deliveryNoteNumber !== undefined) {
+        const nextNumber = dto.deliveryNoteNumber.trim();
+        if (!nextNumber) {
+          throw new BadRequestException('Delivery note number cannot be empty');
+        }
+        if (nextNumber !== deliveryNote.deliveryNoteNumber) {
+          const taken = await deliveryNoteRepo.findOne({
+            where: { deliveryNoteNumber: nextNumber },
+          });
+          if (taken) {
+            throw new ConflictException(
+              'Delivery note with this number already exists',
+            );
+          }
+          deliveryNote.deliveryNoteNumber = nextNumber;
+        }
+      }
+
+      if (dto.deliveryNoteDate !== undefined) {
+        deliveryNote.deliveryNoteDate = new Date(dto.deliveryNoteDate);
+      }
+      if (dto.notes !== undefined) {
+        deliveryNote.notes = dto.notes?.trim() || null;
+      }
+      if (dto.deliveryCost !== undefined) {
+        deliveryNote.deliveryCost = dto.deliveryCost;
+      }
+
+      let resolvedLines: ResolvedDeliveryNoteLine[] | null = null;
+
+      if (dto.items !== undefined) {
+        const priorDelivered = await this.getApprovedDeliveredBySaleOrderItem(
+          manager,
+          order.id,
+          deliveryNote.id,
+        );
+        resolvedLines = this.resolveUpdateLines(
+          order,
+          dto.items,
+          priorDelivered,
+          taxPercentage,
+        );
+
+        await manager
+          .getRepository(DeliveryNoteItem)
+          .delete({ deliveryNoteId: deliveryNote.id });
+        await manager
+          .getRepository(DeliveryNoteItem)
+          .save(
+            this.buildItemEntities(manager, deliveryNote.id, resolvedLines),
+          );
+      } else {
+        const existingItems = await manager.getRepository(DeliveryNoteItem).find({
+          where: { deliveryNoteId: deliveryNote.id },
+        });
+        resolvedLines = existingItems.map((item) => ({
+          saleOrderItemId: item.saleOrderItemId,
+          productId: item.productId,
+          uomId: item.uomId,
+          productFlavourId: item.productFlavourId,
+          orderedQuantity: item.orderedQuantity,
+          deliveredQuantity: item.deliveredQuantity,
+          saleUnitPrice: Number(item.saleUnitPrice),
+          discountPercentage: Number(item.discountPercentage),
+          discountAmount: Number(item.discountAmount),
+          taxPercentage: Number(item.taxPercentage),
+          taxAmount: Number(item.taxAmount),
+          totalAmount: Number(item.totalAmount),
+        }));
+      }
+
+      const totals = this.computeDeliveryNoteTotals(resolvedLines, {
+        deliveryCost: deliveryNote.deliveryCost,
+        taxPercentage,
+        discountPercentage:
+          dto.discountPercentage ?? Number(order.discountPercentage),
+      });
+
+      await deliveryNoteRepo.update(deliveryNote.id, {
+        deliveryNoteNumber: deliveryNote.deliveryNoteNumber,
+        deliveryNoteDate: deliveryNote.deliveryNoteDate,
+        notes: deliveryNote.notes,
+        deliveryCost: deliveryNote.deliveryCost,
+        totalTaxAmount: totals.totalTaxAmount,
+        totalDiscountAmount: totals.totalDiscountAmount,
+        totalAmount: totals.totalAmount,
+      });
+
+      return deliveryNoteRepo.findOneOrFail({
+        where: { id: deliveryNote.id },
+        relations: this.deliveryNoteRelations(),
+      });
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'DELIVERY_NOTE_UPDATED',
+      description: `Delivery note ${updated.deliveryNoteNumber} updated`,
+      metadata: { deliveryNoteId: updated.id },
+    });
+
+    return { data: this.mapDeliveryNote(updated) };
   }
 }

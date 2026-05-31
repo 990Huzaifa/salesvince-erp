@@ -112,6 +112,21 @@ export class TenantUtilityController {
         TenantConnectionGuard,
         TenantBusinessAccessGuard,
     )
+    @Get('sale-orders')
+    async getSaleOrders(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.utilityService.getSaleOrders(tenantDb, user.businessId);
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+    )
     @Get('product-brands')
     async getProductBrands(
         @TenantConnection() tenantDb: DataSource,

@@ -76,6 +76,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'UPDATE_PRODUCT', name: 'Update Product' },
   { key: 'UPDATE_UOM', name: 'Update UOM' },
   { key: 'UPDATE_SALE_ORDER', name: 'Update Sale Order' },
+  { key: 'UPDATE_DELIVERY_NOTE', name: 'Update Delivery Note' },
   { key: 'UPDATE_SALE_INVOICE', name: 'Update Sale Invoice' },
   { key: 'UPDATE_SALE_RETURN', name: 'Update Sale Return' },
   { key: 'UPDATE_SALE_VOUCHER', name: 'Update Sale Voucher' },

@@ -14,6 +14,7 @@ import { selectStockPricing } from '../utils/stock-batch.util';
 import { SaleOrder, OrderStatus as SaleOrderStatus } from 'src/tenant-db/entities/sale-order.entity';
 import { PurchaseOrder } from 'src/tenant-db/entities/purchase-order.entity';
 import { Grn } from 'src/tenant-db/entities/grn.entity';
+import { DeliveryNote } from 'src/tenant-db/entities/delivery-note.entity';
 import { Business } from 'src/tenant-db/entities/business.entity';
 import { ChartOfAccountType } from 'src/tenant-db/chart-of-accounts/constants/chart-of-account-type.enum';
 
@@ -96,6 +97,38 @@ export class TenantUtilityService {
       .where('saleOrder.businessId = :businessId', { businessId })
       .andWhere('saleOrder.orderStatus = :orderStatus', {
         orderStatus: SaleOrderStatus.APPROVED,
+      })
+      .orderBy('saleOrder.orderDate', 'DESC')
+      .addOrderBy('saleOrder.createdAt', 'DESC')
+      .getRawMany();
+
+    return { result: orders };
+  }
+
+  async getSaleOrders(tenantDb: DataSource, businessId: string) {
+    const orders = await tenantDb
+      .getRepository(SaleOrder)
+      .createQueryBuilder('saleOrder')
+      .leftJoin('saleOrder.customer', 'customer')
+      .select('saleOrder.id', 'id')
+      .addSelect('saleOrder.orderNumber', 'orderNumber')
+      .addSelect('saleOrder.orderDate', 'orderDate')
+      .addSelect('saleOrder.orderStatus', 'orderStatus')
+      .addSelect('saleOrder.totalAmount', 'totalAmount')
+      .addSelect('saleOrder.customerId', 'customerId')
+      .addSelect('customer.name', 'customerName')
+      .addSelect('customer.code', 'customerCode')
+      .where('saleOrder.businessId = :businessId', { businessId })
+      .andWhere((qb) => {
+        const usedInDeliveryNoteSubQuery = qb
+          .subQuery()
+          .select('1')
+          .from(DeliveryNote, 'deliveryNote')
+          .where('deliveryNote.saleOrderId = saleOrder.id')
+          .andWhere('deliveryNote.businessId = :businessId')
+          .getQuery();
+
+        return `NOT EXISTS ${usedInDeliveryNoteSubQuery}`;
       })
       .orderBy('saleOrder.orderDate', 'DESC')
       .addOrderBy('saleOrder.createdAt', 'DESC')

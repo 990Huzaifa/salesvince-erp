@@ -5,6 +5,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -22,6 +23,7 @@ import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { DeliveryNoteStatus } from 'src/tenant-db/entities/delivery-note.entity';
 import { DeliveryNoteService } from '../../service/sale/delivery-note.service';
 import { CreateDeliveryNoteDto } from '../../dto/delivery-note/create-delivery-note.dto';
+import { UpdateDeliveryNoteDto } from '../../dto/delivery-note/update-delivery-note.dto';
 
 @Controller('tenant/delivery-notes')
 @UseGuards(
@@ -106,6 +108,24 @@ export class DeliveryNoteController {
       tenantDb,
       user.businessId,
       id,
+      user.userId,
+    );
+  }
+
+  @Put('update/:id')
+  @RequirePermissions('UPDATE_DELIVERY_NOTE')
+  edit(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateDeliveryNoteDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.deliveryNoteService.edit(
+      tenantDb,
+      user.businessId,
+      id,
+      dto,
       user.userId,
     );
   }
