@@ -2,6 +2,7 @@ import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, Pri
 import { SaleInvoice } from "./sale-invoice.entity";
 import { Product, ProductFlavour, Uom } from "./product.entity";
 import { Business } from "./business.entity";
+import { Warehouse } from "./warehouse.entity";
 
 export enum SaleReturnStatus {
     PENDING = 'PENDING',
@@ -14,9 +15,19 @@ export class SaleReturn {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
+    @Column()
+    businessId: string;
+
     @ManyToOne(() => Business, (business) => business.saleReturns, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'businessId' })
     business: Business;
+
+    @Column()
+    warehouseId: string;
+
+    @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'warehouseId' })
+    warehouse: Warehouse;
 
     @Column()
     saleInvoiceId: string;

@@ -78,6 +78,8 @@ import { DeliveryNoteController } from './controller/sale/delivery-note.controll
 import { DeliveryNoteService } from './service/sale/delivery-note.service';
 import { SaleInvoiceController } from './controller/sale/sale-invoice.controller';
 import { SaleInvoiceService } from './service/sale/sale-invoice.service';
+import { SaleReturnController } from './controller/sale/sale-return.controller';
+import { SaleReturnService } from './service/sale/sale-return.service';
 import { ReportController } from './controller/report.controller';
 import { ReportService } from './service/report.service';
 import { DashboardController } from './controller/dashboard.controller';
@@ -122,6 +124,7 @@ import { City } from 'src/master-db/entities/city.entity';
     SaleOrderController,
     DeliveryNoteController,
     SaleInvoiceController,
+    SaleReturnController,
     WarehouseController,
     PurchaseOrderController,
     GrnController,
@@ -163,6 +166,7 @@ import { City } from 'src/master-db/entities/city.entity';
     SaleOrderService,
     DeliveryNoteService,
     SaleInvoiceService,
+    SaleReturnService,
     WarehouseService,
     PurchaseOrderService,
     GrnService,
