@@ -18,6 +18,7 @@ const ROLE_PERMISSION_MAP: Record<string, string[]> = {
         "TENANT_CREATE",
         "TENANT_SUSPEND",
         "TENANT_UPDATE",
+        "TENANT_MIGRATE",
         "USER_CREATE",
         "USER_VIEW",
         "USER_LIST",

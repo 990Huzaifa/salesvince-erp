@@ -10,7 +10,7 @@ export class TenantDatabaseService {
         username: string,
         password: string,
         database: string,
-    ) {
+    ): Promise<string[]> {
         const dataSource = TenantDataSource(
             host,
             port,
@@ -20,8 +20,10 @@ export class TenantDatabaseService {
         );
 
         await dataSource.initialize();
-        await dataSource.runMigrations();
+        const executed = await dataSource.runMigrations();
         await dataSource.destroy();
+
+        return executed.map((migration) => migration.name);
     }
 
     async runTenantSeeders(

@@ -16,6 +16,7 @@ export const PLATFORM_PERMISSIONS = [
     { code: "TENANT_CREATE", name: "Create Tenant" },
     { code: "TENANT_SUSPEND", name: "Suspend Tenant" },
     { code: "TENANT_UPDATE", name: "Update Tenant" },
+    { code: "TENANT_MIGRATE", name: "Run tenant DB migrations" },
     { code: "USER_CREATE", name: "Create User" },
     { code: "USER_VIEW", name: "View User" },
     { code: "USER_LIST", name: "List Users" },

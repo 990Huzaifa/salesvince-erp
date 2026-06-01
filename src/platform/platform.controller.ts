@@ -13,11 +13,13 @@ import { FileUploadService } from './services/file-upload.service';
 import { CurrentPlatformUser } from 'src/auth/current-platform-user.decorator';
 import { Req } from '@nestjs/common';
 import { UpdateTenantGeoPolicyDto } from './dto/update-tenant-geo-policy.dto';
+import { TenantMigrationService } from './services/tenant-migration.service';
 
 @Controller('platform/tenant')
 export class PlatformController {
   constructor(
     private readonly platformService: PlatformService,
+    private readonly tenantMigrationService: TenantMigrationService,
   ) {}
 
   @Post('resolve')
@@ -60,6 +62,16 @@ export class PlatformController {
   @Get('/provisioning')
   async provisioning(@Req() req: any) {
     return this.platformService.getProvisioningList(req.user);
+  }
+
+  @RequirePermissions('TENANT_MIGRATE')
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @Post('migrations')
+  async runTenantMigrations(
+    @Query('tenantId') tenantId: string | undefined,
+    @CurrentPlatformUser() user: any,
+  ) {
+    return this.tenantMigrationService.runTenantMigrations(tenantId, user);
   }
 
   @RequirePermissions('TENANT_VIEW')
