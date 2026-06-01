@@ -477,6 +477,7 @@ export class SaleOrderService {
       .leftJoinAndSelect('items.productFlavour', 'productFlavour')
       .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .leftJoinAndSelect('items.uom', 'uom')
+      .leftJoinAndSelect('items.warehouse', 'warehouse')
       .where('so.id = :orderId', { orderId })
       .andWhere('so.businessId = :businessId', { businessId })
       .getOne();
