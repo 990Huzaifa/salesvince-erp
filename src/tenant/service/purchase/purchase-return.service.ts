@@ -63,6 +63,7 @@ export class PurchaseReturnService {
         grn: { warehouse: true, items: true },
         vendor: true,
         purchaseOrder: true,
+        status: true,
       },
       purchaseReturnItems: {
         product: true,
