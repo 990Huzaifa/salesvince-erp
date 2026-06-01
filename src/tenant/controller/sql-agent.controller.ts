@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Req,
@@ -16,6 +18,7 @@ import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import {
+  TenantCode,
   TenantConnection,
   TenantId,
 } from 'src/common/tenant/tenant-connection.decorator';
@@ -82,10 +85,12 @@ export class SqlAgentController {
   }
 
   @Post('sessions/:id/messages')
+  @HttpCode(HttpStatus.ACCEPTED)
   @RequirePermissions('USE_SQL_AGENT')
   sendMessage(
     @TenantConnection() tenantDb: DataSource,
     @TenantId() tenantId: string,
+    @TenantCode() tenantCode: string,
     @Param('id') sessionId: string,
     @Req() req: Request,
     @Body() dto: SendSqlAgentMessageDto,
@@ -93,7 +98,12 @@ export class SqlAgentController {
     const user = req.user as TenantRequestUser;
     return this.sqlAgentChatService.sendMessage(
       tenantDb,
-      tenantId,
+      {
+        tenantId,
+        tenantCode,
+        userCode: user.userCode,
+        businessCode: user.businessCode,
+      },
       sessionId,
       user.userId,
       user.businessId,
