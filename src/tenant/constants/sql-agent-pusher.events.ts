@@ -1,3 +1,4 @@
+/** Event on the per-session private channel (see buildSqlAgentSessionPusherChannel). */
 export const SQL_AGENT_PUSHER_EVENT = 'sql-agent.update';
 
 export type SqlAgentPusherPhase =

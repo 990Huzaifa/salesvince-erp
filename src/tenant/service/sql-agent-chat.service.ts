@@ -8,12 +8,11 @@ import {
   SqlAgentMessageRole,
   SqlAgentMessageStatus,
 } from 'src/tenant-db/entities/sql-agent-message.entity';
-import { Business } from 'src/tenant-db/entities/business.entity';
-import { User } from 'src/tenant-db/entities/user.entity';
 import {
   SQL_AGENT_PUSHER_EVENT,
   SqlAgentPusherPayload,
 } from '../constants/sql-agent-pusher.events';
+import { buildSqlAgentSessionPusherChannel } from '../utils/sql-agent-pusher-channel';
 import { CreateSqlAgentSessionDto } from '../dto/sql-agent/create-sql-agent-session.dto';
 import { SendSqlAgentMessageDto } from '../dto/sql-agent/send-sql-agent-message.dto';
 
@@ -37,6 +36,7 @@ export class SqlAgentChatService {
 
   async createSession(
     tenantDb: DataSource,
+    tenantCode: string,
     userId: string,
     businessId: string,
     dto: CreateSqlAgentSessionDto,
@@ -48,7 +48,10 @@ export class SqlAgentChatService {
       title: dto.title?.trim() || null,
     });
     const saved = await sessionRepo.save(session);
-    return { session: saved };
+    return {
+      session: saved,
+      pusherChannel: buildSqlAgentSessionPusherChannel(tenantCode, saved.id),
+    };
   }
 
   async listSessions(
@@ -122,13 +125,9 @@ export class SqlAgentChatService {
       }),
     );
 
-    const channel = await this.resolveUserChannel(
-      tenantDb,
+    const channel = buildSqlAgentSessionPusherChannel(
       context.tenantCode,
-      userId,
-      businessId,
-      context.userCode,
-      context.businessCode,
+      session.id,
     );
 
     await this.emitPusherUpdate(channel, {
@@ -174,9 +173,10 @@ export class SqlAgentChatService {
       accepted: true,
       status: 'processing',
       sessionId: session.id,
+      pusherChannel: channel,
       userMessage,
       message:
-        'Your question is being processed. Listen for real-time updates on your user channel.',
+        'Your question is being processed. Subscribe to pusherChannel for real-time updates.',
     };
   }
 
@@ -259,45 +259,6 @@ export class SqlAgentChatService {
       sql: dto.debug ? agentResult.sql ?? null : null,
       rows: dto.debug ? agentResult.rows ?? null : null,
     });
-  }
-
-  private async resolveUserChannel(
-    tenantDb: DataSource,
-    tenantCode: string,
-    userId: string,
-    businessId: string,
-    userCode?: string,
-    businessCode?: string,
-  ): Promise<string> {
-    let resolvedUserCode = userCode?.trim();
-    if (!resolvedUserCode) {
-      const user = await tenantDb.getRepository(User).findOne({
-        where: { id: userId },
-        select: ['code'],
-      });
-      resolvedUserCode = user?.code;
-    }
-
-    if (!resolvedUserCode) {
-      throw new NotFoundException('User code not found for realtime channel');
-    }
-
-    let channel = `private-tenant-${tenantCode}-user-${resolvedUserCode}`;
-
-    let resolvedBusinessCode = businessCode?.trim();
-    if (!resolvedBusinessCode && businessId) {
-      const business = await tenantDb.getRepository(Business).findOne({
-        where: { id: businessId },
-        select: ['code'],
-      });
-      resolvedBusinessCode = business?.code;
-    }
-
-    if (resolvedBusinessCode) {
-      channel = `${channel}-business-${resolvedBusinessCode}`;
-    }
-
-    return channel;
   }
 
   private async emitPusherUpdate(
