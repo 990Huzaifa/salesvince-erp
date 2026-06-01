@@ -48,11 +48,17 @@ export class Business {
     @Column({ type: 'varchar', length: 180, nullable: true })
     legalName: string | null;
 
-    @Column({nullable: true })
+    @Column({ type: 'varchar', nullable: true })
     logo: string | null;
 
     @Column({ type: 'varchar', length: 10, default: 'PKR' })
     currency: string;
+
+    @Column({ type: 'varchar', length: 50, nullable: true })
+    phone: string | null;
+
+    @Column({ type: 'text', nullable: true })
+    address: string | null;
 
     @Column({ type: 'date', nullable: true })
     financialYearStart: Date | null;

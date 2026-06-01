@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   Req,
@@ -20,6 +21,7 @@ import { TenantCode, TenantConnection } from 'src/common/tenant/tenant-connectio
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { TenantBusinessService } from '../service/tenant-business.service';
 import { CreateTenantBusinessDto } from '../dto/business/create-tenant-business.dto';
+import { UpdateTenantBusinessDto } from '../dto/business/update-tenant-business.dto';
 import { AssignBusinessMemberDto } from '../dto/business/assign-business-member.dto';
 
 @Controller('tenant/businesses')
@@ -48,6 +50,24 @@ export class TenantBusinessController {
   ) {
     const user = req.user as TenantRequestUser;
     return this.tenantBusinessService.createBusiness(tenantDb, dto, user.userId, tenantCode);
+  }
+
+  @Patch(':businessId')
+  update(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('businessId', ParseUUIDPipe) businessId: string,
+    @Body() dto: UpdateTenantBusinessDto,
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.tenantBusinessService.updateBusiness(
+      tenantDb,
+      businessId,
+      dto,
+      user.userId,
+      tenantCode,
+    );
   }
 
   @Post(':businessId/members')

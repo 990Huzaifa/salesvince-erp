@@ -22,6 +22,7 @@ import {
   AssetPurpose,
 } from '../config/asset-rules.config';
 import { CreateTenantBusinessDto } from '../dto/business/create-tenant-business.dto';
+import { UpdateTenantBusinessDto } from '../dto/business/update-tenant-business.dto';
 import { AssignBusinessMemberDto } from '../dto/business/assign-business-member.dto';
 import { ActivityLogService } from './activity-log.service';
 
@@ -62,6 +63,7 @@ export class TenantBusinessService {
     tenantCode: string,
     assetId: string,
     actorUserId: string,
+    businessId?: string,
   ): Promise<Asset> {
     const asset = await manager.getRepository(Asset).findOne({ where: { id: assetId } });
     if (!asset) {
@@ -81,7 +83,10 @@ export class TenantBusinessService {
     if (asset.entityType && asset.entityType !== AssetEntityType.BUSINESS) {
       throw new BadRequestException(`Asset ${assetId} is not allowed for a business`);
     }
-    if (asset.entityId != null || asset.attachedAt != null) {
+    if (asset.entityId != null && asset.entityId !== businessId) {
+      throw new BadRequestException(`Asset ${assetId} is already linked to an entity`);
+    }
+    if (asset.entityId == null && asset.attachedAt != null) {
       throw new BadRequestException(`Asset ${assetId} is already linked to an entity`);
     }
 
@@ -93,6 +98,30 @@ export class TenantBusinessService {
     }
 
     return asset;
+  }
+
+  private async detachBusinessLogoAsset(
+    manager: EntityManager,
+    businessId: string,
+    excludeAssetId?: string,
+  ) {
+    const assetRepo = manager.getRepository(Asset);
+    const linkedAssets = await assetRepo.find({
+      where: {
+        entityType: AssetEntityType.BUSINESS,
+        entityId: businessId,
+        purpose: AssetPurpose.BUSINESS_LOGO,
+      },
+    });
+    for (const asset of linkedAssets) {
+      if (excludeAssetId && asset.id === excludeAssetId) {
+        continue;
+      }
+      await assetRepo.update(
+        { id: asset.id },
+        { entityType: null, entityId: null, attachedAt: null },
+      );
+    }
   }
 
   async listBusinesses(tenantDb: DataSource, actorUserId: string, page: number, limit: number) {
@@ -202,6 +231,102 @@ export class TenantBusinessService {
       superAdminRoleId: saved.superAdminRole.id,
       userBusinessId: saved.membership.id,
     };
+  }
+
+  async updateBusiness(
+    tenantDb: DataSource,
+    businessId: string,
+    dto: UpdateTenantBusinessDto,
+    actorUserId: string,
+    tenantCode: string,
+  ) {
+    await this.assertSuperAdmin(tenantDb, actorUserId);
+
+    const businessRepo = tenantDb.getRepository(Business);
+    const business = await businessRepo.findOne({
+      where: { id: businessId, deletedAt: IsNull() },
+    });
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    if (dto.name !== undefined) {
+      const name = dto.name.trim();
+      const existing = await businessRepo.findOne({
+        where: { name, deletedAt: IsNull() },
+        select: ['id'],
+      });
+      if (existing && existing.id !== businessId) {
+        throw new ConflictException('Business name already exists');
+      }
+      business.name = name;
+    }
+
+    if (dto.currency !== undefined) {
+      business.currency = dto.currency.trim();
+    }
+
+    if (dto.address !== undefined) {
+      business.address = dto.address?.trim() || null;
+    }
+
+    if (dto.phone !== undefined) {
+      business.phone = dto.phone?.trim() || null;
+    }
+
+    const updated = await tenantDb.transaction(async (manager) => {
+      if (dto.assetId !== undefined) {
+        const newLogoAssetId = dto.assetId?.trim() || null;
+        const currentLogoAsset = await manager.getRepository(Asset).findOne({
+          where: {
+            entityType: AssetEntityType.BUSINESS,
+            entityId: businessId,
+            purpose: AssetPurpose.BUSINESS_LOGO,
+          },
+        });
+
+        if (!newLogoAssetId) {
+          await this.detachBusinessLogoAsset(manager, businessId);
+          business.logo = null;
+        } else if (currentLogoAsset?.id !== newLogoAssetId) {
+          await this.detachBusinessLogoAsset(manager, businessId, newLogoAssetId);
+
+          const logoAsset = await this.getApprovedBusinessLogoAsset(
+            manager,
+            tenantCode,
+            newLogoAssetId,
+            actorUserId,
+            businessId,
+          );
+
+          business.logo = this.s3Service.getObjectUrl(logoAsset.s3Key);
+
+          await manager.getRepository(Asset).update(
+            { id: logoAsset.id },
+            {
+              entityType: AssetEntityType.BUSINESS,
+              entityId: businessId,
+              attachedAt: new Date(),
+            },
+          );
+        }
+      }
+
+      return manager.save(business);
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: null,
+      action: 'BUSINESS_UPDATED',
+      description: `Business ${updated.name} updated`,
+      metadata: {
+        businessId: updated.id,
+        fields: Object.keys(dto),
+      },
+    });
+
+    return updated;
   }
 
   async assignMember(
