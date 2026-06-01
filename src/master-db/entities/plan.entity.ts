@@ -5,6 +5,8 @@ export enum LIMIT_KEY {
     STORAGE = 'STORAGE',
     BUSINESS = 'BUSINESS',
     EMPLOYEES = 'EMPLOYEES',
+    SQL_AGENT_DAILY = 'SQL_AGENT_DAILY',
+    SQL_AGENT_MONTHLY = 'SQL_AGENT_MONTHLY',
 }
 
 export enum BillingCycle {
