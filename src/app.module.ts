@@ -9,6 +9,7 @@ import { AppService } from './app.service';
 import { ScheduleModule } from '@nestjs/schedule';
 import { TenantModule } from './tenant/tenant.module';
 import { TenantRuntimeModule } from './tenant-db/tenant-runtime.module';
+import { SqlAgentModule } from './sql-agent/sql-agent.module';
 
 @Module({
   imports: [
@@ -19,7 +20,8 @@ import { TenantRuntimeModule } from './tenant-db/tenant-runtime.module';
     AuthModule,
     PlatformModule,
     TenantModule,
-    TenantRuntimeModule
+    TenantRuntimeModule,
+    SqlAgentModule,
   ],
   controllers: [AppController],
   providers: [AppService],
