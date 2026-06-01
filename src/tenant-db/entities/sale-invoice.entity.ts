@@ -5,6 +5,7 @@ import { Product, ProductFlavour, Uom } from "./product.entity";
 import { DeliveryNote } from "./delivery-note.entity";
 import { SaleReturn } from "./sale-return.entity";
 import { Party } from "./party.entity";
+import { Warehouse } from "./warehouse.entity";
 
 
 @Entity('sale_invoices')
@@ -105,6 +106,13 @@ export class SaleInvoiceItem {
     @ManyToOne(() => ProductFlavour, (productFlavour) => productFlavour.saleInvoiceItems, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'productFlavourId' })
     productFlavour: ProductFlavour;
+
+    @Column()
+    warehouseId: string;
+
+    @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'warehouseId' })
+    warehouse: Warehouse;
 
     @Column()
     quantity: number;   

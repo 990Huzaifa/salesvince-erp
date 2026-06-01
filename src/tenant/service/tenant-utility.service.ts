@@ -206,8 +206,12 @@ export class TenantUtilityService {
     return { result: productList };
   }
 
-  async getStockProducts(tenantDb: DataSource, businessId: string) {
-    const stockBalances = await tenantDb
+  async getStockProducts(
+    tenantDb: DataSource,
+    businessId: string,
+    warehouseId?: string,
+  ) {
+    const balanceQb = tenantDb
       .getRepository(StockBalance)
       .createQueryBuilder('balance')
       .innerJoinAndSelect('balance.product', 'product')
@@ -218,18 +222,29 @@ export class TenantUtilityService {
       .andWhere('balance.quantityAvailable > 0')
       .andWhere('product.isDelete = false')
       .andWhere('product.isActive = true')
-      .andWhere('warehouse.deletedAt IS NULL')
+      .andWhere('warehouse.deletedAt IS NULL');
+
+    if (warehouseId) {
+      balanceQb.andWhere('balance.warehouseId = :warehouseId', { warehouseId });
+    }
+
+    const stockBalances = await balanceQb
       .orderBy('product.name', 'ASC')
       .addOrderBy('uom.name', 'ASC')
       .getMany();
 
-    const batches = await tenantDb
+    const batchQb = tenantDb
       .getRepository(Batch)
       .createQueryBuilder('batch')
       .where('batch.businessId = :businessId', { businessId })
       .andWhere('batch.deletedAt IS NULL')
-      .andWhere('batch.quantity > 0')
-      .getMany();
+      .andWhere('batch.quantity > 0');
+
+    if (warehouseId) {
+      batchQb.andWhere('batch.warehouseId = :warehouseId', { warehouseId });
+    }
+
+    const batches = await batchQb.getMany();
 
     const batchesByProductUom = new Map<string, Batch[]>();
     for (const batch of batches) {

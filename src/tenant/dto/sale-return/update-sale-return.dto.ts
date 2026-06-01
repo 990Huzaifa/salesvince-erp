@@ -6,6 +6,5 @@ export class UpdateSaleReturnDto extends PartialType(
     'returnNumber',
     'returnDate',
     'returnReason',
-    'warehouseId',
   ] as const),
 ) {}

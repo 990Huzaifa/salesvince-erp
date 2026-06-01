@@ -31,6 +31,7 @@ const DELIVERY_NOTE_NUMBER_PREFIX = 'DN';
 
 type ResolvedDeliveryNoteLine = {
   saleOrderItemId: string;
+  warehouseId: string;
   productId: string;
   uomId: string;
   productFlavourId: string | null;
@@ -111,6 +112,7 @@ export class DeliveryNoteService {
         product: true,
         productFlavour: { flavour: true },
         uom: true,
+        warehouse: true,
       },
     } as const;
   }
@@ -189,6 +191,7 @@ export class DeliveryNoteService {
 
     return {
       saleOrderItemId: orderItem.id,
+      warehouseId: orderItem.warehouseId,
       productId: orderItem.productId,
       uomId: orderItem.uomId,
       productFlavourId: orderItem.productFlavourId ?? null,
@@ -247,6 +250,7 @@ export class DeliveryNoteService {
       itemRepo.create({
         deliveryNoteId,
         saleOrderItemId: line.saleOrderItemId,
+        warehouseId: line.warehouseId,
         productId: line.productId,
         productFlavourId: line.productFlavourId,
         uomId: line.uomId,
@@ -534,6 +538,14 @@ export class DeliveryNoteService {
     const items = (deliveryNote.items ?? []).map((item) => ({
       id: item.id,
       saleOrderItemId: item.saleOrderItemId,
+      warehouseId: item.warehouseId,
+      warehouse: item.warehouse
+        ? {
+            id: item.warehouse.id,
+            code: item.warehouse.code,
+            name: item.warehouse.name,
+          }
+        : null,
       productId: item.productId,
       product: item.product
         ? {
@@ -641,6 +653,7 @@ export class DeliveryNoteService {
           productId: item.productId,
           uomId: item.uomId,
           quantity: item.deliveredQuantity,
+          warehouseId: item.warehouseId,
         })),
     });
 
@@ -1017,6 +1030,7 @@ export class DeliveryNoteService {
         });
         resolvedLines = existingItems.map((item) => ({
           saleOrderItemId: item.saleOrderItemId,
+          warehouseId: item.warehouseId,
           productId: item.productId,
           uomId: item.uomId,
           productFlavourId: item.productFlavourId,

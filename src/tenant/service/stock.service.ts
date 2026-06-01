@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { EntityManager, IsNull } from 'typeorm';
 import { Product } from 'src/tenant-db/entities/product.entity';
+import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import {
   Batch,
   ReferenceType,
@@ -45,6 +46,7 @@ export type ConsumeStockLineInput = {
   productId: string;
   uomId: string;
   quantity: number;
+  warehouseId?: string;
 };
 
 export type ConsumeStockInput = {
@@ -86,6 +88,21 @@ export type ReserveStockLineResult = {
   quantity: number;
   batchAllocations: BatchAllocation[];
   stockBalances: StockBalance[];
+};
+
+export type AutoWarehouseReceiveStockInput = {
+  businessId: string;
+  partyId: string;
+  referenceType: ReferenceType;
+  batchDate: Date;
+  batchNumberPrefix: string;
+  lines: ReceiveStockLineInput[];
+};
+
+export type AutoWarehouseConsumeStockInput = {
+  businessId: string;
+  referenceType: ReferenceType;
+  lines: ConsumeStockLineInput[];
 };
 
 @Injectable()
@@ -309,9 +326,10 @@ export class StockService {
       businessId: string;
       productId: string;
       uomId: string;
+      warehouseId?: string;
     },
   ): Promise<number> {
-    const row = await manager
+    const qb = manager
       .getRepository(StockBalance)
       .createQueryBuilder('balance')
       .select('COALESCE(SUM(balance.quantityReserved), 0)', 'total')
@@ -322,8 +340,15 @@ export class StockService {
         productId: params.productId,
       })
       .andWhere('balance.uomId = :uomId', { uomId: params.uomId })
-      .andWhere('balance.deletedAt IS NULL')
-      .getRawOne<{ total: string }>();
+      .andWhere('balance.deletedAt IS NULL');
+
+    if (params.warehouseId) {
+      qb.andWhere('balance.warehouseId = :warehouseId', {
+        warehouseId: params.warehouseId,
+      });
+    }
+
+    const row = await qb.getRawOne<{ total: string }>();
 
     return Number(row?.total ?? 0);
   }
@@ -335,6 +360,7 @@ export class StockService {
       productId: string;
       uomId: string;
       quantity: number;
+      warehouseId?: string;
     },
   ): Promise<{ product: Product; allocations: BatchAllocation[] }> {
     const product = await this.loadProductForBusiness(
@@ -594,6 +620,7 @@ export class StockService {
         productId: line.productId,
         uomId: line.uomId,
         quantity: line.quantity,
+        warehouseId: line.warehouseId,
       });
 
       const warehouseAllocations = groupAllocationsByWarehouse(allocations);
@@ -651,6 +678,7 @@ export class StockService {
           productId: line.productId,
           uomId: line.uomId,
           quantity: line.quantity,
+          warehouseId: line.warehouseId,
         },
       );
 
@@ -697,5 +725,222 @@ export class StockService {
     }
 
     return results;
+  }
+
+  /**
+   * Splits a quantity across warehouses using existing stock-balance footprint,
+   * then receives stock into each warehouse (for sale returns without a fixed warehouse).
+   */
+  async receiveStockInWithAutoWarehouse(
+    manager: EntityManager,
+    input: AutoWarehouseReceiveStockInput,
+  ): Promise<ReceiveStockLineResult[]> {
+    if (!input.lines.length) {
+      throw new BadRequestException('At least one stock line is required');
+    }
+
+    const results: ReceiveStockLineResult[] = [];
+
+    for (const line of input.lines) {
+      const warehouseQuantities = await this.resolveAutoWarehouseQuantities(
+        manager,
+        {
+          businessId: input.businessId,
+          productId: line.productId,
+          uomId: line.uomId,
+          quantity: line.quantity,
+        },
+      );
+
+      for (const [warehouseId, quantity] of warehouseQuantities.entries()) {
+        if (quantity <= 0) {
+          continue;
+        }
+
+        const lineResults = await this.receiveStockIn(manager, {
+          businessId: input.businessId,
+          warehouseId,
+          vendorId: input.partyId,
+          referenceType: input.referenceType,
+          batchDate: input.batchDate,
+          batchNumberPrefix: input.batchNumberPrefix,
+          lines: [{ ...line, quantity }],
+        });
+        results.push(...lineResults);
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Issues stock out across warehouses resolved automatically from balances/batches.
+   */
+  async consumeStockOutWithAutoWarehouse(
+    manager: EntityManager,
+    input: AutoWarehouseConsumeStockInput,
+  ): Promise<ConsumeStockLineResult[]> {
+    if (!input.lines.length) {
+      throw new BadRequestException('At least one stock line is required');
+    }
+
+    const results: ConsumeStockLineResult[] = [];
+
+    for (const line of input.lines) {
+      const warehouseQuantities = await this.resolveAutoWarehouseQuantities(
+        manager,
+        {
+          businessId: input.businessId,
+          productId: line.productId,
+          uomId: line.uomId,
+          quantity: line.quantity,
+        },
+      );
+
+      for (const [warehouseId, quantity] of warehouseQuantities.entries()) {
+        if (quantity <= 0) {
+          continue;
+        }
+
+        const lineResults = await this.consumeStockOut(manager, {
+          businessId: input.businessId,
+          warehouseId,
+          referenceType: input.referenceType,
+          lines: [{ ...line, quantity }],
+        });
+        results.push(...lineResults);
+      }
+    }
+
+    return results;
+  }
+
+  private splitQuantityAcrossWarehouses(
+    entries: Array<{ warehouseId: string; weight: number }>,
+    totalQuantity: number,
+  ): Map<string, number> {
+    const positive = entries.filter((entry) => entry.weight > 0);
+    if (!positive.length) {
+      return new Map();
+    }
+
+    const weightSum = positive.reduce((sum, entry) => sum + entry.weight, 0);
+    const grouped = new Map<string, number>();
+    let remaining = totalQuantity;
+
+    for (let index = 0; index < positive.length; index += 1) {
+      const entry = positive[index];
+      const isLast = index === positive.length - 1;
+      const share = isLast
+        ? this.roundQuantity(remaining)
+        : this.roundQuantity(
+            (entry.weight / weightSum) * totalQuantity,
+          );
+
+      if (share <= 0) {
+        continue;
+      }
+
+      grouped.set(
+        entry.warehouseId,
+        this.roundQuantity((grouped.get(entry.warehouseId) ?? 0) + share),
+      );
+      remaining = this.roundQuantity(remaining - share);
+    }
+
+    if (remaining > 0 && positive.length > 0) {
+      const lastWarehouseId = positive[positive.length - 1].warehouseId;
+      grouped.set(
+        lastWarehouseId,
+        this.roundQuantity((grouped.get(lastWarehouseId) ?? 0) + remaining),
+      );
+    }
+
+    return grouped;
+  }
+
+  private async resolveAutoWarehouseQuantities(
+    manager: EntityManager,
+    params: {
+      businessId: string;
+      productId: string;
+      uomId: string;
+      quantity: number;
+    },
+  ): Promise<Map<string, number>> {
+    if (params.quantity <= 0) {
+      throw new BadRequestException('Quantity must be greater than zero');
+    }
+
+    const balances = await manager.getRepository(StockBalance).find({
+      where: {
+        businessId: params.businessId,
+        productId: params.productId,
+        uomId: params.uomId,
+        deletedAt: IsNull(),
+      },
+    });
+
+    const withOnHand = balances.filter(
+      (balance) => Number(balance.quantityOnHand) > 0,
+    );
+
+    if (withOnHand.length > 0) {
+      const split = this.splitQuantityAcrossWarehouses(
+        withOnHand.map((balance) => ({
+          warehouseId: balance.warehouseId,
+          weight: Number(balance.quantityOnHand),
+        })),
+        params.quantity,
+      );
+      if (split.size > 0) {
+        return split;
+      }
+    }
+
+    if (balances.length === 1) {
+      return new Map([[balances[0].warehouseId, params.quantity]]);
+    }
+
+    if (balances.length > 1) {
+      const equalWeight = 1;
+      return this.splitQuantityAcrossWarehouses(
+        balances.map((balance) => ({
+          warehouseId: balance.warehouseId,
+          weight: equalWeight,
+        })),
+        params.quantity,
+      );
+    }
+
+    const recentBatch = await manager.getRepository(Batch).findOne({
+      where: {
+        businessId: params.businessId,
+        productId: params.productId,
+        uomId: params.uomId,
+        deletedAt: IsNull(),
+      },
+      order: {
+        batchDate: 'DESC',
+        createdAt: 'DESC',
+      },
+    });
+
+    if (recentBatch) {
+      return new Map([[recentBatch.warehouseId, params.quantity]]);
+    }
+
+    const warehouse = await manager.getRepository(Warehouse).findOne({
+      where: { businessId: params.businessId, deletedAt: IsNull() },
+      order: { createdAt: 'ASC' },
+    });
+
+    if (!warehouse) {
+      throw new BadRequestException(
+        'No warehouse available to post sale return stock',
+      );
+    }
+
+    return new Map([[warehouse.id, params.quantity]]);
   }
 }

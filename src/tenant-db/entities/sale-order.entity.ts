@@ -5,6 +5,7 @@ import { Business } from "./business.entity";
 import { DeliveryNote } from "./delivery-note.entity";
 import { Party } from "./party.entity";
 import { SaleInvoice } from "./sale-invoice.entity";
+import { Warehouse } from "./warehouse.entity";
 
 
 export enum OrderStatus {
@@ -121,6 +122,13 @@ export class SaleOrderItem {
     @ManyToOne(() => Uom, { onDelete: 'RESTRICT' })
     @JoinColumn({ name: 'uomId' })
     uom: Uom;
+
+    @Column()
+    warehouseId: string;
+
+    @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'warehouseId' })
+    warehouse: Warehouse;
 
     @Column({type: 'decimal', precision: 18, scale: 2})
     purchaseUnitPrice: number;

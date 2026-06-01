@@ -55,6 +55,7 @@ export class SaleInvoiceService {
         product: true,
         uom: true,
         productFlavour: { flavour: true },
+        warehouse: true,
       },
     } as const;
   }
@@ -188,6 +189,14 @@ export class SaleInvoiceService {
     const customer = this.mapCustomer(invoice, options);
     const items = (invoice.items ?? []).map((item) => ({
       id: item.id,
+      warehouseId: item.warehouseId,
+      warehouse: item.warehouse
+        ? {
+            id: item.warehouse.id,
+            code: item.warehouse.code,
+            name: item.warehouse.name,
+          }
+        : null,
       productId: item.productId,
       product: item.product
         ? {
@@ -309,6 +318,7 @@ export class SaleInvoiceService {
         .map((line) =>
           itemRepo.create({
             saleInvoiceId: invoice.id,
+            warehouseId: line.warehouseId,
             productId: line.productId,
             uomId: line.uomId,
             productFlavourId: line.productFlavourId ?? null,

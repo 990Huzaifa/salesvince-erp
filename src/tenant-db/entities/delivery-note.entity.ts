@@ -4,6 +4,7 @@ import { Party} from "./party.entity";
 import { Business } from "./business.entity";
 import { Product, ProductFlavour, Uom } from "./product.entity";
 import { SaleInvoice } from "./sale-invoice.entity";
+import { Warehouse } from "./warehouse.entity";
 
 export enum DeliveryNoteStatus {
     PENDING = 'PENDING',
@@ -114,6 +115,13 @@ export class DeliveryNoteItem {
     @ManyToOne(() => Uom, (uom) => uom.deliveryNoteItems, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'uomId' })
     uom: Uom;
+
+    @Column()
+    warehouseId: string;
+
+    @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'warehouseId' })
+    warehouse: Warehouse;
 
     @Column()
     orderedQuantity: number;

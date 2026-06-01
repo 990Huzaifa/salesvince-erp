@@ -15,9 +15,6 @@ export class CreateSaleReturnDto {
   @IsUUID()
   saleInvoiceId: string;
 
-  @IsUUID()
-  warehouseId: string;
-
   @IsOptional()
   @IsString()
   @MaxLength(50)

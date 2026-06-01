@@ -8,6 +8,9 @@ import {
 
 export class CreateSaleOrderItemDto {
   @IsUUID()
+  warehouseId: string;
+
+  @IsUUID()
   productId: string;
 
   @IsUUID()

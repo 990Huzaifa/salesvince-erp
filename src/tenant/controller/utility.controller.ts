@@ -203,9 +203,14 @@ export class TenantUtilityController {
     async getStockProducts(
         @TenantConnection() tenantDb: DataSource,
         @Req() req: Request,
+        @Query('warehouseId') warehouseId?: string,
     ) {
         const user = req.user as TenantRequestUser;
-        return this.utilityService.getStockProducts(tenantDb, user.businessId);
+        return this.utilityService.getStockProducts(
+            tenantDb,
+            user.businessId,
+            warehouseId,
+        );
     }
 
     @UseGuards(

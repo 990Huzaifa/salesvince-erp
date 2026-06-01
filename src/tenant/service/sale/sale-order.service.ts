@@ -21,11 +21,14 @@ import { UpdateSaleOrderDto } from '../../dto/sale-order/update-sale-order.dto';
 import { UpdateSaleOrderItemDto } from '../../dto/sale-order/update-sale-order-item.dto';
 import { ActivityLogService } from '../activity-log.service';
 import { StockService } from '../stock.service';
+import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import { DeliveryNoteService } from './delivery-note.service';
+import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 
 const ORDER_NUMBER_PREFIX = 'SO';
 
 type ResolvedSaleOrderLine = {
+  warehouseId: string;
   productId: string;
   uomId: string;
   productFlavourId: string | null;
@@ -176,6 +179,7 @@ export class SaleOrderService {
     const totalAmount = this.roundAmount(lineSubtotal - discountAmount);
 
     return {
+      warehouseId: item.warehouseId,
       productId: item.productId,
       uomId: item.uomId,
       productFlavourId: item.productFlavourId ?? null,
@@ -218,11 +222,30 @@ export class SaleOrderService {
     };
   }
 
+  private async assertWarehouseForBusiness(
+    manager: EntityManager,
+    businessId: string,
+    warehouseId: string,
+  ): Promise<void> {
+    const warehouse = await manager.getRepository(Warehouse).findOne({
+      where: { id: warehouseId, businessId, deletedAt: IsNull() },
+    });
+
+    if (!warehouse) {
+      throw new NotFoundException(`Warehouse ${warehouseId} not found`);
+    }
+  }
+
   private async validateLineItems(
     manager: EntityManager,
     businessId: string,
     items: CreateSaleOrderItemDto[],
   ): Promise<Map<string, ProductPricing>> {
+    const warehouseIds = [...new Set(items.map((item) => item.warehouseId))];
+    for (const warehouseId of warehouseIds) {
+      await this.assertWarehouseForBusiness(manager, businessId, warehouseId);
+    }
+
     const productIds = [...new Set(items.map((item) => item.productId))];
     const uomIds = [...new Set(items.map((item) => item.uomId))];
 
@@ -300,6 +323,7 @@ export class SaleOrderService {
     return lines.map((line) =>
       itemRepo.create({
         saleOrderId,
+        warehouseId: line.warehouseId,
         productId: line.productId,
         productFlavourId: line.productFlavourId,
         uomId: line.uomId,
@@ -322,6 +346,7 @@ export class SaleOrderService {
         product: true,
         productFlavour: { flavour: true },
         uom: true,
+        warehouse: true,
       },
     } as const;
   }
@@ -356,6 +381,14 @@ export class SaleOrderService {
   private mapSaleOrder(order: SaleOrder) {
     const items = (order.items ?? []).map((item) => ({
       id: item.id,
+      warehouseId: item.warehouseId,
+      warehouse: item.warehouse
+        ? {
+            id: item.warehouse.id,
+            code: item.warehouse.code,
+            name: item.warehouse.name,
+          }
+        : null,
       productId: item.productId,
       product: item.product
         ? {
@@ -476,6 +509,7 @@ export class SaleOrderService {
           productId: item.productId,
           uomId: item.uomId,
           quantity: item.quantity,
+          warehouseId: item.warehouseId,
         })),
     });
   }
@@ -577,6 +611,7 @@ export class SaleOrderService {
         }
         keptItemIds.add(item.id);
         await itemRepo.update(existing.id, {
+          warehouseId: line.warehouseId,
           productId: line.productId,
           productFlavourId: line.productFlavourId,
           uomId: line.uomId,
@@ -594,6 +629,7 @@ export class SaleOrderService {
       await itemRepo.save(
         itemRepo.create({
           saleOrderId: orderId,
+          warehouseId: line.warehouseId,
           productId: line.productId,
           productFlavourId: line.productFlavourId,
           uomId: line.uomId,

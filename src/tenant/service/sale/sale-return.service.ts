@@ -14,8 +14,8 @@ import {
   SaleInvoice,
   SaleInvoiceItem,
 } from 'src/tenant-db/entities/sale-invoice.entity';
+import { SaleOrderItem } from 'src/tenant-db/entities/sale-order.entity';
 import { Party } from 'src/tenant-db/entities/party.entity';
-import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import { ReferenceType } from 'src/tenant-db/entities/stock.entity';
 import { AccountTransactionReferenceType } from 'src/tenant-db/entities/transaction.entity';
 import { CreateSaleReturnDto } from '../../dto/sale-return/create-sale-return.dto';
@@ -27,6 +27,7 @@ import { TransactionService } from '../transaction.service';
 const RETURN_NUMBER_PREFIX = 'SRT';
 
 type ResolvedReturnLine = {
+  warehouseId: string;
   productId: string;
   uomId: string;
   productFlavourId: string | null;
@@ -58,19 +59,39 @@ export class SaleReturnService {
 
   private returnRelations() {
     return {
-      warehouse: true,
       saleInvoice: {
         items: true,
         customer: true,
-        deliveryNote: { items: true },
-        saleOrder: true,
+        deliveryNote: true,
+        saleOrder: { items: true },
       },
       saleReturnItems: {
         product: true,
         productFlavour: { flavour: true },
         uom: true,
+        warehouse: true,
       },
     } as const;
+  }
+
+  private itemKey(item: {
+    productId: string;
+    uomId: string;
+    productFlavourId?: string | null;
+  }): string {
+    return `${item.productId}:${item.uomId}:${item.productFlavourId ?? ''}`;
+  }
+
+  private findSaleOrderItem(
+    orderItems: SaleOrderItem[] | undefined,
+    invoiceItem: SaleInvoiceItem,
+  ): SaleOrderItem | undefined {
+    return orderItems?.find(
+      (row) =>
+        row.productId === invoiceItem.productId &&
+        row.uomId === invoiceItem.uomId &&
+        (row.productFlavourId ?? null) === (invoiceItem.productFlavourId ?? null),
+    );
   }
 
   private async generateReturnNumber(
@@ -128,15 +149,8 @@ export class SaleReturnService {
       return new Map();
     }
 
-    const itemKey = (item: {
-      productId: string;
-      uomId: string;
-      productFlavourId?: string | null;
-    }) =>
-      `${item.productId}:${item.uomId}:${item.productFlavourId ?? ''}`;
-
     const invoiceItemByKey = new Map(
-      invoice.items.map((row) => [itemKey(row), row.id]),
+      invoice.items.map((row) => [this.itemKey(row), row.id]),
     );
 
     const returned = new Map<string, number>();
@@ -146,7 +160,7 @@ export class SaleReturnService {
         continue;
       }
       for (const line of saleReturn.saleReturnItems ?? []) {
-        const invoiceItemId = invoiceItemByKey.get(itemKey(line));
+        const invoiceItemId = invoiceItemByKey.get(this.itemKey(line));
         if (!invoiceItemId) {
           continue;
         }
@@ -168,12 +182,6 @@ export class SaleReturnService {
     const itemsById = new Map(
       (invoice.items ?? []).map((item) => [item.id, item]),
     );
-    const deliveryNoteItemByProductUom = new Map(
-      (invoice.deliveryNote?.items ?? []).map((item) => [
-        `${item.productId}:${item.uomId}:${item.productFlavourId ?? ''}`,
-        item,
-      ]),
-    );
 
     const resolved: ResolvedReturnLine[] = [];
 
@@ -193,41 +201,25 @@ export class SaleReturnService {
         );
       }
 
-      const deliveryNoteItem = deliveryNoteItemByProductUom.get(
-        `${invoiceItem.productId}:${invoiceItem.uomId}:${invoiceItem.productFlavourId ?? ''}`,
+      const orderItem = this.findSaleOrderItem(
+        invoice.saleOrder?.items,
+        invoiceItem,
       );
 
       resolved.push({
+        warehouseId: invoiceItem.warehouseId,
         productId: invoiceItem.productId,
         uomId: invoiceItem.uomId,
         productFlavourId: invoiceItem.productFlavourId ?? null,
         quantity: line.quantity,
         lineAmount: this.lineAmountForQuantity(invoiceItem, line.quantity),
-        purchaseUnitPrice: Number(invoiceItem.saleUnitPrice),
-        saleUnitMarginAmount: Number(
-          deliveryNoteItem?.saleUnitMarginAmount ?? 0,
-        ),
-        saleUnitMarginPercentage: Number(
-          deliveryNoteItem?.saleUnitMarginPercentage ?? 0,
-        ),
+        purchaseUnitPrice: Number(orderItem?.purchaseUnitPrice ?? 0),
+        saleUnitMarginAmount: Number(orderItem?.saleMarginAmount ?? 0),
+        saleUnitMarginPercentage: Number(orderItem?.saleMarginPercentage ?? 0),
       });
     }
 
     return resolved;
-  }
-
-  private async assertWarehouseForBusiness(
-    tenantDb: DataSource | EntityManager,
-    businessId: string,
-    warehouseId: string,
-  ): Promise<Warehouse> {
-    const warehouse = await tenantDb.getRepository(Warehouse).findOne({
-      where: { id: warehouseId, businessId, deletedAt: IsNull() },
-    });
-    if (!warehouse) {
-      throw new NotFoundException('Warehouse not found');
-    }
-    return warehouse;
   }
 
   private async findSaleInvoiceForReturn(
@@ -244,17 +236,13 @@ export class SaleReturnService {
       relations: {
         items: true,
         customer: true,
-        deliveryNote: { items: true },
+        deliveryNote: true,
+        saleOrder: { items: true },
       },
     });
 
     if (!invoice) {
       throw new NotFoundException('Sale invoice not found');
-    }
-    if (!invoice.deliveryNote) {
-      throw new BadRequestException(
-        'Sale invoice must be linked to a delivery note before creating a return',
-      );
     }
     if (!invoice.items?.length) {
       throw new BadRequestException(
@@ -273,18 +261,18 @@ export class SaleReturnService {
     const saleReturn = await tenantDb
       .getRepository(SaleReturn)
       .createQueryBuilder('saleReturn')
-      .leftJoinAndSelect('saleReturn.warehouse', 'warehouse')
       .leftJoinAndSelect('saleReturn.saleInvoice', 'saleInvoice')
       .leftJoinAndSelect('saleInvoice.items', 'invoiceItems')
       .leftJoinAndSelect('saleInvoice.deliveryNote', 'deliveryNote')
-      .leftJoinAndSelect('deliveryNote.items', 'deliveryNoteItems')
       .leftJoinAndSelect('saleInvoice.customer', 'customer')
       .leftJoinAndSelect('saleInvoice.saleOrder', 'saleOrder')
+      .leftJoinAndSelect('saleOrder.items', 'saleOrderItems')
       .leftJoinAndSelect('saleReturn.saleReturnItems', 'items')
       .leftJoinAndSelect('items.product', 'product')
       .leftJoinAndSelect('items.productFlavour', 'productFlavour')
       .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .leftJoinAndSelect('items.uom', 'uom')
+      .leftJoinAndSelect('items.warehouse', 'warehouse')
       .where('saleReturn.id = :returnId', { returnId })
       .andWhere('saleReturn.businessId = :businessId', { businessId })
       .getOne();
@@ -300,6 +288,14 @@ export class SaleReturnService {
     const invoice = saleReturn.saleInvoice;
     const items = (saleReturn.saleReturnItems ?? []).map((item) => ({
       id: item.id,
+      warehouseId: item.warehouseId,
+      warehouse: item.warehouse
+        ? {
+            id: item.warehouse.id,
+            code: item.warehouse.code,
+            name: item.warehouse.name,
+          }
+        : null,
       productId: item.productId,
       product: item.product
         ? {
@@ -344,14 +340,6 @@ export class SaleReturnService {
     return {
       id: saleReturn.id,
       businessId: saleReturn.businessId,
-      warehouseId: saleReturn.warehouseId,
-      warehouse: saleReturn.warehouse
-        ? {
-            id: saleReturn.warehouse.id,
-            code: saleReturn.warehouse.code,
-            name: saleReturn.warehouse.name,
-          }
-        : null,
       saleInvoiceId: saleReturn.saleInvoiceId,
       saleInvoice: invoice
         ? {
@@ -365,12 +353,6 @@ export class SaleReturnService {
                   id: invoice.customer.id,
                   code: invoice.customer.code,
                   name: invoice.customer.name,
-                }
-              : null,
-            deliveryNote: invoice.deliveryNote
-              ? {
-                  id: invoice.deliveryNote.id,
-                  deliveryNoteNumber: invoice.deliveryNote.deliveryNoteNumber,
                 }
               : null,
           }
@@ -392,6 +374,64 @@ export class SaleReturnService {
   ): void {
     if (saleReturn.status !== SaleReturnStatus.PENDING) {
       throw new BadRequestException(message);
+    }
+  }
+
+  private groupLinesByWarehouse(
+    lines: ResolvedReturnLine[],
+  ): Map<string, ResolvedReturnLine[]> {
+    const grouped = new Map<string, ResolvedReturnLine[]>();
+    for (const line of lines) {
+      const rows = grouped.get(line.warehouseId) ?? [];
+      rows.push(line);
+      grouped.set(line.warehouseId, rows);
+    }
+    return grouped;
+  }
+
+  private async receiveStockForReturnLines(
+    manager: EntityManager,
+    businessId: string,
+    customerId: string,
+    saleReturn: SaleReturn,
+    lines: ResolvedReturnLine[],
+  ): Promise<void> {
+    for (const [warehouseId, group] of this.groupLinesByWarehouse(lines)) {
+      await this.stockService.receiveStockIn(manager, {
+        businessId,
+        warehouseId,
+        vendorId: customerId,
+        referenceType: ReferenceType.SALE_RETURN,
+        batchDate: saleReturn.returnDate,
+        batchNumberPrefix: saleReturn.returnNumber,
+        lines: group.map((line) => ({
+          productId: line.productId,
+          uomId: line.uomId,
+          quantity: line.quantity,
+          purchaseUnitPrice: line.purchaseUnitPrice,
+          saleUnitMarginAmount: line.saleUnitMarginAmount,
+          saleUnitMarginPercentage: line.saleUnitMarginPercentage,
+        })),
+      });
+    }
+  }
+
+  private async consumeStockForReturnReversal(
+    manager: EntityManager,
+    businessId: string,
+    lines: ResolvedReturnLine[],
+  ): Promise<void> {
+    for (const [warehouseId, group] of this.groupLinesByWarehouse(lines)) {
+      await this.stockService.consumeStockOut(manager, {
+        businessId,
+        warehouseId,
+        referenceType: ReferenceType.SALE_RETURN,
+        lines: group.map((line) => ({
+          productId: line.productId,
+          uomId: line.uomId,
+          quantity: line.quantity,
+        })),
+      });
     }
   }
 
@@ -424,22 +464,13 @@ export class SaleReturnService {
       );
     }
 
-    await this.stockService.receiveStockIn(manager, {
+    await this.receiveStockForReturnLines(
+      manager,
       businessId,
-      warehouseId: saleReturn.warehouseId,
-      vendorId: invoice.customerId,
-      referenceType: ReferenceType.SALE_RETURN,
-      batchDate: saleReturn.returnDate,
-      batchNumberPrefix: saleReturn.returnNumber,
-      lines: lines.map((line) => ({
-        productId: line.productId,
-        uomId: line.uomId,
-        quantity: line.quantity,
-        purchaseUnitPrice: line.purchaseUnitPrice,
-        saleUnitMarginAmount: line.saleUnitMarginAmount,
-        saleUnitMarginPercentage: line.saleUnitMarginPercentage,
-      })),
-    });
+      invoice.customerId,
+      saleReturn,
+      lines,
+    );
 
     await this.transactionService.postDirectLedgerEntry(manager, {
       businessId,
@@ -470,8 +501,6 @@ export class SaleReturnService {
     saleReturn: SaleReturn;
     resolvedLines: ResolvedReturnLine[];
   }> {
-    await this.assertWarehouseForBusiness(manager, scopedBusinessId, dto.warehouseId);
-
     const returnRepo = manager.getRepository(SaleReturn);
     const returnNumber =
       dto.returnNumber?.trim() || (await this.generateReturnNumber(manager));
@@ -500,7 +529,6 @@ export class SaleReturnService {
     const saleReturn = await returnRepo.save(
       returnRepo.create({
         businessId: scopedBusinessId,
-        warehouseId: dto.warehouseId,
         saleInvoiceId: invoice.id,
         returnNumber,
         returnDate: new Date(dto.returnDate),
@@ -513,6 +541,7 @@ export class SaleReturnService {
       resolvedLines.map((line) =>
         manager.getRepository(SaleReturnItem).create({
           saleReturnId: saleReturn.id,
+          warehouseId: line.warehouseId,
           productId: line.productId,
           productFlavourId: line.productFlavourId,
           uomId: line.uomId,
@@ -544,16 +573,7 @@ export class SaleReturnService {
     );
 
     if (totalAmount > 0) {
-      await this.stockService.consumeStockOut(manager, {
-        businessId,
-        warehouseId: saleReturn.warehouseId,
-        referenceType: ReferenceType.SALE_RETURN,
-        lines: lines.map((line) => ({
-          productId: line.productId,
-          uomId: line.uomId,
-          quantity: line.quantity,
-        })),
-      });
+      await this.consumeStockForReturnReversal(manager, businessId, lines);
 
       await this.transactionService.postDirectLedgerEntry(manager, {
         businessId,
@@ -585,24 +605,21 @@ export class SaleReturnService {
         );
       }
 
-      const deliveryNoteItem = invoice.deliveryNote?.items?.find(
-        (row) =>
-          row.productId === item.productId &&
-          row.uomId === item.uomId &&
-          (row.productFlavourId ?? null) === (item.productFlavourId ?? null),
+      const orderItem = this.findSaleOrderItem(
+        invoice.saleOrder?.items,
+        invoiceItem,
       );
 
       return {
+        warehouseId: item.warehouseId,
         productId: item.productId,
         uomId: item.uomId,
         productFlavourId: item.productFlavourId ?? null,
         quantity: Number(item.quantity),
         lineAmount: this.lineAmountForQuantity(invoiceItem, Number(item.quantity)),
-        purchaseUnitPrice: Number(invoiceItem.saleUnitPrice),
-        saleUnitMarginAmount: Number(deliveryNoteItem?.saleUnitMarginAmount ?? 0),
-        saleUnitMarginPercentage: Number(
-          deliveryNoteItem?.saleUnitMarginPercentage ?? 0,
-        ),
+        purchaseUnitPrice: Number(orderItem?.purchaseUnitPrice ?? 0),
+        saleUnitMarginAmount: Number(orderItem?.saleMarginAmount ?? 0),
+        saleUnitMarginPercentage: Number(orderItem?.saleMarginPercentage ?? 0),
       };
     });
   }
@@ -763,13 +780,12 @@ export class SaleReturnService {
     const qb = tenantDb
       .getRepository(SaleReturn)
       .createQueryBuilder('saleReturn')
-      .leftJoinAndSelect('saleReturn.warehouse', 'warehouse')
       .leftJoinAndSelect('saleReturn.saleInvoice', 'saleInvoice')
       .leftJoinAndSelect('saleInvoice.items', 'invoiceItems')
       .leftJoinAndSelect('saleInvoice.customer', 'customer')
-      .leftJoinAndSelect('saleInvoice.deliveryNote', 'deliveryNote')
       .leftJoinAndSelect('saleReturn.saleReturnItems', 'items')
       .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.warehouse', 'warehouse')
       .where('saleReturn.businessId = :businessId', {
         businessId: scopedBusinessId,
       });
@@ -780,7 +796,9 @@ export class SaleReturnService {
       });
     }
     if (options.status) {
-      qb.andWhere('saleReturn.status = :status', { status: options.status });
+      qb.andWhere('saleReturn.status = :status', {
+        status: options.status,
+      });
     }
 
     if (options.search?.trim()) {
@@ -861,15 +879,6 @@ export class SaleReturnService {
 
     const updated = await tenantDb.transaction(async (manager) => {
       const returnRepo = manager.getRepository(SaleReturn);
-
-      if (dto.warehouseId !== undefined) {
-        await this.assertWarehouseForBusiness(
-          manager,
-          scopedBusinessId,
-          dto.warehouseId,
-        );
-        saleReturn.warehouseId = dto.warehouseId;
-      }
 
       if (dto.returnNumber !== undefined) {
         const nextNumber = dto.returnNumber.trim();

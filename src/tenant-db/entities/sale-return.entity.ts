@@ -23,13 +23,6 @@ export class SaleReturn {
     business: Business;
 
     @Column()
-    warehouseId: string;
-
-    @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT' })
-    @JoinColumn({ name: 'warehouseId' })
-    warehouse: Warehouse;
-
-    @Column()
     saleInvoiceId: string;
 
     @ManyToOne(() => SaleInvoice, (saleInvoice) => saleInvoice.saleReturns, { onDelete: 'CASCADE' })
@@ -94,6 +87,13 @@ export class SaleReturnItem {
     uom: Uom;
 
     @Column()
+    warehouseId: string;
+
+    @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'warehouseId' })
+    warehouse: Warehouse;
+
+    @Column()
     quantity: number;
 
     @CreateDateColumn()
@@ -101,4 +101,4 @@ export class SaleReturnItem {
 
     @UpdateDateColumn()
     updatedAt: Date;
-}   
+}
