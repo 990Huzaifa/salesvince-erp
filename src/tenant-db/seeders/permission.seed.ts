@@ -3,6 +3,7 @@ import { Permission } from '../entities/permission.entity';
 
 export const TENANT_PERMISSIONS = [
   { key: 'UPLOAD_ASSET', name: 'Upload Asset' },
+  { key: 'USE_SQL_AGENT', name: 'Use SQL Assistant' },
 
   { key: 'CREATE_USER', name: 'Create Users' },
   { key: 'CREATE_ROLE', name: 'Create Role' },

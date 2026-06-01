@@ -72,6 +72,7 @@ export class MasterTenantDataService {
     }
     const modules = await this.tenantModuleRepo.find({
       where: { tenant: { id: tenantId.trim() } },
+      relations: ['module'],
     });
     if (!modules) {
       return [];

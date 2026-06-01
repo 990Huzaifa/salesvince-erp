@@ -87,6 +87,10 @@ import { DashboardService } from './service/dashboard.service';
 import { Country } from 'src/master-db/entities/country.entity';
 import { State } from 'src/master-db/entities/state.entity';
 import { City } from 'src/master-db/entities/city.entity';
+import { SqlAgentModule } from 'src/sql-agent/sql-agent.module';
+import { SqlAgentController } from './controller/sql-agent.controller';
+import { SqlAgentChatService } from './service/sql-agent-chat.service';
+
 @Module({
   imports: [
     HttpModule,
@@ -94,6 +98,7 @@ import { City } from 'src/master-db/entities/city.entity';
     MailModule,
     CommonModule,
     TenantRuntimeModule,
+    SqlAgentModule,
     TypeOrmModule.forFeature([Tenant, Country, State, City]),
   ],
   controllers: [
@@ -133,6 +138,7 @@ import { City } from 'src/master-db/entities/city.entity';
     FinanceController,
     ReportController,
     DashboardController,
+    SqlAgentController,
   ],
   providers: [
     TenantAuthService,
@@ -177,6 +183,7 @@ import { City } from 'src/master-db/entities/city.entity';
     MasterGeoHelperService,
     ReportService,
     DashboardService,
+    SqlAgentChatService,
   ],
 })
 export class TenantModule {}

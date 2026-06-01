@@ -732,7 +732,7 @@ export class PlatformService {
         this.tenantModuleRepo.create({
           tenant,
           module,
-          enabled: true,
+          enabled: module.key !== 'SQL_AGENT',
         }),
       ),
     );
