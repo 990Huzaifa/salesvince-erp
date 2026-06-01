@@ -8,6 +8,9 @@ export class PurchaseReturn {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
+    @Column()
+    businessId: string;
+
     @ManyToOne(() => Business, (business) => business.purchaseReturns, { onDelete: 'CASCADE' })
     @JoinColumn({ name: 'businessId' })
     business: Business;

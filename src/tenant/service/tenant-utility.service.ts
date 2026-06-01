@@ -15,6 +15,8 @@ import { SaleOrder, OrderStatus as SaleOrderStatus } from 'src/tenant-db/entitie
 import { PurchaseOrder } from 'src/tenant-db/entities/purchase-order.entity';
 import { Grn } from 'src/tenant-db/entities/grn.entity';
 import { DeliveryNote } from 'src/tenant-db/entities/delivery-note.entity';
+import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
+import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity';
 import { Business } from 'src/tenant-db/entities/business.entity';
 import { ChartOfAccountType } from 'src/tenant-db/chart-of-accounts/constants/chart-of-account-type.enum';
 
@@ -409,6 +411,38 @@ export class TenantUtilityService {
     });
 
     return { result: customers };
+  }
+
+  async getSaleInvoices(tenantDb: DataSource, businessId: string) {
+    const invoices = await tenantDb
+      .getRepository(SaleInvoice)
+      .createQueryBuilder('invoice')
+      .select('invoice.id', 'id')
+      .addSelect('invoice.invoiceNumber', 'code')
+      .addSelect('invoice.totalAmount', 'totalAmount')
+      .where('invoice.businessId = :businessId', { businessId })
+      .andWhere('invoice.deletedAt IS NULL')
+      .orderBy('invoice.invoiceDate', 'DESC')
+      .addOrderBy('invoice.createdAt', 'DESC')
+      .getRawMany();
+
+    return { result: invoices };
+  }
+
+  async getPurchaseInvoices(tenantDb: DataSource, businessId: string) {
+    const invoices = await tenantDb
+      .getRepository(PurchaseInvoice)
+      .createQueryBuilder('invoice')
+      .select('invoice.id', 'id')
+      .addSelect('invoice.invoiceNumber', 'code')
+      .addSelect('invoice.totalAmount', 'totalAmount')
+      .where('invoice.businessId = :businessId', { businessId })
+      .andWhere('invoice.deletedAt IS NULL')
+      .orderBy('invoice.invoiceDate', 'DESC')
+      .addOrderBy('invoice.createdAt', 'DESC')
+      .getRawMany();
+
+    return { result: invoices };
   }
 
 }

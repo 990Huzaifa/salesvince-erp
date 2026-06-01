@@ -260,4 +260,34 @@ export class TenantUtilityController {
         const user = req.user as TenantRequestUser;
         return this.utilityService.getCustomers(tenantDb, user.businessId);
     }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+    )
+    @Get('sale-invoices')
+    async getSaleInvoices(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.utilityService.getSaleInvoices(tenantDb, user.businessId);
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+    )
+    @Get('purchase-invoices')
+    async getPurchaseInvoices(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.utilityService.getPurchaseInvoices(tenantDb, user.businessId);
+    }
 }

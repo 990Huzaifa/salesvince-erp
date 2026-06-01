@@ -66,6 +66,8 @@ import { GrnService } from './service/purchase/grn.service';
 import { StockService } from './service/stock.service';
 import { PurchaseInvoiceController } from './controller/Purchase/purchase-invoice.controller';
 import { PurchaseInvoiceService } from './service/purchase/purchase-invoice.service';
+import { PurchaseReturnController } from './controller/Purchase/purchase-return.controller';
+import { PurchaseReturnService } from './service/purchase/purchase-return.service';
 import { FinanceController } from './controller/finance.controller';
 import { FinanceService } from './service/finance.service';
 import { TenantNotificationController } from './controller/tenant-notification.controller';
@@ -124,6 +126,7 @@ import { City } from 'src/master-db/entities/city.entity';
     PurchaseOrderController,
     GrnController,
     PurchaseInvoiceController,
+    PurchaseReturnController,
     FinanceController,
     ReportController,
     DashboardController,
@@ -165,6 +168,7 @@ import { City } from 'src/master-db/entities/city.entity';
     GrnService,
     StockService,
     PurchaseInvoiceService,
+    PurchaseReturnService,
     FinanceService,
     MasterGeoHelperService,
     ReportService,
