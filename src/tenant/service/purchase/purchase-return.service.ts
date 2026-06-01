@@ -370,11 +370,12 @@ export class PurchaseReturnService {
     };
   }
 
-  private assertPendingStatus(purchaseReturn: PurchaseReturn): void {
+  private assertPendingStatus(
+    purchaseReturn: PurchaseReturn,
+    message = 'Only pending purchase returns can perform this action',
+  ): void {
     if (purchaseReturn.status !== PurchaseReturnStatus.PENDING) {
-      throw new BadRequestException(
-        'Only pending purchase returns can be modified',
-      );
+      throw new BadRequestException(message);
     }
   }
 
@@ -385,18 +386,10 @@ export class PurchaseReturnService {
     invoice: PurchaseInvoice,
     lines: ResolvedReturnLine[],
   ): Promise<PurchaseReturn> {
-    if (purchaseReturn.status === PurchaseReturnStatus.APPROVED) {
-      return manager.getRepository(PurchaseReturn).findOneOrFail({
-        where: { id: purchaseReturn.id },
-        relations: this.returnRelations(),
-      });
-    }
-
-    if (purchaseReturn.status !== PurchaseReturnStatus.PENDING) {
-      throw new BadRequestException(
-        'Only pending purchase returns can be approved',
-      );
-    }
+    this.assertPendingStatus(
+      purchaseReturn,
+      'Only pending purchase returns can be approved',
+    );
 
     const grn = invoice.grn as Grn;
     const vendor = invoice.vendor as Party;
@@ -696,12 +689,10 @@ export class PurchaseReturnService {
       returnId,
     );
 
-    if (purchaseReturn.status === PurchaseReturnStatus.APPROVED) {
-      return {
-        data: this.mapPurchaseReturn(purchaseReturn),
-        message: 'Purchase return is already approved',
-      };
-    }
+    this.assertPendingStatus(
+      purchaseReturn,
+      'Only pending purchase returns can be approved',
+    );
 
     const invoice = await this.findPurchaseInvoiceForReturn(
       tenantDb,
@@ -847,7 +838,10 @@ export class PurchaseReturnService {
       scopedBusinessId,
       returnId,
     );
-    this.assertPendingStatus(purchaseReturn);
+    this.assertPendingStatus(
+      purchaseReturn,
+      'Only pending purchase returns can be modified',
+    );
 
     const updated = await tenantDb.transaction(async (manager) => {
       const returnRepo = manager.getRepository(PurchaseReturn);
