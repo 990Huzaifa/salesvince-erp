@@ -4,10 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Brackets, DataSource, EntityManager, IsNull } from 'typeorm';
+import { Brackets, DataSource, EntityManager, In, IsNull } from 'typeorm';
 import {
   PurchaseReturn,
   PurchaseReturnItem,
+  PurchaseReturnStatus,
 } from 'src/tenant-db/entities/purchase-return.entity';
 import {
   PurchaseInvoice,
@@ -111,7 +112,13 @@ export class PurchaseReturnService {
     excludeReturnId?: string,
   ): Promise<Map<string, number>> {
     const returns = await manager.getRepository(PurchaseReturn).find({
-      where: { purchaseInvoiceId },
+      where: {
+        purchaseInvoiceId,
+        status: In([
+          PurchaseReturnStatus.PENDING,
+          PurchaseReturnStatus.APPROVED,
+        ]),
+      },
       relations: { purchaseReturnItems: true },
     });
 
@@ -355,6 +362,7 @@ export class PurchaseReturnService {
       returnNumber: purchaseReturn.returnNumber,
       returnDate: purchaseReturn.returnDate,
       returnReason: purchaseReturn.returnReason,
+      status: purchaseReturn.status,
       totalReturnAmount: this.roundAmount(totalReturnAmount),
       items,
       createdAt: purchaseReturn.createdAt,
@@ -362,19 +370,40 @@ export class PurchaseReturnService {
     };
   }
 
-  private async executeReturnSideEffects(
+  private assertPendingStatus(purchaseReturn: PurchaseReturn): void {
+    if (purchaseReturn.status !== PurchaseReturnStatus.PENDING) {
+      throw new BadRequestException(
+        'Only pending purchase returns can be modified',
+      );
+    }
+  }
+
+  private async executePurchaseReturnApproval(
     manager: EntityManager,
     businessId: string,
     purchaseReturn: PurchaseReturn,
     invoice: PurchaseInvoice,
     lines: ResolvedReturnLine[],
-  ): Promise<void> {
+  ): Promise<PurchaseReturn> {
+    if (purchaseReturn.status === PurchaseReturnStatus.APPROVED) {
+      return manager.getRepository(PurchaseReturn).findOneOrFail({
+        where: { id: purchaseReturn.id },
+        relations: this.returnRelations(),
+      });
+    }
+
+    if (purchaseReturn.status !== PurchaseReturnStatus.PENDING) {
+      throw new BadRequestException(
+        'Only pending purchase returns can be approved',
+      );
+    }
+
     const grn = invoice.grn as Grn;
     const vendor = invoice.vendor as Party;
 
     if (!vendor?.payableAccountId) {
       throw new BadRequestException(
-        'Vendor payable account is required before posting a purchase return',
+        'Vendor payable account is required before approving a purchase return',
       );
     }
 
@@ -408,6 +437,74 @@ export class PurchaseReturnService {
       description: `Purchase return ${purchaseReturn.returnNumber} - vendor payable reduced`,
       debitAmount: totalAmount,
     });
+
+    purchaseReturn.status = PurchaseReturnStatus.APPROVED;
+    await manager.getRepository(PurchaseReturn).save(purchaseReturn);
+
+    return manager.getRepository(PurchaseReturn).findOneOrFail({
+      where: { id: purchaseReturn.id },
+      relations: this.returnRelations(),
+    });
+  }
+
+  private async persistNewPurchaseReturn(
+    manager: EntityManager,
+    scopedBusinessId: string,
+    invoice: PurchaseInvoice,
+    dto: CreatePurchaseReturnDto,
+  ): Promise<{
+    purchaseReturn: PurchaseReturn;
+    resolvedLines: ResolvedReturnLine[];
+  }> {
+    const returnRepo = manager.getRepository(PurchaseReturn);
+    const returnNumber =
+      dto.returnNumber?.trim() || (await this.generateReturnNumber(manager));
+
+    if (dto.returnNumber?.trim()) {
+      const taken = await returnRepo.findOne({
+        where: { returnNumber },
+      });
+      if (taken) {
+        throw new ConflictException(
+          'Purchase return with this number already exists',
+        );
+      }
+    }
+
+    const alreadyReturned = await this.getReturnedQuantityByInvoiceItem(
+      manager,
+      invoice.id,
+    );
+    const resolvedLines = this.resolveCreateLines(
+      invoice,
+      dto,
+      alreadyReturned,
+    );
+
+    const purchaseReturn = await returnRepo.save(
+      returnRepo.create({
+        businessId: scopedBusinessId,
+        purchaseInvoiceId: invoice.id,
+        returnNumber,
+        returnDate: new Date(dto.returnDate),
+        returnReason: dto.returnReason.trim(),
+        status: PurchaseReturnStatus.PENDING,
+      }),
+    );
+
+    await manager.getRepository(PurchaseReturnItem).save(
+      resolvedLines.map((line) =>
+        manager.getRepository(PurchaseReturnItem).create({
+          purchaseReturnId: purchaseReturn.id,
+          productId: line.productId,
+          productFlavourId: line.productFlavourId,
+          uomId: line.uomId,
+          quantity: line.quantity,
+        }),
+      ),
+    );
+
+    return { purchaseReturn, resolvedLines };
   }
 
   private async reverseReturnSideEffects(
@@ -512,62 +609,14 @@ export class PurchaseReturnService {
     );
 
     const created = await tenantDb.transaction(async (manager) => {
-      const returnRepo = manager.getRepository(PurchaseReturn);
-      const returnNumber =
-        dto.returnNumber?.trim() || (await this.generateReturnNumber(manager));
-
-      if (dto.returnNumber?.trim()) {
-        const taken = await returnRepo.findOne({
-          where: { returnNumber },
-        });
-        if (taken) {
-          throw new ConflictException(
-            'Purchase return with this number already exists',
-          );
-        }
-      }
-
-      const alreadyReturned = await this.getReturnedQuantityByInvoiceItem(
-        manager,
-        invoice.id,
-      );
-      const resolvedLines = this.resolveCreateLines(
-        invoice,
-        dto,
-        alreadyReturned,
-      );
-
-      const purchaseReturn = await returnRepo.save(
-        returnRepo.create({
-          businessId: scopedBusinessId,
-          purchaseInvoiceId: invoice.id,
-          returnNumber,
-          returnDate: new Date(dto.returnDate),
-          returnReason: dto.returnReason.trim(),
-        }),
-      );
-
-      await manager.getRepository(PurchaseReturnItem).save(
-        resolvedLines.map((line) =>
-          manager.getRepository(PurchaseReturnItem).create({
-            purchaseReturnId: purchaseReturn.id,
-            productId: line.productId,
-            productFlavourId: line.productFlavourId,
-            uomId: line.uomId,
-            quantity: line.quantity,
-          }),
-        ),
-      );
-
-      await this.executeReturnSideEffects(
+      const { purchaseReturn } = await this.persistNewPurchaseReturn(
         manager,
         scopedBusinessId,
-        purchaseReturn,
         invoice,
-        resolvedLines,
+        dto,
       );
 
-      return returnRepo.findOneOrFail({
+      return manager.getRepository(PurchaseReturn).findOneOrFail({
         where: { id: purchaseReturn.id },
         relations: this.returnRelations(),
       });
@@ -581,10 +630,108 @@ export class PurchaseReturnService {
       metadata: {
         purchaseReturnId: created.id,
         purchaseInvoiceId: invoice.id,
+        status: created.status,
       },
     });
 
     return { data: this.mapPurchaseReturn(created) };
+  }
+
+  async createAndApprove(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    dto: CreatePurchaseReturnDto,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const invoice = await this.findPurchaseInvoiceForReturn(
+      tenantDb,
+      scopedBusinessId,
+      dto.purchaseInvoiceId,
+    );
+
+    const created = await tenantDb.transaction(async (manager) => {
+      const { purchaseReturn, resolvedLines } =
+        await this.persistNewPurchaseReturn(
+          manager,
+          scopedBusinessId,
+          invoice,
+          dto,
+        );
+
+      return this.executePurchaseReturnApproval(
+        manager,
+        scopedBusinessId,
+        purchaseReturn,
+        invoice,
+        resolvedLines,
+      );
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'PURCHASE_RETURN_CREATED_AND_APPROVED',
+      description: `Purchase return ${created.returnNumber} created and approved`,
+      metadata: {
+        purchaseReturnId: created.id,
+        purchaseInvoiceId: invoice.id,
+        status: created.status,
+      },
+    });
+
+    return { data: this.mapPurchaseReturn(created) };
+  }
+
+  async approve(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    returnId: string,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const purchaseReturn = await this.findReturnForBusiness(
+      tenantDb,
+      scopedBusinessId,
+      returnId,
+    );
+
+    if (purchaseReturn.status === PurchaseReturnStatus.APPROVED) {
+      return {
+        data: this.mapPurchaseReturn(purchaseReturn),
+        message: 'Purchase return is already approved',
+      };
+    }
+
+    const invoice = await this.findPurchaseInvoiceForReturn(
+      tenantDb,
+      scopedBusinessId,
+      purchaseReturn.purchaseInvoiceId,
+    );
+    const resolvedLines = this.resolvedLinesFromReturn(purchaseReturn, invoice);
+
+    const approved = await tenantDb.transaction(async (manager) =>
+      this.executePurchaseReturnApproval(
+        manager,
+        scopedBusinessId,
+        purchaseReturn,
+        invoice,
+        resolvedLines,
+      ),
+    );
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'PURCHASE_RETURN_APPROVED',
+      description: `Purchase return ${approved.returnNumber} approved — stock issued, vendor payable reduced`,
+      metadata: {
+        purchaseReturnId: approved.id,
+        purchaseInvoiceId: invoice.id,
+      },
+    });
+
+    return { data: this.mapPurchaseReturn(approved) };
   }
 
   async list(
@@ -595,6 +742,7 @@ export class PurchaseReturnService {
       limit: number;
       search?: string;
       purchaseInvoiceId?: string;
+      status?: PurchaseReturnStatus;
     },
     actorUserId: string,
   ) {
@@ -620,6 +768,11 @@ export class PurchaseReturnService {
     if (options.purchaseInvoiceId) {
       qb.andWhere('purchaseReturn.purchaseInvoiceId = :purchaseInvoiceId', {
         purchaseInvoiceId: options.purchaseInvoiceId,
+      });
+    }
+    if (options.status) {
+      qb.andWhere('purchaseReturn.status = :status', {
+        status: options.status,
       });
     }
 
@@ -694,6 +847,7 @@ export class PurchaseReturnService {
       scopedBusinessId,
       returnId,
     );
+    this.assertPendingStatus(purchaseReturn);
 
     const updated = await tenantDb.transaction(async (manager) => {
       const returnRepo = manager.getRepository(PurchaseReturn);
@@ -755,27 +909,39 @@ export class PurchaseReturnService {
       returnId,
     );
 
-    const invoice = await this.findPurchaseInvoiceForReturn(
-      tenantDb,
-      scopedBusinessId,
-      purchaseReturn.purchaseInvoiceId,
-    );
-    const resolvedLines = this.resolvedLinesFromReturn(purchaseReturn, invoice);
-
-    await tenantDb.transaction(async (manager) => {
-      await this.reverseReturnSideEffects(
-        manager,
+    if (purchaseReturn.status === PurchaseReturnStatus.APPROVED) {
+      const invoice = await this.findPurchaseInvoiceForReturn(
+        tenantDb,
         scopedBusinessId,
+        purchaseReturn.purchaseInvoiceId,
+      );
+      const resolvedLines = this.resolvedLinesFromReturn(
         purchaseReturn,
         invoice,
-        resolvedLines,
       );
 
-      await manager
-        .getRepository(PurchaseReturnItem)
-        .delete({ purchaseReturnId: purchaseReturn.id });
-      await manager.getRepository(PurchaseReturn).delete(purchaseReturn.id);
-    });
+      await tenantDb.transaction(async (manager) => {
+        await this.reverseReturnSideEffects(
+          manager,
+          scopedBusinessId,
+          purchaseReturn,
+          invoice,
+          resolvedLines,
+        );
+
+        await manager
+          .getRepository(PurchaseReturnItem)
+          .delete({ purchaseReturnId: purchaseReturn.id });
+        await manager.getRepository(PurchaseReturn).delete(purchaseReturn.id);
+      });
+    } else {
+      await tenantDb.transaction(async (manager) => {
+        await manager
+          .getRepository(PurchaseReturnItem)
+          .delete({ purchaseReturnId: purchaseReturn.id });
+        await manager.getRepository(PurchaseReturn).delete(purchaseReturn.id);
+      });
+    }
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,

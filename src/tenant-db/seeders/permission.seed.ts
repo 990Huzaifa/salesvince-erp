@@ -27,6 +27,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'CREATE_OPENING_STOCK', name: 'Create Opening Stock' },
   { key: 'CREATE_PURCHASE_STOCK', name: 'Create Purchase Stock' },
   { key: 'APPROVE_PURCHASE_STOCK', name: 'Approve Purchase Stock (GRN)' },
+  { key: 'APPROVE_PURCHASE_RETURN', name: 'Approve Purchase Return' },
   { key: 'APPROVE_DELIVERY_NOTE', name: 'Approve Delivery Note' },
   { key: 'CREATE_TRANSFER_STOCK', name: 'Create Transfer Stock' },
   { key: 'CREATE_CHART_OF_ACCOUNT', name: 'Create Chart of Account' },

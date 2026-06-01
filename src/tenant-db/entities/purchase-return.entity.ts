@@ -3,6 +3,12 @@ import { PurchaseInvoice } from "./purchase-invoice.entity";
 import { Product, ProductFlavour, Uom } from "./product.entity";
 import { Business } from "./business.entity";
 
+export enum PurchaseReturnStatus {
+    PENDING = 'PENDING',
+    APPROVED = 'APPROVED',
+    REJECTED = 'REJECTED',
+
+}
 @Entity('purchase_returns')
 export class PurchaseReturn {
     @PrimaryGeneratedColumn('uuid')
@@ -29,6 +35,15 @@ export class PurchaseReturn {
 
     @Column()
     returnReason: string;
+
+    @Column(
+        {
+            type: 'enum',
+            enum: PurchaseReturnStatus,
+            default: PurchaseReturnStatus.PENDING,
+        }
+    )
+    status: PurchaseReturnStatus;
 
     @CreateDateColumn()
     createdAt: Date;

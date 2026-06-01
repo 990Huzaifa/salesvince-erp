@@ -21,6 +21,7 @@ import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
+import { PurchaseReturnStatus } from 'src/tenant-db/entities/purchase-return.entity';
 import { PurchaseReturnService } from '../../service/purchase/purchase-return.service';
 import { CreatePurchaseReturnDto } from '../../dto/purchase-return/create-purchase-return.dto';
 import { UpdatePurchaseReturnDto } from '../../dto/purchase-return/update-purchase-return.dto';
@@ -52,6 +53,22 @@ export class PurchaseReturnController {
     );
   }
 
+  @Post('create-and-approve')
+  @RequirePermissions('APPROVE_PURCHASE_RETURN')
+  createAndApprove(
+    @TenantConnection() tenantDb: DataSource,
+    @Body() dto: CreatePurchaseReturnDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.purchaseReturnService.createAndApprove(
+      tenantDb,
+      user.businessId,
+      dto,
+      user.userId,
+    );
+  }
+
   @Get()
   @RequirePermissions('LIST_PURCHASE_RETURN')
   list(
@@ -61,6 +78,7 @@ export class PurchaseReturnController {
     @Query('limit') limit: number = 10,
     @Query('search') search?: string,
     @Query('purchaseInvoiceId') purchaseInvoiceId?: string,
+    @Query('status') status?: PurchaseReturnStatus,
   ) {
     const user = req.user as TenantRequestUser;
     return this.purchaseReturnService.list(
@@ -71,6 +89,7 @@ export class PurchaseReturnController {
         limit: Number(limit),
         search,
         purchaseInvoiceId,
+        status,
       },
       user.userId,
     );
@@ -85,6 +104,22 @@ export class PurchaseReturnController {
   ) {
     const user = req.user as TenantRequestUser;
     return this.purchaseReturnService.view(
+      tenantDb,
+      user.businessId,
+      id,
+      user.userId,
+    );
+  }
+
+  @Post('approve/:id')
+  @RequirePermissions('APPROVE_PURCHASE_RETURN')
+  approve(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.purchaseReturnService.approve(
       tenantDb,
       user.businessId,
       id,
