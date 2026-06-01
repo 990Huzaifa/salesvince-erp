@@ -23,7 +23,6 @@ import { ActivityLogService } from '../activity-log.service';
 import { StockService } from '../stock.service';
 import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import { DeliveryNoteService } from './delivery-note.service';
-import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 
 const ORDER_NUMBER_PREFIX = 'SO';
 
@@ -984,6 +983,7 @@ export class SaleOrderService {
       const itemsForTotals: CreateSaleOrderItemDto[] =
         dto.items ??
         existingItems.map((item) => ({
+          warehouseId: item.warehouseId,
           productId: item.productId,
           uomId: item.uomId,
           productFlavourId: item.productFlavourId ?? undefined,
