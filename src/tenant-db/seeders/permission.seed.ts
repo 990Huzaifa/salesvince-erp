@@ -75,6 +75,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'LIST_PURCHASE_ORDER', name: 'List Purchase Order' },
   { key: 'LIST_PURCHASE_INVOICE', name: 'List Purchase Invoice' },
   { key: 'LIST_WAREHOUSE', name: 'List Warehouse' },
+  { key: 'LIST_INVENTORY', name: 'List Inventory' },
   { key: 'LIST_LOAN', name: 'List Loan' },
 
   { key: 'UPDATE_USER', name: 'Update Users' },

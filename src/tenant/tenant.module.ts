@@ -97,6 +97,10 @@ import { SqlAgentController } from './controller/sql-agent.controller';
 import { SqlAgentChatService } from './service/sql-agent-chat.service';
 import { LoanController } from './controller/loan.controller';
 import { LoanService } from './service/loan.service';
+import { InventoryController } from './controller/inventory.controller';
+import { InventoryBalanceService } from './service/inventory/inventory-balance.service';
+import { InventoryBatchService } from './service/inventory/inventory-batch.service';
+import { InventoryMovementService } from './service/inventory/inventory-movement.service';
 
 @Module({
   imports: [
@@ -150,6 +154,7 @@ import { LoanService } from './service/loan.service';
     DashboardController,
     SqlAgentController,
     LoanController,
+    InventoryController,
   ],
   providers: [
     TenantAuthService,
@@ -198,6 +203,9 @@ import { LoanService } from './service/loan.service';
     DashboardService,
     SqlAgentChatService,
     LoanService,
+    InventoryBalanceService,
+    InventoryBatchService,
+    InventoryMovementService,
   ],
 })
 export class TenantModule {}
