@@ -26,6 +26,14 @@ import { PurchaseReturn } from './purchase-return.entity';
 import { DeliveryNote } from './delivery-note.entity';
 import { SaleInvoice } from './sale-invoice.entity';
 import { SaleReturn } from './sale-return.entity';
+import {
+    Department,
+    Designation,
+    Employee,
+    PayPolicy,
+    SalaryComponent,
+    EmployeeSalaryStructure,
+} from './hr';
 export enum BusinessStatus {
     ACTIVE = 'ACTIVE',
     INACTIVE = 'INACTIVE',
@@ -161,5 +169,21 @@ export class Business {
     @OneToMany(() => StockMovement, (stockMovement) => stockMovement.business, { onDelete: 'CASCADE' })
     stockMovements: StockMovement[];
 
+    @OneToMany(() => Department, (department) => department.business, { onDelete: 'CASCADE' })
+    departments: Department[];
+    
+    @OneToMany(() => Designation, (designation) => designation.business, { onDelete: 'CASCADE' })
+    designations: Designation[];
 
+    @OneToMany(() => Employee, (employee) => employee.business, { onDelete: 'CASCADE' })
+    employees: Employee[];
+
+    @OneToMany(() => PayPolicy, (payPolicy) => payPolicy.business, { onDelete: 'CASCADE' })
+    payPolicies: PayPolicy[];
+
+    @OneToMany(() => SalaryComponent, (component) => component.business, { onDelete: 'CASCADE' })
+    salaryComponents: SalaryComponent[];
+
+    @OneToMany(() => EmployeeSalaryStructure, (structure) => structure.business, { onDelete: 'CASCADE' })
+    employeeSalaryStructures: EmployeeSalaryStructure[];
 }

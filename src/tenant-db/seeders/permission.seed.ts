@@ -7,6 +7,7 @@ export const TENANT_PERMISSIONS = [
 
   { key: 'CREATE_USER', name: 'Create Users' },
   { key: 'CREATE_ROLE', name: 'Create Role' },
+  { key: 'CREATE_DEPARTMENT', name: 'Create Department' },
   { key: 'CREATE_DESIGNATION', name: 'Create Designation' },
   { key: 'CREATE_PRODUCT_CATEGORY', name: 'Create Category' },
   { key: 'CREATE_PRODUCT_SUB_CATEGORY', name: 'Create Sub Category' },
@@ -45,6 +46,7 @@ export const TENANT_PERMISSIONS = [
 
   { key: 'LIST_USER', name: 'List Users' },
   { key: 'LIST_ROLE', name: 'List Role' },
+  { key: 'LIST_DEPARTMENT', name: 'List Department' },
   { key: 'LIST_DESIGNATION', name: 'List Designation' },
   { key: 'LIST_DISTRIBUTOR', name: 'List Distributor' },
   { key: 'LIST_PRODUCT_CATEGORY', name: 'List Category' },
@@ -81,6 +83,7 @@ export const TENANT_PERMISSIONS = [
 
   { key: 'UPDATE_USER', name: 'Update Users' },
   { key: 'UPDATE_ROLE', name: 'Update Role' },
+  { key: 'UPDATE_DEPARTMENT', name: 'Update Department' },
   { key: 'UPDATE_DESIGNATION', name: 'Update Designation' },
   { key: 'UPDATE_PRODUCT_CATEGORY', name: 'Update Category' },
   { key: 'UPDATE_PRODUCT_SUB_CATEGORY', name: 'Update Sub Category' },
@@ -124,6 +127,7 @@ export const TENANT_PERMISSIONS = [
 
   { key: 'VIEW_USER', name: 'View Users' },
   { key: 'VIEW_ROLE', name: 'View Role' },
+  { key: 'VIEW_DEPARTMENT', name: 'View Department' },
   { key: 'VIEW_DESIGNATION', name: 'View Designation' },
   { key: 'VIEW_PRODUCT_CATEGORY', name: 'View Category' },
   { key: 'VIEW_PRODUCT_SUB_CATEGORY', name: 'View Sub Category' },
@@ -158,6 +162,7 @@ export const TENANT_PERMISSIONS = [
 
   { key: 'DELETE_USER', name: 'Delete Users' },
   { key: 'DELETE_ROLE', name: 'Delete Role' },
+  { key: 'DELETE_DEPARTMENT', name: 'Delete Department' },
   { key: 'DELETE_DESIGNATION', name: 'Delete Designation' },
   { key: 'DELETE_PRODUCT_CATEGORY', name: 'Delete Category' },
   { key: 'DELETE_PRODUCT_BRAND', name: 'Delete Brand' },

@@ -107,6 +107,10 @@ import { InventoryForecastMetricsService } from './service/inventory/forecast/in
 import { InventoryForecastChartService } from './service/inventory/forecast/inventory-forecast-chart.service';
 import { InventoryForecastRecommendationService } from './service/inventory/forecast/inventory-forecast-recommendation.service';
 import { InventoryForecastInsightsService } from './service/inventory/forecast/inventory-forecast-insights.service';
+import { DepartmentController } from './controller/hr/department.controller';
+import { DesignationController } from './controller/hr/designation.controller';
+import { DepartmentService } from './service/hr/department.service';
+import { DesignationService } from './service/hr/designation.service';
 
 @Module({
   imports: [
@@ -162,6 +166,8 @@ import { InventoryForecastInsightsService } from './service/inventory/forecast/i
     LoanController,
     InventoryController,
     InventoryForecastController,
+    DepartmentController,
+    DesignationController,
   ],
   providers: [
     TenantAuthService,
@@ -218,6 +224,8 @@ import { InventoryForecastInsightsService } from './service/inventory/forecast/i
     InventoryForecastChartService,
     InventoryForecastRecommendationService,
     InventoryForecastInsightsService,
+    DepartmentService,
+    DesignationService,
   ],
 })
 export class TenantModule {}
