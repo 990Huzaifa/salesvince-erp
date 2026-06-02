@@ -60,7 +60,7 @@ export function createCountQuery<T>(
 ): SelectQueryBuilder<T> {
   const countQb = qb.clone();
   countQb.select(countExpression, 'total');
-  countQb.expressionMap.orderBys = [];
+  countQb.expressionMap.orderBys = {};
   countQb.expressionMap.groupBys = [];
   countQb.offset(undefined);
   countQb.limit(undefined);
