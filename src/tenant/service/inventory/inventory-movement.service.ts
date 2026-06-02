@@ -7,6 +7,7 @@ import {
   applyWarehouseFilter,
   assertBusinessId,
   assertDateRange,
+  createCountQuery,
   resolveInventoryScope,
 } from './inventory-query.helper';
 
@@ -66,7 +67,13 @@ export class InventoryMovementService {
         });
       }
 
+      const countRow = await createCountQuery(
+        qb,
+        "COUNT(DISTINCT CONCAT(movement.productId, ':', movement.uomId, ':', movement.movementType, ':', movement.referenceType))",
+      ).getRawOne<{ total: string }>();
+
       const rows = await qb
+        .clone()
         .select('movement.productId', 'productId')
         .addSelect('product.name', 'productName')
         .addSelect('product.skuCode', 'productSkuCode')
@@ -98,16 +105,6 @@ export class InventoryMovementService {
           movementCount: string;
           quantity: string;
         }>();
-
-      const countRow = await qb
-        .clone()
-        .select(
-          'COUNT(DISTINCT CONCAT(movement.productId, \':\', movement.uomId, \':\', movement.movementType, \':\', movement.referenceType))',
-          'total',
-        )
-        .offset(undefined)
-        .limit(undefined)
-        .getRawOne<{ total: string }>();
 
       return {
         data: rows.map((row) => ({
@@ -169,7 +166,13 @@ export class InventoryMovementService {
       });
     }
 
+    const countRow = await createCountQuery(
+      qb,
+      'COUNT(movement.id)',
+    ).getRawOne<{ total: string }>();
+
     const rows = await qb
+      .clone()
       .select('movement.id', 'id')
       .addSelect('movement.warehouseId', 'warehouseId')
       .addSelect('warehouse.name', 'warehouseName')
@@ -201,13 +204,6 @@ export class InventoryMovementService {
         quantity: string;
         createdAt: Date;
       }>();
-
-    const countRow = await qb
-      .clone()
-      .select('COUNT(movement.id)', 'total')
-      .offset(undefined)
-      .limit(undefined)
-      .getRawOne<{ total: string }>();
 
     return {
       data: rows.map((row) => ({

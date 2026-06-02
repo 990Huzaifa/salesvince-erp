@@ -7,6 +7,7 @@ import {
   applyWarehouseFilter,
   assertBusinessId,
   assertDateRange,
+  createCountQuery,
   resolveInventoryScope,
 } from './inventory-query.helper';
 
@@ -56,7 +57,13 @@ export class InventoryBatchService {
         qb.andWhere('batch.batchDate <= :toDate', { toDate: dto.toDate });
       }
 
+      const countRow = await createCountQuery(
+        qb,
+        "COUNT(DISTINCT CONCAT(batch.productId, ':', batch.uomId))",
+      ).getRawOne<{ total: string }>();
+
       const rows = await qb
+        .clone()
         .select('batch.productId', 'productId')
         .addSelect('product.name', 'productName')
         .addSelect('product.skuCode', 'productSkuCode')
@@ -94,13 +101,6 @@ export class InventoryBatchService {
           avgSaleUnitMarginAmount: string;
           avgSaleUnitMarginPercentage: string;
         }>();
-
-      const countRow = await qb
-        .clone()
-        .select('COUNT(DISTINCT CONCAT(batch.productId, \':\', batch.uomId))', 'total')
-        .offset(undefined)
-        .limit(undefined)
-        .getRawOne<{ total: string }>();
 
       return {
         data: rows.map((row) => ({
@@ -153,7 +153,12 @@ export class InventoryBatchService {
       qb.andWhere('batch.batchDate <= :toDate', { toDate: dto.toDate });
     }
 
+    const countRow = await createCountQuery(qb, 'COUNT(batch.id)').getRawOne<{
+      total: string;
+    }>();
+
     const rows = await qb
+      .clone()
       .select('batch.id', 'id')
       .addSelect('batch.batchNumber', 'batchNumber')
       .addSelect('batch.batchDate', 'batchDate')
@@ -196,13 +201,6 @@ export class InventoryBatchService {
         createdAt: Date;
         updatedAt: Date;
       }>();
-
-    const countRow = await qb
-      .clone()
-      .select('COUNT(batch.id)', 'total')
-      .offset(undefined)
-      .limit(undefined)
-      .getRawOne<{ total: string }>();
 
     return {
       data: rows.map((row) => ({

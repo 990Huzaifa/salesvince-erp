@@ -52,3 +52,17 @@ export function applyWarehouseFilter<T>(
     qb.andWhere(`${alias}.warehouseId = :warehouseId`, { warehouseId });
   }
 }
+
+/** Clone for COUNT-only queries; clears GROUP BY / ORDER BY from list queries. */
+export function createCountQuery<T>(
+  qb: SelectQueryBuilder<T>,
+  countExpression: string,
+): SelectQueryBuilder<T> {
+  const countQb = qb.clone();
+  countQb.select(countExpression, 'total');
+  countQb.expressionMap.orderBys = [];
+  countQb.expressionMap.groupBys = [];
+  countQb.offset(undefined);
+  countQb.limit(undefined);
+  return countQb;
+}
