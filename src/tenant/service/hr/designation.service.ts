@@ -4,42 +4,22 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Brackets, DataSource, IsNull } from 'typeorm';
+import { DataSource, IsNull } from 'typeorm';
 import { Designation } from 'src/tenant-db/entities/hr';
 import { CreateDesignationDto } from '../../dto/hr/designation/create-designation.dto';
 import { UpdateDesignationDto } from '../../dto/hr/designation/update-designation.dto';
 import { ActivityLogService } from '../activity-log.service';
+import { assertBusinessId } from './hr-common.util';
 
 @Injectable()
 export class DesignationService {
   constructor(private readonly activityLogService: ActivityLogService) {}
 
-  private assertBusinessId(businessId?: string): string {
-    if (!businessId) {
-      throw new BadRequestException('Business context is required');
-    }
-    return businessId;
-  }
-
-  private slugifyCode(value: string): string {
-    return value
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 50);
-  }
-
   private mapDesignation(designation: Designation) {
     return {
       id: designation.id,
       businessId: designation.businessId,
-      departmentId: designation.departmentId,
       name: designation.name,
-      code: designation.code,
-      level: designation.level,
-      description: designation.description,
-      isActive: designation.isActive,
       createdAt: designation.createdAt,
       updatedAt: designation.updatedAt,
     };
@@ -61,18 +41,17 @@ export class DesignationService {
     return designation;
   }
 
-  private async assertUniqueField(
+  private async assertNameAvailable(
     tenantDb: DataSource,
     businessId: string,
-    field: 'name' | 'code',
-    value: string,
+    name: string,
     excludeId?: string,
   ): Promise<void> {
     const qb = tenantDb
       .getRepository(Designation)
       .createQueryBuilder('d')
       .where('d.businessId = :businessId', { businessId })
-      .andWhere(`LOWER(d.${field}) = LOWER(:value)`, { value })
+      .andWhere('LOWER(d.name) = LOWER(:name)', { name })
       .andWhere('d.deletedAt IS NULL');
 
     if (excludeId) {
@@ -81,9 +60,7 @@ export class DesignationService {
 
     const existing = await qb.getOne();
     if (existing) {
-      throw new ConflictException(
-        `Designation with this ${field} already exists`,
-      );
+      throw new ConflictException('Designation with this name already exists');
     }
   }
 
@@ -93,29 +70,17 @@ export class DesignationService {
     dto: CreateDesignationDto,
     actorUserId: string,
   ) {
-    const scopedBusinessId = this.assertBusinessId(businessId);
+    const scopedBusinessId = assertBusinessId(businessId);
     const name = dto.name.trim();
     if (!name) {
       throw new BadRequestException('Designation name cannot be empty');
     }
 
-    const code = dto.code?.trim()
-      ? this.slugifyCode(dto.code)
-      : this.slugifyCode(name);
-    if (!code) {
-      throw new BadRequestException('Designation code cannot be empty');
-    }
-
-    await this.assertUniqueField(tenantDb, scopedBusinessId, 'name', name);
-    await this.assertUniqueField(tenantDb, scopedBusinessId, 'code', code);
+    await this.assertNameAvailable(tenantDb, scopedBusinessId, name);
 
     const created = await tenantDb.getRepository(Designation).save(
       tenantDb.getRepository(Designation).create({
         name,
-        code,
-        departmentId: dto.departmentId ?? null,
-        level: dto.level ?? null,
-        description: dto.description?.trim() ?? null,
         businessId: scopedBusinessId,
       }),
     );
@@ -137,7 +102,7 @@ export class DesignationService {
     options: { page: number; limit: number; search?: string },
     actorUserId: string,
   ) {
-    const scopedBusinessId = this.assertBusinessId(businessId);
+    const scopedBusinessId = assertBusinessId(businessId);
     const page = Math.max(1, options.page);
     const limit = Math.max(1, options.limit);
     const skip = (page - 1) * limit;
@@ -149,14 +114,9 @@ export class DesignationService {
       .andWhere('d.deletedAt IS NULL');
 
     if (options.search?.trim()) {
-      const search = `%${options.search.trim()}%`;
-      qb.andWhere(
-        new Brackets((sub) => {
-          sub
-            .where('d.name ILIKE :search', { search })
-            .orWhere('d.code ILIKE :search', { search });
-        }),
-      );
+      qb.andWhere('d.name ILIKE :search', {
+        search: `%${options.search.trim()}%`,
+      });
     }
 
     const [designations, total] = await qb
@@ -185,7 +145,7 @@ export class DesignationService {
     designationId: string,
     actorUserId: string,
   ) {
-    const scopedBusinessId = this.assertBusinessId(businessId);
+    const scopedBusinessId = assertBusinessId(businessId);
     const designation = await this.findDesignationForBusiness(
       tenantDb,
       scopedBusinessId,
@@ -210,7 +170,7 @@ export class DesignationService {
     dto: UpdateDesignationDto,
     actorUserId: string,
   ) {
-    const scopedBusinessId = this.assertBusinessId(businessId);
+    const scopedBusinessId = assertBusinessId(businessId);
     const designation = await this.findDesignationForBusiness(
       tenantDb,
       scopedBusinessId,
@@ -223,48 +183,14 @@ export class DesignationService {
         throw new BadRequestException('Designation name cannot be empty');
       }
       if (nextName !== designation.name) {
-        await this.assertUniqueField(
+        await this.assertNameAvailable(
           tenantDb,
           scopedBusinessId,
-          'name',
           nextName,
           designation.id,
         );
         designation.name = nextName;
       }
-    }
-
-    if (dto.code !== undefined) {
-      const nextCode = this.slugifyCode(dto.code);
-      if (!nextCode) {
-        throw new BadRequestException('Designation code cannot be empty');
-      }
-      if (nextCode !== designation.code) {
-        await this.assertUniqueField(
-          tenantDb,
-          scopedBusinessId,
-          'code',
-          nextCode,
-          designation.id,
-        );
-        designation.code = nextCode;
-      }
-    }
-
-    if (dto.departmentId !== undefined) {
-      designation.departmentId = dto.departmentId;
-    }
-
-    if (dto.level !== undefined) {
-      designation.level = dto.level;
-    }
-
-    if (dto.description !== undefined) {
-      designation.description = dto.description?.trim() ?? null;
-    }
-
-    if (dto.isActive !== undefined) {
-      designation.isActive = dto.isActive;
     }
 
     const updated = await tenantDb.getRepository(Designation).save(designation);

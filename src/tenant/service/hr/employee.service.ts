@@ -70,14 +70,12 @@ export class EmployeeService {
         ? {
             id: employee.department.id,
             name: employee.department.name,
-            code: employee.department.code,
           }
         : null,
       designation: employee.designation
         ? {
             id: employee.designation.id,
             name: employee.designation.name,
-            code: employee.designation.code,
           }
         : null,
       reportingManager: employee.reportingManager

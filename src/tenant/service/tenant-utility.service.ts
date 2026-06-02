@@ -19,6 +19,28 @@ import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
 import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity';
 import { Business } from 'src/tenant-db/entities/business.entity';
 import { ChartOfAccountType } from 'src/tenant-db/chart-of-accounts/constants/chart-of-account-type.enum';
+import {
+  Department,
+  Designation,
+  Employee,
+  PayPolicy,
+  SalaryComponent,
+} from 'src/tenant-db/entities/hr';
+import {
+  ComponentTypeEnum,
+  EmployeeStatusEnum,
+  EmploymentTypeEnum,
+  GenderEnum,
+  MaritalStatusEnum,
+  OvertimeRateTypeEnum,
+  PayCycleEnum,
+  PayrollTypeEnum,
+  SalaryCalculationTypeEnum,
+  SalaryPaymentMethodEnum,
+  SalaryStructureStatusEnum,
+  WorkingDaysTypeEnum,
+  ComponentCalculationTypeEnum,
+} from 'src/tenant-db/entities/hr/hr.enums';
 
 @Injectable()
 export class TenantUtilityService {
@@ -442,6 +464,91 @@ export class TenantUtilityService {
       .getRawMany();
 
     return { result: invoices };
+  }
+
+  getHrEnums() {
+    return {
+      gender: Object.values(GenderEnum),
+      maritalStatus: Object.values(MaritalStatusEnum),
+      employmentType: Object.values(EmploymentTypeEnum),
+      employeeStatus: Object.values(EmployeeStatusEnum),
+      salaryPaymentMethod: Object.values(SalaryPaymentMethodEnum),
+      payrollType: Object.values(PayrollTypeEnum),
+      payCycle: Object.values(PayCycleEnum),
+      salaryCalculationType: Object.values(SalaryCalculationTypeEnum),
+      workingDaysType: Object.values(WorkingDaysTypeEnum),
+      overtimeRateType: Object.values(OvertimeRateTypeEnum),
+      componentType: Object.values(ComponentTypeEnum),
+      componentCalculationType: Object.values(ComponentCalculationTypeEnum),
+      salaryStructureStatus: Object.values(SalaryStructureStatusEnum),
+    };
+  }
+
+  async getDepartments(tenantDb: DataSource, businessId: string) {
+    const rows = await tenantDb.getRepository(Department).find({
+      where: { businessId, deletedAt: IsNull() },
+      select: ['id', 'name'],
+      order: { name: 'ASC' },
+    });
+    return { result: rows };
+  }
+
+  async getDesignations(tenantDb: DataSource, businessId: string) {
+    const rows = await tenantDb.getRepository(Designation).find({
+      where: { businessId, deletedAt: IsNull() },
+      select: ['id', 'name'],
+      order: { name: 'ASC' },
+    });
+    return { result: rows };
+  }
+
+  async getEmployees(tenantDb: DataSource, businessId: string) {
+    const rows = await tenantDb.getRepository(Employee).find({
+      where: {
+        businessId,
+        employeeStatus: EmployeeStatusEnum.ACTIVE,
+        deletedAt: IsNull(),
+      },
+      select: ['id', 'fullName', 'employeeCode', 'departmentId', 'designationId'],
+      order: { fullName: 'ASC' },
+    });
+    return { result: rows };
+  }
+
+  async getPayPolicies(tenantDb: DataSource, businessId: string) {
+    const rows = await tenantDb.getRepository(PayPolicy).find({
+      where: { businessId, isActive: true, deletedAt: IsNull() },
+      select: ['id', 'name', 'code', 'isDefault', 'currency'],
+      order: { name: 'ASC' },
+    });
+    return { result: rows };
+  }
+
+  async getSalaryComponents(
+    tenantDb: DataSource,
+    businessId: string,
+    componentType?: ComponentTypeEnum,
+  ) {
+    const where: {
+      businessId: string;
+      isActive: boolean;
+      deletedAt: ReturnType<typeof IsNull>;
+      componentType?: ComponentTypeEnum;
+    } = {
+      businessId,
+      isActive: true,
+      deletedAt: IsNull(),
+    };
+    if (componentType) {
+      where.componentType = componentType;
+    }
+
+    const rows = await tenantDb.getRepository(SalaryComponent).find({
+      where,
+      select: ['id', 'name', 'code', 'componentType', 'calculationType'],
+      order: { name: 'ASC' },
+    });
+    return { result: rows };
   }
 
   async getPurchaseInvoices(tenantDb: DataSource, businessId: string) {

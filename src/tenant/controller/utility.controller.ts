@@ -8,6 +8,7 @@ import { DataSource } from "typeorm";
 import { TenantUtilityService } from "../service/tenant-utility.service";
 import type { TenantRequestUser } from "src/auth/tenant-jwt.strategy";
 import { TenantBusinessAccessGuard } from "src/auth/tenant-business-access.guard";
+import { ComponentTypeEnum } from 'src/tenant-db/entities/hr/hr.enums';
 
 @Controller('tenant/lists')
 
@@ -294,5 +295,95 @@ export class TenantUtilityController {
     ) {
         const user = req.user as TenantRequestUser;
         return this.utilityService.getPurchaseInvoices(tenantDb, user.businessId);
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+    )
+    @Get('hr-enums')
+    getHrEnums() {
+        return { result: this.utilityService.getHrEnums() };
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+    )
+    @Get('departments')
+    getDepartments(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.utilityService.getDepartments(tenantDb, user.businessId);
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+    )
+    @Get('designations')
+    getDesignations(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.utilityService.getDesignations(tenantDb, user.businessId);
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+    )
+    @Get('employees')
+    getEmployees(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.utilityService.getEmployees(tenantDb, user.businessId);
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+    )
+    @Get('pay-policies')
+    getPayPolicies(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.utilityService.getPayPolicies(tenantDb, user.businessId);
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+    )
+    @Get('salary-components')
+    getSalaryComponents(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+        @Query('componentType') componentType?: ComponentTypeEnum,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.utilityService.getSalaryComponents(
+            tenantDb,
+            user.businessId,
+            componentType,
+        );
     }
 }

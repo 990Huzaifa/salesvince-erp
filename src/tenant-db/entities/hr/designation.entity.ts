@@ -11,7 +11,7 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 import { Business } from '../business.entity';
-import { Employee } from '../employee.entity';
+import { Employee } from './employee.entity';
 
 @Entity('designations')
 @Index(['businessId', 'name'], { unique: true })

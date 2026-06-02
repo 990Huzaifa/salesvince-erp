@@ -115,12 +115,10 @@ import { EmployeeController } from './controller/hr/employee.controller';
 import { PayPolicyController } from './controller/hr/pay-policy.controller';
 import { SalaryComponentController } from './controller/hr/salary-component.controller';
 import { EmployeeSalaryStructureController } from './controller/hr/employee-salary-structure.controller';
-import { HrListsController } from './controller/hr/hr-lists.controller';
 import { EmployeeService } from './service/hr/employee.service';
 import { PayPolicyService } from './service/hr/pay-policy.service';
 import { SalaryComponentService } from './service/hr/salary-component.service';
 import { EmployeeSalaryStructureService } from './service/hr/employee-salary-structure.service';
-import { HrUtilityService } from './service/hr/hr-utility.service';
 
 @Module({
   imports: [
@@ -182,7 +180,6 @@ import { HrUtilityService } from './service/hr/hr-utility.service';
     PayPolicyController,
     SalaryComponentController,
     EmployeeSalaryStructureController,
-    HrListsController,
   ],
   providers: [
     TenantAuthService,
@@ -245,7 +242,6 @@ import { HrUtilityService } from './service/hr/hr-utility.service';
     PayPolicyService,
     SalaryComponentService,
     EmployeeSalaryStructureService,
-    HrUtilityService,
   ],
 })
 export class TenantModule {}
