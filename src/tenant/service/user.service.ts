@@ -16,6 +16,7 @@ import {
 } from 'src/tenant-db/entities/user-business.entity';
 import { CreateTenantUserDto } from '../dto/user/create-tenant-user.dto';
 import { InviteTenantUserDto } from '../dto/user/invite-tenant-user.dto';
+import { ResendInviteTenantUserDto } from '../dto/user/resend-invite-tenant-user.dto';
 import { ActivityLogService } from './activity-log.service';
 
 @Injectable()
@@ -49,7 +50,42 @@ export class UserService {
     if (tenantCode) {
       query.set('tenantCode', tenantCode);
     }
-    return `${baseUrl}/user/${userCode}/setup?${query.toString()}`;
+    return `${baseUrl}/tenant/users/${userCode}/setup?${query.toString()}`;
+  }
+
+  private async sendInviteEmail(
+    user: User,
+    tenantCode?: string,
+    tenantName?: string,
+    requestBaseUrl?: string,
+  ): Promise<string> {
+    const token = this.jwtService.sign(
+      {
+        type: 'tenant_user_invite',
+        userId: user.id,
+        userCode: user.code,
+        email: user.email,
+      },
+      { expiresIn: '7d' },
+    );
+
+    const setupUrl = this.buildUserSetupUrl(user.code, token, tenantCode, requestBaseUrl);
+    const emailHtml = this.mailService.renderTenantUserInviteTemplate({
+      logoUrl: process.env.APP_LOGO_URL || 'https://snd.com/logo.png',
+      invitedByName: 'your administrator',
+      tenantName: tenantName || 'your tenant',
+      setupUrl,
+      year: new Date().getFullYear(),
+    });
+
+    await this.mailService.sendEmail(
+      user.email,
+      `You're invited to ${tenantName || 'SalesVince'}`,
+      emailHtml,
+      'noreply@salesvince.com',
+    );
+
+    return setupUrl;
   }
 
   async listUsers(
@@ -341,31 +377,7 @@ export class UserService {
       await ubRepo.save(ub);
     }
 
-    const token = this.jwtService.sign(
-      {
-        type: 'tenant_user_invite',
-        userId: user.id,
-        userCode: user.code,
-        email: user.email,
-      },
-      { expiresIn: '7d' },
-    );
-
-    const setupUrl = this.buildUserSetupUrl(user.code, token, tenantCode, requestBaseUrl);
-    const emailHtml = this.mailService.renderTenantUserInviteTemplate({
-      logoUrl: process.env.APP_LOGO_URL || 'https://snd.com/logo.png',
-      invitedByName: 'your administrator',
-      tenantName: tenantName || 'your tenant',
-      setupUrl,
-      year: new Date().getFullYear(),
-    });
-
-    await this.mailService.sendEmail(
-      user.email,
-      `You're invited to ${tenantName || 'SalesVince'}`,
-      emailHtml,
-      'noreply@salesvince.com',
-    );
+    const setupUrl = await this.sendInviteEmail(user, tenantCode, tenantName, requestBaseUrl);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: authUser?.userId ?? null,
@@ -377,6 +389,45 @@ export class UserService {
 
     return {
       message: 'Invitation sent successfully',
+      userCode: user.code,
+      email: user.email,
+      setupUrl,
+    };
+  }
+
+  async resendInviteUser(
+    tenantDb: DataSource,
+    dto: ResendInviteTenantUserDto,
+    tenantCode?: string,
+    tenantName?: string,
+    requestBaseUrl?: string,
+    authUser?: { userId: string, businessId: string },
+  ) {
+    const userRepo = tenantDb.getRepository(User);
+
+    const user = await userRepo.findOne({
+      where: { id: dto.userId, deletedAt: IsNull() },
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.password) {
+      throw new ConflictException('User already has an active account');
+    }
+
+    const setupUrl = await this.sendInviteEmail(user, tenantCode, tenantName, requestBaseUrl);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: authUser?.userId ?? null,
+      businessId: authUser?.businessId ?? null,
+      action: 'USER_INVITE_RESENT',
+      description: `Invitation resent to ${user.email}`,
+      metadata: { userId: user.id, email: user.email },
+    });
+
+    return {
+      message: 'Invitation resent successfully',
       userCode: user.code,
       email: user.email,
       setupUrl,

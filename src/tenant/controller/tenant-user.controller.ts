@@ -11,6 +11,7 @@ import { TenantCode, TenantConnection } from 'src/common/tenant/tenant-connectio
 import { DataSource } from 'typeorm';
 import { CreateTenantUserDto } from '../dto/user/create-tenant-user.dto';
 import { InviteTenantUserDto } from '../dto/user/invite-tenant-user.dto';
+import { ResendInviteTenantUserDto } from '../dto/user/resend-invite-tenant-user.dto';
 import { UserService } from '../service/user.service';
 
 @Controller('tenant/users')
@@ -25,7 +26,7 @@ import { UserService } from '../service/user.service';
 export class TenantUserController {
   constructor(private readonly userService: UserService) { }
 
-  private buildSetupBaseUrl(req: Request, tenantCode?: string): string {
+  private buildSetupBaseUrl(req: Request, tenantName?: string): string {
     const forwardedProto = req.headers['x-forwarded-proto'];
     const protocol = Array.isArray(forwardedProto)
       ? forwardedProto[0]
@@ -43,12 +44,8 @@ export class TenantUserController {
       return `${protocol}://${hostHeader}`;
     }
 
-    const first = parts[0]?.toLowerCase();
     const rootDomain = parts.slice(1).join('.');
-    const subdomain =
-      !first || first === 'api' || first === 'www'
-        ? tenantCode
-        : parts[0];
+    const subdomain = tenantName?.trim().toLowerCase();
 
     const finalHost = subdomain
       ? `${subdomain}.${rootDomain}${port ? `:${port}` : ''}`
@@ -141,8 +138,31 @@ export class TenantUserController {
       dto,
       authUser?.tenantCode,
       authUser?.tenantName,
-      this.buildSetupBaseUrl(req, authUser?.tenantCode),
+      this.buildSetupBaseUrl(req, authUser?.tenantName),
       req.user as { userId: string, businessId: string },
+    );
+  }
+
+  @Post('resend-invite')
+  resendInvite(
+    @TenantConnection() tenantDb: DataSource,
+    @Body() dto: ResendInviteTenantUserDto,
+    @Req() req: Request,
+  ) {
+    const authUser = req.user as {
+      tenantCode?: string;
+      tenantName?: string;
+      userId: string;
+      businessId: string;
+    };
+
+    return this.userService.resendInviteUser(
+      tenantDb,
+      dto,
+      authUser?.tenantCode,
+      authUser?.tenantName,
+      this.buildSetupBaseUrl(req, authUser?.tenantName),
+      authUser,
     );
   }
 }
