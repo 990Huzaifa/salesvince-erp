@@ -6,6 +6,7 @@ import { AuthModule } from 'src/auth/auth.module';
 import { TenantRuntimeModule } from 'src/tenant-db/tenant-runtime.module';
 import { TenantAuthController } from './controller/tenant-auth.controller';
 import { TenantUserController } from './controller/tenant-user.controller';
+import { TenantUserSetupController } from './controller/tenant-user-setup.controller';
 import { TenantBusinessController } from './controller/tenant-business.controller';
 import { TenantRoleController } from './controller/tenant-role.controller';
 import { ChartOfAccountController } from './controller/chart-of-account.controller';
@@ -105,6 +106,7 @@ import { SqlAgentChatService } from './service/sql-agent-chat.service';
     AssetController,
     TenantAuthController,
     TenantUserController,
+    TenantUserSetupController,
     TenantBusinessController,
     TenantNotificationController,
     TenantRoleController,

@@ -20,6 +20,8 @@ import {
 import { Role, RoleStatus } from 'src/tenant-db/entities/role.entity';
 import { TenantLoginDto } from '../dto/tenant-login.dto';
 import { SetupTenantUserPasswordDto } from '../dto/user/setup-tenant-user-password.dto';
+import { SetupTenantUserDto } from '../dto/user/setup-tenant-user.dto';
+import { UserService } from './user.service';
 import { SelectBusinessDto } from '../dto/select-business.dto';
 import {
   BUSINESS_ACCESS_TOKEN,
@@ -70,6 +72,7 @@ export class TenantAuthService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly tenantConnectionManager: TenantConnectionManager,
+    private readonly userService: UserService,
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
   ) {}
@@ -364,15 +367,21 @@ export class TenantAuthService {
     return response;
   }
 
-  async setupInvitedUserPassword(
-    dto: SetupTenantUserPasswordDto,
-    tenantHost?: string,
-  ): Promise<TenantLoginResponse> {
-    let payload: { type?: string; userId?: string; email?: string };
+  private verifyInviteToken(token: string): {
+    userId: string;
+    userCode: string;
+    email: string;
+  } {
+    let payload: {
+      type?: string;
+      userId?: string;
+      userCode?: string;
+      email?: string;
+    };
     try {
-      payload = this.jwtService.verify(dto.token, {
+      payload = this.jwtService.verify(token, {
         secret: process.env.JWT_SECRET,
-      }) as { type?: string; userId?: string; email?: string };
+      }) as typeof payload;
     } catch {
       throw new BadRequestException('Invalid or expired token');
     }
@@ -381,30 +390,63 @@ export class TenantAuthService {
       throw new BadRequestException('Invalid token type');
     }
 
+    if (!payload.userId || !payload.userCode || !payload.email) {
+      throw new BadRequestException('Invalid token payload');
+    }
+
+    return {
+      userId: payload.userId,
+      userCode: payload.userCode,
+      email: payload.email,
+    };
+  }
+
+  async setupInvitedUser(
+    userCode: string,
+    dto: SetupTenantUserDto,
+    tenantHost?: string,
+  ): Promise<TenantLoginResponse> {
+    const invite = this.verifyInviteToken(dto.token);
     const tenant = await this.resolveTenant(tenantHost, dto.tenantCode);
-    const tenantDb = await this.tenantConnectionManager.getConnection(
-      tenant.id,
+    const tenantDb = await this.tenantConnectionManager.getConnection(tenant.id);
+
+    const user = await this.userService.setupUser(
+      tenantDb,
+      userCode,
+      dto,
+      invite,
     );
 
-    const userRepo = tenantDb.getRepository(User);
-    const user = await userRepo.findOne({
-      where: { id: payload.userId, deletedAt: IsNull() },
-    });
+    const businesses = await this.buildBusinessesList(tenantDb, user.id);
+    return this.buildLoginResponse(user, tenant, businesses);
+  }
 
-    if (!user) {
+  async setupInvitedUserPassword(
+    dto: SetupTenantUserPasswordDto,
+    tenantHost?: string,
+  ): Promise<TenantLoginResponse> {
+    const invite = this.verifyInviteToken(dto.token);
+    const tenant = await this.resolveTenant(tenantHost, dto.tenantCode);
+    const tenantDb = await this.tenantConnectionManager.getConnection(tenant.id);
+
+    const userRepo = tenantDb.getRepository(User);
+    const existing = await userRepo.findOne({
+      where: { id: invite.userId, deletedAt: IsNull() },
+      select: ['id', 'name'],
+    });
+    if (!existing) {
       throw new NotFoundException('User not found');
     }
 
-    if (user.email !== payload.email) {
-      throw new BadRequestException('Token does not match user');
-    }
-
-    user.password = await bcrypt.hash(dto.password, 10);
-    user.lastLoginAt = new Date();
-    await userRepo.save(user);
-
-    const businesses = await this.buildBusinessesList(tenantDb, user.id);
-
-    return this.buildLoginResponse(user, tenant, businesses);
+    return this.setupInvitedUser(
+      invite.userCode,
+      {
+        token: dto.token,
+        password: dto.password,
+        name: existing.name,
+        tenantCode: dto.tenantCode,
+      },
+      tenantHost,
+    );
   }
 }

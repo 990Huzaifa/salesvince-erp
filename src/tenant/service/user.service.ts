@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -17,7 +18,14 @@ import {
 import { CreateTenantUserDto } from '../dto/user/create-tenant-user.dto';
 import { InviteTenantUserDto } from '../dto/user/invite-tenant-user.dto';
 import { ResendInviteTenantUserDto } from '../dto/user/resend-invite-tenant-user.dto';
+import { SetupTenantUserDto } from '../dto/user/setup-tenant-user.dto';
 import { ActivityLogService } from './activity-log.service';
+
+export type TenantUserInvitePayload = {
+  userId: string;
+  userCode: string;
+  email: string;
+};
 
 @Injectable()
 export class UserService {
@@ -432,5 +440,58 @@ export class UserService {
       email: user.email,
       setupUrl,
     };
+  }
+
+  async setupUser(
+    tenantDb: DataSource,
+    userCode: string,
+    dto: SetupTenantUserDto,
+    invite: TenantUserInvitePayload,
+  ): Promise<User> {
+    const normalizedCode = userCode.trim();
+    if (invite.userCode !== normalizedCode) {
+      throw new BadRequestException('Token does not match user');
+    }
+
+    const userRepo = tenantDb.getRepository(User);
+    const user = await userRepo.findOne({
+      where: { id: invite.userId, code: normalizedCode, deletedAt: IsNull() },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.email !== invite.email) {
+      throw new BadRequestException('Token does not match user');
+    }
+
+    if (user.password) {
+      throw new ConflictException('User already completed setup');
+    }
+
+    user.name = dto.name.trim();
+    user.password = await bcrypt.hash(dto.password, 10);
+    user.phone = dto.phone?.trim() || null;
+    user.cnic = dto.cnic?.trim() || null;
+    user.address = dto.address?.trim() || null;
+    user.avatar = dto.avatar?.trim() || null;
+    user.deviceId = dto.deviceId?.trim() || null;
+    user.fcmToken = dto.fcmToken?.trim() || null;
+    user.appVersion = dto.appVersion?.trim() || null;
+    user.lastLoginAt = new Date();
+
+    const saved = await userRepo.save(user);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: saved.id,
+      businessId: null,
+      action: 'USER_SETUP_COMPLETED',
+      description: `User ${saved.email} completed account setup`,
+      metadata: { userId: saved.id, userCode: saved.code },
+    });
+
+    delete (saved as { password?: string }).password;
+    return saved;
   }
 }
