@@ -21,19 +21,33 @@ export class AiModelService {
     );
   }
 
-  getSqlModel(): ChatOpenAI {
-    return new ChatOpenAI({
+  private shouldSkipTemperature(modelName: string): boolean {
+    return modelName.startsWith('gpt-5');
+  }
+
+  private buildModel(temperature?: number): ChatOpenAI {
+    const modelName = this.getModelName();
+
+    const baseConfig = {
       apiKey: this.getApiKey(),
-      model: this.getModelName(),
-      temperature: 0,
+      model: modelName,
+    };
+
+    if (temperature === undefined || this.shouldSkipTemperature(modelName)) {
+      return new ChatOpenAI(baseConfig);
+    }
+
+    return new ChatOpenAI({
+      ...baseConfig,
+      temperature,
     });
   }
 
+  getSqlModel(): ChatOpenAI {
+    return this.buildModel(0);
+  }
+
   getAnswerModel(): ChatOpenAI {
-    return new ChatOpenAI({
-      apiKey: this.getApiKey(),
-      model: this.getModelName(),
-      temperature: 0.2,
-    });
+    return this.buildModel(0.2);
   }
 }
