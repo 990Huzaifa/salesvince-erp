@@ -931,14 +931,12 @@ export class VoucherOperationsService {
         throw new BadRequestException('Cancelled vouchers cannot be approved');
       }
 
-      const partyLedgerAccountId = config.hasParty
-        ? await this.resolvePartyLedgerForVoucher(
-            manager,
-            businessId,
-            config,
-            voucher,
-          )
-        : undefined;
+      const partyLedgerAccountId = await this.resolvePartyLedgerForVoucher(
+        manager,
+        businessId,
+        config,
+        voucher,
+      );
 
       if (config.referenceType === 'EXPENSE_VOUCHER') {
         await this.validateCreatePayload(
