@@ -111,6 +111,16 @@ import { DepartmentController } from './controller/hr/department.controller';
 import { DesignationController } from './controller/hr/designation.controller';
 import { DepartmentService } from './service/hr/department.service';
 import { DesignationService } from './service/hr/designation.service';
+import { EmployeeController } from './controller/hr/employee.controller';
+import { PayPolicyController } from './controller/hr/pay-policy.controller';
+import { SalaryComponentController } from './controller/hr/salary-component.controller';
+import { EmployeeSalaryStructureController } from './controller/hr/employee-salary-structure.controller';
+import { HrListsController } from './controller/hr/hr-lists.controller';
+import { EmployeeService } from './service/hr/employee.service';
+import { PayPolicyService } from './service/hr/pay-policy.service';
+import { SalaryComponentService } from './service/hr/salary-component.service';
+import { EmployeeSalaryStructureService } from './service/hr/employee-salary-structure.service';
+import { HrUtilityService } from './service/hr/hr-utility.service';
 
 @Module({
   imports: [
@@ -168,6 +178,11 @@ import { DesignationService } from './service/hr/designation.service';
     InventoryForecastController,
     DepartmentController,
     DesignationController,
+    EmployeeController,
+    PayPolicyController,
+    SalaryComponentController,
+    EmployeeSalaryStructureController,
+    HrListsController,
   ],
   providers: [
     TenantAuthService,
@@ -226,6 +241,11 @@ import { DesignationService } from './service/hr/designation.service';
     InventoryForecastInsightsService,
     DepartmentService,
     DesignationService,
+    EmployeeService,
+    PayPolicyService,
+    SalaryComponentService,
+    EmployeeSalaryStructureService,
+    HrUtilityService,
   ],
 })
 export class TenantModule {}
