@@ -17,6 +17,8 @@ import { PurchaseReturnVoucherController } from './controller/vouchers/purchase-
 import { SaleReturnVoucherController } from './controller/vouchers/sale-return-voucher.controller';
 import { ExpenseVoucherController } from './controller/vouchers/expense-voucher.controller';
 import { ContraVoucherController } from './controller/vouchers/contra-voucher.controller';
+import { LoanReceiptVoucherController } from './controller/vouchers/loan-receipt-voucher.controller';
+import { LoanPaymentVoucherController } from './controller/vouchers/loan-payment-voucher.controller';
 import { UserService } from './service/user.service';
 import { TenantBusinessService } from './service/tenant-business.service';
 import { TenantRoleService } from './service/tenant-role.service';
@@ -30,6 +32,8 @@ import { PurchaseReturnVoucherService } from './service/vouchers/purchase-return
 import { SaleReturnVoucherService } from './service/vouchers/sale-return-voucher.service';
 import { ExpenseVoucherService } from './service/vouchers/expense-voucher.service';
 import { ContraVoucherService } from './service/vouchers/contra-voucher.service';
+import { LoanReceiptVoucherService } from './service/vouchers/loan-receipt-voucher.service';
+import { LoanPaymentVoucherService } from './service/vouchers/loan-payment-voucher.service';
 import { ActivityLogService } from './service/activity-log.service';
 import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
 import { MailModule } from 'src/common/mail/mail.module';
@@ -91,6 +95,8 @@ import { City } from 'src/master-db/entities/city.entity';
 import { SqlAgentModule } from 'src/sql-agent/sql-agent.module';
 import { SqlAgentController } from './controller/sql-agent.controller';
 import { SqlAgentChatService } from './service/sql-agent-chat.service';
+import { LoanController } from './controller/loan.controller';
+import { LoanService } from './service/loan.service';
 
 @Module({
   imports: [
@@ -118,6 +124,8 @@ import { SqlAgentChatService } from './service/sql-agent-chat.service';
     SaleReturnVoucherController,
     ExpenseVoucherController,
     ContraVoucherController,
+    LoanReceiptVoucherController,
+    LoanPaymentVoucherController,
     UomController,
     ProductBrandController,
     ProductCategoryController,
@@ -141,6 +149,7 @@ import { SqlAgentChatService } from './service/sql-agent-chat.service';
     ReportController,
     DashboardController,
     SqlAgentController,
+    LoanController,
   ],
   providers: [
     TenantAuthService,
@@ -159,6 +168,8 @@ import { SqlAgentChatService } from './service/sql-agent-chat.service';
     SaleReturnVoucherService,
     ExpenseVoucherService,
     ContraVoucherService,
+    LoanReceiptVoucherService,
+    LoanPaymentVoucherService,
     ActivityLogService,
     TenantPermissionGuard,
     PusherService,
@@ -186,6 +197,7 @@ import { SqlAgentChatService } from './service/sql-agent-chat.service';
     ReportService,
     DashboardService,
     SqlAgentChatService,
+    LoanService,
   ],
 })
 export class TenantModule {}

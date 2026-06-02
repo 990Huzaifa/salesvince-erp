@@ -35,10 +35,26 @@ export type ContraVoucherPayload = VoucherPaymentPayload & {
   toAccId: string;
 };
 
+export type LoanReceiptVoucherPayload = VoucherPaymentPayload & {
+  loanId: string;
+  accId: string;
+};
+
+export type LoanPaymentVoucherPayload = VoucherPaymentPayload & {
+  loanId: string;
+  accId: string;
+  principalAmount: number;
+  interestAmount: number;
+  feeAmount: number;
+  penaltyAmount: number;
+};
+
 export type VoucherCreatePayload =
   | PartyVoucherPayload
   | ExpenseVoucherPayload
-  | ContraVoucherPayload;
+  | ContraVoucherPayload
+  | LoanReceiptVoucherPayload
+  | LoanPaymentVoucherPayload;
 
 /** API / service input before voucher number is assigned. */
 export type VoucherCreateInput = Omit<VoucherCreatePayload, 'voucherNumber'>;
@@ -51,6 +67,11 @@ export type VoucherUpdatePayload = Partial<VoucherPaymentPayload> & {
   expenseAccId?: string;
   fromAccId?: string;
   toAccId?: string;
+  loanId?: string;
+  principalAmount?: number;
+  interestAmount?: number;
+  feeAmount?: number;
+  penaltyAmount?: number;
 };
 
 export type VoucherEntity = ObjectLiteral & {
@@ -71,6 +92,11 @@ export type VoucherEntity = ObjectLiteral & {
   fromAccId?: string;
   toAccId?: string;
   invoiceId?: string | null;
+  loanId?: string;
+  principalAmount?: number;
+  interestAmount?: number;
+  feeAmount?: number;
+  penaltyAmount?: number;
 };
 
 export type VoucherListOptions = {

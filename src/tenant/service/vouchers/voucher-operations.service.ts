@@ -13,6 +13,7 @@ import {
 } from 'typeorm';
 import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
 import { ChartOfAccount } from 'src/tenant-db/entities/chart-of-account.entity';
+import { Loan } from 'src/tenant-db/entities/loan.entity';
 import {
   PaymentMethod,
   VoucherStatus,
@@ -22,6 +23,8 @@ import { TransactionService } from '../transaction.service';
 import {
   ContraVoucherPayload,
   ExpenseVoucherPayload,
+  LoanPaymentVoucherPayload,
+  LoanReceiptVoucherPayload,
   PartyVoucherPayload,
   VoucherConfig,
   VoucherCreateInput,
@@ -253,6 +256,38 @@ export class VoucherOperationsService {
       };
     }
 
+    if (config.referenceType === 'LOAN_RECEIPT_VOUCHER') {
+      return {
+        ...payment,
+        loanId: dto.loanId ?? voucher.loanId!,
+        accId: dto.accId ?? voucher.accId!,
+      };
+    }
+
+    if (config.referenceType === 'LOAN_PAYMENT_VOUCHER') {
+      return {
+        ...payment,
+        loanId: dto.loanId ?? voucher.loanId!,
+        accId: dto.accId ?? voucher.accId!,
+        principalAmount:
+          dto.principalAmount !== undefined
+            ? this.roundAmount(Number(dto.principalAmount))
+            : this.roundAmount(Number(voucher.principalAmount ?? 0)),
+        interestAmount:
+          dto.interestAmount !== undefined
+            ? this.roundAmount(Number(dto.interestAmount))
+            : this.roundAmount(Number(voucher.interestAmount ?? 0)),
+        feeAmount:
+          dto.feeAmount !== undefined
+            ? this.roundAmount(Number(dto.feeAmount))
+            : this.roundAmount(Number(voucher.feeAmount ?? 0)),
+        penaltyAmount:
+          dto.penaltyAmount !== undefined
+            ? this.roundAmount(Number(dto.penaltyAmount))
+            : this.roundAmount(Number(voucher.penaltyAmount ?? 0)),
+      };
+    }
+
     return {
       ...payment,
       fromAccId: dto.fromAccId ?? voucher.fromAccId!,
@@ -328,6 +363,73 @@ export class VoucherOperationsService {
       return {};
     }
 
+    if (config.referenceType === 'LOAN_RECEIPT_VOUCHER') {
+      const { loanId, accId } = dto as LoanReceiptVoucherPayload;
+      const loan = await manager.getRepository(Loan).findOne({
+        where: { id: loanId, businessId, deletedAt: IsNull() },
+      });
+      if (!loan) {
+        throw new NotFoundException('Loan not found');
+      }
+      await this.assertPostableAccount(
+        manager,
+        businessId,
+        loan.loanAccId,
+        'Loan ledger',
+      );
+      await this.assertPostableAccount(
+        manager,
+        businessId,
+        accId,
+        'Receiving',
+      );
+      return { partyLedgerAccountId: loan.loanAccId };
+    }
+
+    if (config.referenceType === 'LOAN_PAYMENT_VOUCHER') {
+      const {
+        loanId,
+        accId,
+        principalAmount,
+        interestAmount,
+        feeAmount,
+        penaltyAmount,
+        paymentAmount,
+      } = dto as LoanPaymentVoucherPayload;
+      const loan = await manager.getRepository(Loan).findOne({
+        where: { id: loanId, businessId, deletedAt: IsNull() },
+      });
+      if (!loan) {
+        throw new NotFoundException('Loan not found');
+      }
+      await this.assertPostableAccount(
+        manager,
+        businessId,
+        loan.loanAccId,
+        'Loan ledger',
+      );
+      await this.assertPostableAccount(manager, businessId, accId, 'Payment');
+
+      const principal = this.roundAmount(Number(principalAmount ?? 0));
+      const interest = this.roundAmount(Number(interestAmount ?? 0));
+      const fee = this.roundAmount(Number(feeAmount ?? 0));
+      const penalty = this.roundAmount(Number(penaltyAmount ?? 0));
+      if (principal < 0 || interest < 0 || fee < 0 || penalty < 0) {
+        throw new BadRequestException(
+          'Loan payment components cannot be negative',
+        );
+      }
+      const componentsTotal = this.roundAmount(
+        principal + interest + fee + penalty,
+      );
+      if (this.roundAmount(Number(paymentAmount)) !== componentsTotal) {
+        throw new BadRequestException(
+          'Payment amount must equal principal + interest + fee + penalty',
+        );
+      }
+      return { partyLedgerAccountId: loan.loanAccId };
+    }
+
     return {};
   }
 
@@ -356,6 +458,18 @@ export class VoucherOperationsService {
       const contraDto = dto as ContraVoucherPayload;
       repo.fromAccId = contraDto.fromAccId;
       repo.toAccId = contraDto.toAccId;
+    } else if (config.referenceType === 'LOAN_RECEIPT_VOUCHER') {
+      const loanReceiptDto = dto as LoanReceiptVoucherPayload;
+      repo.loanId = loanReceiptDto.loanId;
+      repo.accId = loanReceiptDto.accId;
+    } else if (config.referenceType === 'LOAN_PAYMENT_VOUCHER') {
+      const loanPaymentDto = dto as LoanPaymentVoucherPayload;
+      repo.loanId = loanPaymentDto.loanId;
+      repo.accId = loanPaymentDto.accId;
+      repo.principalAmount = this.roundAmount(Number(loanPaymentDto.principalAmount));
+      repo.interestAmount = this.roundAmount(Number(loanPaymentDto.interestAmount));
+      repo.feeAmount = this.roundAmount(Number(loanPaymentDto.feeAmount));
+      repo.penaltyAmount = this.roundAmount(Number(loanPaymentDto.penaltyAmount));
     }
 
     return repo;
@@ -416,6 +530,32 @@ export class VoucherOperationsService {
       if (dto.toAccId !== undefined) {
         voucher.toAccId = String(dto.toAccId);
       }
+    } else if (config.referenceType === 'LOAN_RECEIPT_VOUCHER') {
+      if (dto.loanId !== undefined) {
+        voucher.loanId = String(dto.loanId);
+      }
+      if (dto.accId !== undefined) {
+        voucher.accId = String(dto.accId);
+      }
+    } else if (config.referenceType === 'LOAN_PAYMENT_VOUCHER') {
+      if (dto.loanId !== undefined) {
+        voucher.loanId = String(dto.loanId);
+      }
+      if (dto.accId !== undefined) {
+        voucher.accId = String(dto.accId);
+      }
+      if (dto.principalAmount !== undefined) {
+        voucher.principalAmount = this.roundAmount(Number(dto.principalAmount));
+      }
+      if (dto.interestAmount !== undefined) {
+        voucher.interestAmount = this.roundAmount(Number(dto.interestAmount));
+      }
+      if (dto.feeAmount !== undefined) {
+        voucher.feeAmount = this.roundAmount(Number(dto.feeAmount));
+      }
+      if (dto.penaltyAmount !== undefined) {
+        voucher.penaltyAmount = this.roundAmount(Number(dto.penaltyAmount));
+      }
     }
   }
 
@@ -432,7 +572,25 @@ export class VoucherOperationsService {
     voucher: T,
   ): Promise<string | undefined> {
     if (!config.hasParty) {
-      return undefined;
+      if (
+        config.referenceType !== 'LOAN_RECEIPT_VOUCHER' &&
+        config.referenceType !== 'LOAN_PAYMENT_VOUCHER'
+      ) {
+        return undefined;
+      }
+      const loan = await manager.getRepository(Loan).findOne({
+        where: { id: voucher.loanId!, businessId, deletedAt: IsNull() },
+      });
+      if (!loan) {
+        throw new NotFoundException('Loan not found');
+      }
+      await this.assertPostableAccount(
+        manager,
+        businessId,
+        loan.loanAccId,
+        'Loan ledger',
+      );
+      return loan.loanAccId;
     }
 
     const partyLedgerSide =
@@ -595,6 +753,14 @@ export class VoucherOperationsService {
       qb.innerJoinAndSelect(`${alias}.fromAcc`, 'fromAcc')
         .innerJoinAndSelect(`${alias}.toAcc`, 'toAcc')
         .where('fromAcc.businessId = :businessId', { businessId });
+    } else if (
+      config.referenceType === 'LOAN_RECEIPT_VOUCHER' ||
+      config.referenceType === 'LOAN_PAYMENT_VOUCHER'
+    ) {
+      qb.innerJoinAndSelect(`${alias}.loan`, 'loan')
+        .innerJoinAndSelect(`${alias}.acc`, 'acc')
+        .where('loan.businessId = :businessId', { businessId })
+        .andWhere('loan.deletedAt IS NULL');
     } else {
       qb.innerJoinAndSelect(`${alias}.acc`, 'acc')
         .leftJoinAndSelect(`${alias}.expenseAcc`, 'expenseAcc')
@@ -674,6 +840,14 @@ export class VoucherOperationsService {
       qb.innerJoinAndSelect(`${alias}.fromAcc`, 'fromAcc')
         .innerJoinAndSelect(`${alias}.toAcc`, 'toAcc')
         .andWhere('fromAcc.businessId = :businessId', { businessId });
+    } else if (
+      config.referenceType === 'LOAN_RECEIPT_VOUCHER' ||
+      config.referenceType === 'LOAN_PAYMENT_VOUCHER'
+    ) {
+      qb.innerJoinAndSelect(`${alias}.loan`, 'loan')
+        .innerJoinAndSelect(`${alias}.acc`, 'acc')
+        .andWhere('loan.businessId = :businessId', { businessId })
+        .andWhere('loan.deletedAt IS NULL');
     } else {
       qb.innerJoinAndSelect(`${alias}.acc`, 'acc')
         .leftJoinAndSelect(`${alias}.expenseAcc`, 'expenseAcc')
@@ -793,6 +967,40 @@ export class VoucherOperationsService {
             paymentAmount: voucher.paymentAmount,
             fromAccId: voucher.fromAccId,
             toAccId: voucher.toAccId,
+          },
+          { excludeVoucherId: voucher.id },
+        );
+      } else if (config.referenceType === 'LOAN_RECEIPT_VOUCHER') {
+        await this.validateCreatePayload(
+          manager,
+          businessId,
+          config,
+          {
+            voucherNumber: voucher.voucherNumber,
+            paymentMethod: voucher.paymentMethod,
+            paymentDate: voucher.paymentDate,
+            paymentAmount: voucher.paymentAmount,
+            loanId: voucher.loanId,
+            accId: voucher.accId,
+          },
+          { excludeVoucherId: voucher.id },
+        );
+      } else if (config.referenceType === 'LOAN_PAYMENT_VOUCHER') {
+        await this.validateCreatePayload(
+          manager,
+          businessId,
+          config,
+          {
+            voucherNumber: voucher.voucherNumber,
+            paymentMethod: voucher.paymentMethod,
+            paymentDate: voucher.paymentDate,
+            paymentAmount: voucher.paymentAmount,
+            loanId: voucher.loanId,
+            accId: voucher.accId,
+            principalAmount: voucher.principalAmount ?? 0,
+            interestAmount: voucher.interestAmount ?? 0,
+            feeAmount: voucher.feeAmount ?? 0,
+            penaltyAmount: voucher.penaltyAmount ?? 0,
           },
           { excludeVoucherId: voucher.id },
         );

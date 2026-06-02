@@ -25,6 +25,8 @@ export const TENANT_PERMISSIONS = [
   { key: 'CREATE_SALE_RETURN_VOUCHER', name: 'Create Sale Return Voucher' },
   { key: 'CREATE_EXPENSE_VOUCHER', name: 'Create Expense Voucher' },
   { key: 'CREATE_CONTRA_VOUCHER', name: 'Create Contra Voucher' },
+  { key: 'CREATE_LOAN_RECEIPT_VOUCHER', name: 'Create Loan Receipt Voucher' },
+  { key: 'CREATE_LOAN_PAYMENT_VOUCHER', name: 'Create Loan Payment Voucher' },
   { key: 'CREATE_OPENING_STOCK', name: 'Create Opening Stock' },
   { key: 'CREATE_PURCHASE_STOCK', name: 'Create Purchase Stock' },
   { key: 'APPROVE_PURCHASE_STOCK', name: 'Approve Purchase Stock (GRN)' },
@@ -39,6 +41,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'CREATE_PURCHASE_ORDER', name: 'Create Purchase Order' },
   { key: 'CREATE_PURCHASE_INVOICE', name: 'Create Purchase Invoice' },
   { key: 'CREATE_WAREHOUSE', name: 'Create Warehouse' },
+  { key: 'CREATE_LOAN', name: 'Create Loan' },
 
   { key: 'LIST_USER', name: 'List Users' },
   { key: 'LIST_ROLE', name: 'List Role' },
@@ -60,6 +63,8 @@ export const TENANT_PERMISSIONS = [
   { key: 'LIST_SALE_RETURN_VOUCHER', name: 'List Sale Return Voucher' },
   { key: 'LIST_EXPENSE_VOUCHER', name: 'List Expense Voucher' },
   { key: 'LIST_CONTRA_VOUCHER', name: 'List Contra Voucher' },
+  { key: 'LIST_LOAN_RECEIPT_VOUCHER', name: 'List Loan Receipt Voucher' },
+  { key: 'LIST_LOAN_PAYMENT_VOUCHER', name: 'List Loan Payment Voucher' },
   { key: 'LIST_OPENING_STOCK', name: 'List Opening Stock' },
   { key: 'LIST_PURCHASE_STOCK', name: 'List Purchase Stock' },
   { key: 'LIST_TRANSFER_STOCK', name: 'List Transfer Stock' },
@@ -70,6 +75,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'LIST_PURCHASE_ORDER', name: 'List Purchase Order' },
   { key: 'LIST_PURCHASE_INVOICE', name: 'List Purchase Invoice' },
   { key: 'LIST_WAREHOUSE', name: 'List Warehouse' },
+  { key: 'LIST_LOAN', name: 'List Loan' },
 
   { key: 'UPDATE_USER', name: 'Update Users' },
   { key: 'UPDATE_ROLE', name: 'Update Role' },
@@ -91,12 +97,16 @@ export const TENANT_PERMISSIONS = [
   { key: 'UPDATE_SALE_RETURN_VOUCHER', name: 'Update Sale Return Voucher' },
   { key: 'UPDATE_EXPENSE_VOUCHER', name: 'Update Expense Voucher' },
   { key: 'UPDATE_CONTRA_VOUCHER', name: 'Update Contra Voucher' },
+  { key: 'UPDATE_LOAN_RECEIPT_VOUCHER', name: 'Update Loan Receipt Voucher' },
+  { key: 'UPDATE_LOAN_PAYMENT_VOUCHER', name: 'Update Loan Payment Voucher' },
   { key: 'APPROVE_SALE_VOUCHER', name: 'Approve Sale Voucher' },
   { key: 'APPROVE_PURCHASE_VOUCHER', name: 'Approve Purchase Voucher' },
   { key: 'APPROVE_PURCHASE_RETURN_VOUCHER', name: 'Approve Purchase Return Voucher' },
   { key: 'APPROVE_SALE_RETURN_VOUCHER', name: 'Approve Sale Return Voucher' },
   { key: 'APPROVE_EXPENSE_VOUCHER', name: 'Approve Expense Voucher' },
   { key: 'APPROVE_CONTRA_VOUCHER', name: 'Approve Contra Voucher' },
+  { key: 'APPROVE_LOAN_RECEIPT_VOUCHER', name: 'Approve Loan Receipt Voucher' },
+  { key: 'APPROVE_LOAN_PAYMENT_VOUCHER', name: 'Approve Loan Payment Voucher' },
   { key: 'APPROVE_PURCHASE_ORDER', name: 'Approve Purchase Order' },
   { key: 'APPROVE_SALE_ORDER', name: 'Approve Sale Order' },
   { key: 'UPDATE_OPENING_STOCK', name: 'Update Opening Stock' },
@@ -108,6 +118,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'UPDATE_PURCHASE_QUOTATION', name: 'Update Purchase Quotation' },
   { key: 'UPDATE_PURCHASE_ORDER', name: 'Update Purchase Order' },
   { key: 'UPDATE_WAREHOUSE', name: 'Update Warehouse' },
+  { key: 'UPDATE_LOAN', name: 'Update Loan' },
 
   { key: 'VIEW_USER', name: 'View Users' },
   { key: 'VIEW_ROLE', name: 'View Role' },
@@ -129,6 +140,8 @@ export const TENANT_PERMISSIONS = [
   { key: 'VIEW_SALE_RETURN_VOUCHER', name: 'View Sale Return Voucher' },
   { key: 'VIEW_EXPENSE_VOUCHER', name: 'View Expense Voucher' },
   { key: 'VIEW_CONTRA_VOUCHER', name: 'View Contra Voucher' },
+  { key: 'VIEW_LOAN_RECEIPT_VOUCHER', name: 'View Loan Receipt Voucher' },
+  { key: 'VIEW_LOAN_PAYMENT_VOUCHER', name: 'View Loan Payment Voucher' },
   { key: 'VIEW_OPENING_STOCK', name: 'View Opening Stock' },
   { key: 'VIEW_PURCHASE_STOCK', name: 'View Purchase Stock' },
   { key: 'VIEW_TRANSFER_STOCK', name: 'View Transfer Stock' },
@@ -139,6 +152,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'VIEW_PURCHASE_ORDER', name: 'View Purchase Order' },
   { key: 'VIEW_PURCHASE_INVOICE', name: 'View Purchase Invoice' },
   { key: 'VIEW_WAREHOUSE', name: 'View Warehouse' },
+  { key: 'VIEW_LOAN', name: 'View Loan' },
 
   { key: 'DELETE_USER', name: 'Delete Users' },
   { key: 'DELETE_ROLE', name: 'Delete Role' },
@@ -159,6 +173,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'DELETE_SALE_QUOTATION', name: 'Delete Sale Quotation' },
   { key: 'DELETE_PURCHASE_QUOTATION', name: 'Delete Purchase Quotation' },
   { key: 'DELETE_PURCHASE_ORDER', name: 'Delete Purchase Order' },
+  { key: 'APPROVE_LOAN', name: 'Approve Loan' },
 
 ];
 

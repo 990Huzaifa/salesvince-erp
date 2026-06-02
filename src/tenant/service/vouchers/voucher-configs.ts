@@ -5,6 +5,8 @@ import { PurchaseReturnVoucher } from 'src/tenant-db/entities/purchase-return-vo
 import { SaleReturnVoucher } from 'src/tenant-db/entities/sale-return-voucher.entity';
 import { ExpenseVoucher } from 'src/tenant-db/entities/expense-voucher.entity';
 import { ContraVoucher } from 'src/tenant-db/entities/contra-voucher.entity';
+import { LoanReceiptVoucher } from 'src/tenant-db/entities/loan-receipt-voucher.entity';
+import { LoanPaymentVoucher } from 'src/tenant-db/entities/loan-payment-voucher.entity';
 import { VoucherConfig } from './voucher.types';
 
 const amountLines = (
@@ -120,4 +122,72 @@ export const CONTRA_VOUCHER_CONFIG: VoucherConfig<ContraVoucher> = {
       Number(voucher.paymentAmount),
       `Contra transfer - ${voucher.voucherNumber}`,
     ),
+};
+
+export const LOAN_RECEIPT_VOUCHER_CONFIG: VoucherConfig<LoanReceiptVoucher> = {
+  entity: LoanReceiptVoucher,
+  referenceType: AccountTransactionReferenceType.LOAN_RECEIPT_VOUCHER,
+  activityKey: 'LOAN_RECEIPT_VOUCHER',
+  permissionKey: 'LOAN_RECEIPT_VOUCHER',
+  numberPrefix: 'LRV',
+  hasParty: false,
+  buildJournalLines: (voucher, loanLedgerAccountId) =>
+    amountLines(
+      voucher.accId,
+      loanLedgerAccountId!,
+      Number(voucher.paymentAmount),
+      `Loan receipt - ${voucher.voucherNumber}`,
+    ),
+};
+
+export const LOAN_PAYMENT_VOUCHER_CONFIG: VoucherConfig<LoanPaymentVoucher> = {
+  entity: LoanPaymentVoucher,
+  referenceType: AccountTransactionReferenceType.LOAN_PAYMENT_VOUCHER,
+  activityKey: 'LOAN_PAYMENT_VOUCHER',
+  permissionKey: 'LOAN_PAYMENT_VOUCHER',
+  numberPrefix: 'LPV',
+  hasParty: false,
+  buildJournalLines: (voucher, loanLedgerAccountId) => [
+    ...(Number(voucher.principalAmount) > 0
+      ? [
+          {
+            chartOfAccountId: loanLedgerAccountId!,
+            debitAmount: Number(voucher.principalAmount),
+            description: `Loan principal payment - ${voucher.voucherNumber}`,
+          },
+        ]
+      : []),
+    ...(Number(voucher.interestAmount) > 0
+      ? [
+          {
+            chartOfAccountId: loanLedgerAccountId!,
+            debitAmount: Number(voucher.interestAmount),
+            description: `Loan interest payment - ${voucher.voucherNumber}`,
+          },
+        ]
+      : []),
+    ...(Number(voucher.feeAmount) > 0
+      ? [
+          {
+            chartOfAccountId: loanLedgerAccountId!,
+            debitAmount: Number(voucher.feeAmount),
+            description: `Loan fee payment - ${voucher.voucherNumber}`,
+          },
+        ]
+      : []),
+    ...(Number(voucher.penaltyAmount) > 0
+      ? [
+          {
+            chartOfAccountId: loanLedgerAccountId!,
+            debitAmount: Number(voucher.penaltyAmount),
+            description: `Loan penalty payment - ${voucher.voucherNumber}`,
+          },
+        ]
+      : []),
+    {
+      chartOfAccountId: voucher.accId,
+      creditAmount: Number(voucher.paymentAmount),
+      description: `Loan payment - ${voucher.voucherNumber}`,
+    },
+  ],
 };
