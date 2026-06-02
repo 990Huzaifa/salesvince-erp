@@ -101,6 +101,12 @@ import { InventoryController } from './controller/inventory.controller';
 import { InventoryBalanceService } from './service/inventory/inventory-balance.service';
 import { InventoryBatchService } from './service/inventory/inventory-batch.service';
 import { InventoryMovementService } from './service/inventory/inventory-movement.service';
+import { InventoryForecastController } from './controller/inventory-forecast.controller';
+import { InventoryForecastService } from './service/inventory/forecast/inventory-forecast.service';
+import { InventoryForecastMetricsService } from './service/inventory/forecast/inventory-forecast-metrics.service';
+import { InventoryForecastChartService } from './service/inventory/forecast/inventory-forecast-chart.service';
+import { InventoryForecastRecommendationService } from './service/inventory/forecast/inventory-forecast-recommendation.service';
+import { InventoryForecastInsightsService } from './service/inventory/forecast/inventory-forecast-insights.service';
 
 @Module({
   imports: [
@@ -155,6 +161,7 @@ import { InventoryMovementService } from './service/inventory/inventory-movement
     SqlAgentController,
     LoanController,
     InventoryController,
+    InventoryForecastController,
   ],
   providers: [
     TenantAuthService,
@@ -206,6 +213,11 @@ import { InventoryMovementService } from './service/inventory/inventory-movement
     InventoryBalanceService,
     InventoryBatchService,
     InventoryMovementService,
+    InventoryForecastService,
+    InventoryForecastMetricsService,
+    InventoryForecastChartService,
+    InventoryForecastRecommendationService,
+    InventoryForecastInsightsService,
   ],
 })
 export class TenantModule {}
