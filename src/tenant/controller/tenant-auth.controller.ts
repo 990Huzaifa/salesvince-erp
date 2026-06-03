@@ -20,9 +20,6 @@ import { TenantAuthService } from 'src/tenant/service/tenant-auth.service';
 import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
 import { User } from 'src/tenant-db/entities/user.entity';
 import { Business } from 'src/tenant-db/entities/business.entity';
-import { SqlAgentSession } from 'src/tenant-db/entities/sql-agent-session.entity';
-import { parseSqlAgentSessionPusherChannel } from '../utils/sql-agent-pusher-channel';
-
 const getRequestHeader = (req: Request, names: string[]): string | undefined => {
   for (const name of names) {
     const value = req.headers[name];
@@ -144,36 +141,6 @@ export class TenantAuthController {
       (withBusiness != null && channel === withBusiness);
 
     if (notificationChannelAllowed) {
-      const auth = this.pusherService.authorizeChannel(
-        socketId as string,
-        channel as string,
-      );
-      return res.status(200).json(auth);
-    }
-
-    const sqlAgentChannel = parseSqlAgentSessionPusherChannel(channel as string);
-    if (sqlAgentChannel && req.tenantDb) {
-      if (sqlAgentChannel.tenantCode !== user.tenantCode) {
-        return res.status(403).json({ message: 'Unauthorized' });
-      }
-
-      if (!user.businessId) {
-        return res.status(403).json({ message: 'Unauthorized' });
-      }
-
-      const session = await req.tenantDb.getRepository(SqlAgentSession).findOne({
-        where: {
-          id: sqlAgentChannel.sessionId,
-          userId: user.userId,
-          businessId: user.businessId,
-        },
-        select: ['id'],
-      });
-
-      if (!session) {
-        return res.status(403).json({ message: 'Unauthorized' });
-      }
-
       const auth = this.pusherService.authorizeChannel(
         socketId as string,
         channel as string,

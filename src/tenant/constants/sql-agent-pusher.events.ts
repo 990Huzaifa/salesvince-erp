@@ -1,4 +1,4 @@
-/** Event on the per-session private channel (see buildSqlAgentSessionPusherChannel). */
+/** Event on the tenant user private channel (see buildTenantUserPusherChannel). */
 export const SQL_AGENT_PUSHER_EVENT = 'sql-agent.update';
 
 export type SqlAgentPusherPhase =

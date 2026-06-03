@@ -42,14 +42,12 @@ export class SqlAgentController {
   @RequirePermissions('USE_SQL_AGENT')
   createSession(
     @TenantConnection() tenantDb: DataSource,
-    @TenantCode() tenantCode: string,
     @Req() req: Request,
     @Body() dto: CreateSqlAgentSessionDto,
   ) {
     const user = req.user as TenantRequestUser;
     return this.sqlAgentChatService.createSession(
       tenantDb,
-      tenantCode,
       user.userId,
       user.businessId,
       dto,

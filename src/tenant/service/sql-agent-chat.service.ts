@@ -2,6 +2,8 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { PusherService } from 'src/common/pusher/pusher.service';
 import { SqlAgentService } from 'src/sql-agent/sql-agent.service';
+import { User } from 'src/tenant-db/entities/user.entity';
+import { Business } from 'src/tenant-db/entities/business.entity';
 import { SqlAgentSession } from 'src/tenant-db/entities/sql-agent-session.entity';
 import {
   SqlAgentMessage,
@@ -12,7 +14,7 @@ import {
   SQL_AGENT_PUSHER_EVENT,
   SqlAgentPusherPayload,
 } from '../constants/sql-agent-pusher.events';
-import { buildSqlAgentSessionPusherChannel } from '../utils/sql-agent-pusher-channel';
+import { buildTenantUserPusherChannel } from '../utils/tenant-pusher-channel';
 import { CreateSqlAgentSessionDto } from '../dto/sql-agent/create-sql-agent-session.dto';
 import { SendSqlAgentMessageDto } from '../dto/sql-agent/send-sql-agent-message.dto';
 
@@ -36,7 +38,6 @@ export class SqlAgentChatService {
 
   async createSession(
     tenantDb: DataSource,
-    tenantCode: string,
     userId: string,
     businessId: string,
     dto: CreateSqlAgentSessionDto,
@@ -48,10 +49,7 @@ export class SqlAgentChatService {
       title: dto.title?.trim() || null,
     });
     const saved = await sessionRepo.save(session);
-    return {
-      session: saved,
-      pusherChannel: buildSqlAgentSessionPusherChannel(tenantCode, saved.id),
-    };
+    return { session: saved };
   }
 
   async listSessions(
@@ -125,9 +123,13 @@ export class SqlAgentChatService {
       }),
     );
 
-    const channel = buildSqlAgentSessionPusherChannel(
+    const channel = await this.resolvePusherChannel(
+      tenantDb,
       context.tenantCode,
-      session.id,
+      userId,
+      businessId,
+      context.userCode,
+      context.businessCode,
     );
 
     await this.emitPusherUpdate(channel, {
@@ -173,10 +175,9 @@ export class SqlAgentChatService {
       accepted: true,
       status: 'processing',
       sessionId: session.id,
-      pusherChannel: channel,
       userMessage,
       message:
-        'Your question is being processed. Subscribe to pusherChannel for real-time updates.',
+        'Your question is being processed. Listen for sql-agent.update on your tenant user channel.',
     };
   }
 
@@ -259,6 +260,43 @@ export class SqlAgentChatService {
       sql: dto.debug ? agentResult.sql ?? null : null,
       rows: dto.debug ? agentResult.rows ?? null : null,
     });
+  }
+
+  private async resolvePusherChannel(
+    tenantDb: DataSource,
+    tenantCode: string,
+    userId: string,
+    businessId: string,
+    userCode?: string,
+    businessCode?: string,
+  ): Promise<string> {
+    let resolvedUserCode = userCode;
+    if (!resolvedUserCode) {
+      const row = await tenantDb.getRepository(User).findOne({
+        where: { id: userId },
+        select: ['code'],
+      });
+      resolvedUserCode = row?.code;
+    }
+
+    if (!resolvedUserCode) {
+      throw new NotFoundException('User not found');
+    }
+
+    let resolvedBusinessCode = businessCode;
+    if (!resolvedBusinessCode && businessId) {
+      const row = await tenantDb.getRepository(Business).findOne({
+        where: { id: businessId },
+        select: ['code'],
+      });
+      resolvedBusinessCode = row?.code;
+    }
+
+    return buildTenantUserPusherChannel(
+      tenantCode,
+      resolvedUserCode,
+      resolvedBusinessCode,
+    );
   }
 
   private async emitPusherUpdate(
