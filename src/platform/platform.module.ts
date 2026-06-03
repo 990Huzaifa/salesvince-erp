@@ -55,10 +55,12 @@ import { Invoice, InvoiceItem, InvoicePayment } from 'src/master-db/entities/inv
 import { InvoiceController } from './controller/invoice.controller';
 import { InvoiceService } from './services/invoice.service';
 import { TenantMigrationService } from './services/tenant-migration.service';
-import { WhatsappTemplate } from 'src/master-db/entities/whatsapp-template.entity';
 import { TenantWhatsappAccounts } from 'src/master-db/entities/tenant-whatsapp-accounts.entity';
+import { WhatsappTemplate } from 'src/master-db/entities/whatsapp-template.entity';
+import { TenantWhatsappAccountTemplates } from 'src/master-db/entities/tenant_whatsapp_account_templates.entity';
 import { WhatsappTemplateController } from './controller/whatsapp-template.controller';
 import { WhatsappTemplateService } from './services/whatsapp-template.service';
+
 
 @Module({
   imports: [
@@ -97,6 +99,7 @@ import { WhatsappTemplateService } from './services/whatsapp-template.service';
       City,
       WhatsappTemplate,
       TenantWhatsappAccounts,
+      TenantWhatsappAccountTemplates,
     ]),
   ],
   controllers: [PlatformController, PlatformUserController, CustomerController, PlanController, AddonController, ModuleController, SubscriptionController, AnnouncementController, UtilityController, NotificationController, ActivityLogController, InvoiceController, WhatsappTemplateController],
