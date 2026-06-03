@@ -19,13 +19,14 @@ import { CreatePlatformUserDto } from './dto/create-platform-user.dto';
 import { PlatformUser } from 'src/master-db/entities/platform-user.entity';
 import { PlatformRole } from 'src/master-db/entities/platform-role.entity';
 import { TenantGeoPolicy } from 'src/master-db/entities/tenant-geo-policy.entity';
-import { Plan } from 'src/master-db/entities/plan.entity';
+import { LIMIT_KEY, Plan } from 'src/master-db/entities/plan.entity';
 import { Status, BillingModel, PaymentMode, CollectionType, Subscription } from 'src/master-db/entities/subscription.entity';
 import { NotificationService } from './services/notification.service';
 import { ActivityLogService } from './services/activity-log.service';
 import { ActivityLogActorType } from 'src/master-db/entities/activity-log.entity';
 import { TenantModule } from 'src/master-db/entities/tenant-modules.entity';
 import { Module } from 'src/master-db/entities/module.entity';
+import { TenantWhatsappAccounts, TenantWhatsappAccountStatus } from 'src/master-db/entities/tenant-whatsapp-accounts.entity';
 
 @Injectable()
 export class PlatformService {
@@ -60,6 +61,8 @@ export class PlatformService {
     private readonly moduleRepo: Repository<Module>,
     @InjectRepository(Plan)
     private readonly planRepo: Repository<Plan>,
+    @InjectRepository(TenantWhatsappAccounts)
+    private readonly whatsappAccountRepo: Repository<TenantWhatsappAccounts>,
 
     private readonly provisioningAdminService: ProvisioningAdminService,
     private readonly tenantDatabaseService: TenantDatabaseService,
@@ -251,7 +254,20 @@ export class PlatformService {
     profile.phone = dto.phone;
     profile.address = dto.address;
     await this.profilesRepo.save(profile);
-    
+
+
+    // create tenant whatsapp account if plan has whatsapp limit
+    if(plan.plan_limits.find((limit) => limit.limitKey === LIMIT_KEY.WHATSAPP)) {
+      const whatsappAccount = new TenantWhatsappAccounts;
+      whatsappAccount.tenant = tenant;
+      whatsappAccount.createdBy = user;
+      whatsappAccount.displayPhoneNumber = dto.whatsappPhoneNumber;
+      whatsappAccount.phoneCountryCode = dto.whatsappPhoneCountryCode;
+      whatsappAccount.phoneNationalNumber = dto.whatsappPhoneNationalNumber;
+      whatsappAccount.status = TenantWhatsappAccountStatus.NUMBER_SAVED;
+      whatsappAccount.isDefault = true;
+      await this.whatsappAccountRepo.save(whatsappAccount);
+    }
     // 🔥 AUTO provisioning trigger (run in background, do not block API response)
     void this.startProvisioningSkeleton(tenant.id, user?.id).catch((error) => {
       this.logger.error(

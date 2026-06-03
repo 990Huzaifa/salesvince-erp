@@ -10,6 +10,7 @@ import {
 } from 'typeorm';
 import { PlatformRole } from './platform-role.entity';
 import { Notification } from './notification.entity';
+import { TenantWhatsappAccounts } from './tenant-whatsapp-accounts.entity';
 
 @Entity('platform_users')
 export class PlatformUser {
@@ -44,5 +45,8 @@ export class PlatformUser {
 
     @UpdateDateColumn()
     updatedAt: Date;
+
+    @OneToMany(() => TenantWhatsappAccounts, (account) => account.createdBy)
+    whatsappAccounts: TenantWhatsappAccounts[];
 
 }

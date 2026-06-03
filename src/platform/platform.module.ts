@@ -55,6 +55,9 @@ import { Invoice, InvoiceItem, InvoicePayment } from 'src/master-db/entities/inv
 import { InvoiceController } from './controller/invoice.controller';
 import { InvoiceService } from './services/invoice.service';
 import { TenantMigrationService } from './services/tenant-migration.service';
+import { WhatsappTemplate } from 'src/master-db/entities/whatsapp-template.entity';
+import { WhatsappTemplateController } from './controller/whatsapp-template.controller';
+import { WhatsappTemplateService } from './services/whatsapp-template.service';
 
 @Module({
   imports: [
@@ -90,10 +93,11 @@ import { TenantMigrationService } from './services/tenant-migration.service';
       Announcement,
       Country,
       State,
-      City
+      City,
+      WhatsappTemplate,
     ]),
   ],
-  controllers: [PlatformController, PlatformUserController, CustomerController, PlanController, AddonController, ModuleController, SubscriptionController, AnnouncementController, UtilityController, NotificationController, ActivityLogController, InvoiceController],
-  providers: [PlatformService, ProvisioningAdminService, TenantDatabaseService, TenantMigrationService, CustomerService, PlatformUserService, PlanService, AddonService, SubscriptionService, AnnouncementService, UtilityService, MailService, JwtService, ModuleService, NotificationService, PusherService, ActivityLogService, InvoiceService],
+  controllers: [PlatformController, PlatformUserController, CustomerController, PlanController, AddonController, ModuleController, SubscriptionController, AnnouncementController, UtilityController, NotificationController, ActivityLogController, InvoiceController, WhatsappTemplateController],
+  providers: [PlatformService, ProvisioningAdminService, TenantDatabaseService, TenantMigrationService, CustomerService, PlatformUserService, PlanService, AddonService, SubscriptionService, AnnouncementService, UtilityService, MailService, JwtService, ModuleService, NotificationService, PusherService, ActivityLogService, InvoiceService, WhatsappTemplateService],
 })
 export class PlatformModule {}

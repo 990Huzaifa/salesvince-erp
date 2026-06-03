@@ -32,4 +32,19 @@ export class CreateTenantDto {
     @IsOptional()
     @IsString()
     address?: string;
+
+
+    // whatsapp account details
+
+    @IsOptional()
+    @IsString()
+    whatsappPhoneNumber?: string;
+
+    @IsOptional()
+    @IsString()
+    whatsappPhoneCountryCode?: string;
+
+    @IsOptional()
+    @IsString()
+    whatsappPhoneNationalNumber?: string;
 }

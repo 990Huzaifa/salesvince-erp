@@ -11,6 +11,7 @@ import {
 import { TenantDbConfig } from './tenant-db-config.entity';
 import { TenantProfile } from './tenant-profile.entity';
 import { TenantModule } from './tenant-modules.entity';
+import { TenantWhatsappAccounts } from './tenant-whatsapp-accounts.entity';
 
 export enum TenantStatus {
     REGISTERED = 'REGISTERED',
@@ -76,4 +77,7 @@ export class Tenant {
 
     @OneToMany(() => TenantModule, (module) => module.tenant)
     modules: TenantModule[];
+
+    @OneToMany(() => TenantWhatsappAccounts, (account) => account.tenant)
+    whatsappAccounts: TenantWhatsappAccounts[];
 }
