@@ -60,6 +60,10 @@ import { WhatsappTemplate } from 'src/master-db/entities/whatsapp-template.entit
 import { TenantWhatsappAccountTemplates } from 'src/master-db/entities/tenant_whatsapp_account_templates.entity';
 import { WhatsappTemplateController } from './controller/whatsapp-template.controller';
 import { WhatsappTemplateService } from './services/whatsapp-template.service';
+import { WhatsappAccountController } from './controller/whatsapp-account.controller';
+import { WhatsappAccountService } from './services/whatsapp-account.service';
+import { MetaWhatsappApiService } from './services/meta-whatsapp-api.service';
+import { MetaWhatsappWebhookController } from './controller/meta-whatsapp-webhook.controller';
 
 
 @Module({
@@ -102,7 +106,8 @@ import { WhatsappTemplateService } from './services/whatsapp-template.service';
       TenantWhatsappAccountTemplates,
     ]),
   ],
-  controllers: [PlatformController, PlatformUserController, CustomerController, PlanController, AddonController, ModuleController, SubscriptionController, AnnouncementController, UtilityController, NotificationController, ActivityLogController, InvoiceController, WhatsappTemplateController],
-  providers: [PlatformService, ProvisioningAdminService, TenantDatabaseService, TenantMigrationService, CustomerService, PlatformUserService, PlanService, AddonService, SubscriptionService, AnnouncementService, UtilityService, MailService, JwtService, ModuleService, NotificationService, PusherService, ActivityLogService, InvoiceService, WhatsappTemplateService],
+  controllers: [PlatformController, PlatformUserController, CustomerController, PlanController, AddonController, ModuleController, SubscriptionController, AnnouncementController, UtilityController, NotificationController, ActivityLogController, InvoiceController, WhatsappTemplateController, WhatsappAccountController, MetaWhatsappWebhookController],
+  providers: [PlatformService, ProvisioningAdminService, TenantDatabaseService, TenantMigrationService, CustomerService, PlatformUserService, PlanService, AddonService, SubscriptionService, AnnouncementService, UtilityService, MailService, JwtService, ModuleService, NotificationService, PusherService, ActivityLogService, InvoiceService, WhatsappTemplateService, WhatsappAccountService, MetaWhatsappApiService],
+  exports: [WhatsappAccountService],
 })
 export class PlatformModule {}

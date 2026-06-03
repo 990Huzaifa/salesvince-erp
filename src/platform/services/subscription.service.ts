@@ -7,6 +7,7 @@ import { ActivityLogActorType } from "src/master-db/entities/activity-log.entity
 import { UpdateSubscriptionDto } from "../dto/subscription/update-subscription.dto";
 import { Addon } from "src/master-db/entities/addon.entity";
 import { Plan } from "src/master-db/entities/plan.entity";
+import { WhatsappAccountService } from "./whatsapp-account.service";
 
 @Injectable()
 export class SubscriptionService {
@@ -22,6 +23,8 @@ export class SubscriptionService {
 
         @InjectRepository(SubscriptionAddon)
         private readonly subscriptionAddonRepo: Repository<SubscriptionAddon>,
+
+        private readonly whatsappAccountService: WhatsappAccountService,
     ) {
     }
 
@@ -142,7 +145,7 @@ export class SubscriptionService {
     async updateSubscriptionPlan(subscriptionId: number, planId: any, user: any) {
         const subscription = await this.subscriptionRepo.findOne({
             where: { id: subscriptionId },
-            relations: ['plan'],
+            relations: ['plan', 'plan.plan_limits', 'tenant'],
         });
         if (!subscription) {
             throw new NotFoundException('Subscription not found');
@@ -150,12 +153,21 @@ export class SubscriptionService {
         let planIdString = planId.toString();
         const plan = await this.planRepo.findOne({
             where: { id: planIdString },
+            relations: ['plan_limits'],
         });
         if (!plan) {
             throw new NotFoundException('Plan not found');
         }
         subscription.plan = plan;
         await this.subscriptionRepo.update(subscriptionId, { plan: plan });
+
+        if (this.whatsappAccountService.planHasWhatsappLimit(plan) && subscription.tenant) {
+            await this.whatsappAccountService.ensureDefaultWhatsappAccount(
+                subscription.tenant.id,
+                user,
+            );
+        }
+
         await this.recordAction('SUBSCRIPTION_PLAN_UPDATE', 'Subscription plan updated', user.id, { subscriptionId, planIdString });
         return {
             message: 'Subscription plan updated',
