@@ -56,6 +56,7 @@ import { InvoiceController } from './controller/invoice.controller';
 import { InvoiceService } from './services/invoice.service';
 import { TenantMigrationService } from './services/tenant-migration.service';
 import { WhatsappTemplate } from 'src/master-db/entities/whatsapp-template.entity';
+import { TenantWhatsappAccounts } from 'src/master-db/entities/tenant-whatsapp-accounts.entity';
 import { WhatsappTemplateController } from './controller/whatsapp-template.controller';
 import { WhatsappTemplateService } from './services/whatsapp-template.service';
 
@@ -95,6 +96,7 @@ import { WhatsappTemplateService } from './services/whatsapp-template.service';
       State,
       City,
       WhatsappTemplate,
+      TenantWhatsappAccounts,
     ]),
   ],
   controllers: [PlatformController, PlatformUserController, CustomerController, PlanController, AddonController, ModuleController, SubscriptionController, AnnouncementController, UtilityController, NotificationController, ActivityLogController, InvoiceController, WhatsappTemplateController],
