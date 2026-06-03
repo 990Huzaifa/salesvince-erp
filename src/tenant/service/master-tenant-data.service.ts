@@ -1,11 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { LIMIT_KEY } from 'src/master-db/entities/plan.entity';
 import { TenantGeoPolicy } from 'src/master-db/entities/tenant-geo-policy.entity';
 import { TenantSettings } from 'src/master-db/entities/tenant-settings.entity';
 import { TenantTheme } from 'src/master-db/entities/tenant-themes.entity';
+import { Status, Subscription } from 'src/master-db/entities/subscription.entity';
 import { Repository } from 'typeorm';
 import { Tenant } from 'src/master-db/entities/tenant.entity';
 import { TenantModule } from 'src/master-db/entities/tenant-modules.entity';
+
+export type TenantPlanLimit = {
+  limitKey: LIMIT_KEY;
+  limitValue: number;
+};
 
 @Injectable()
 export class MasterTenantDataService {
@@ -20,6 +27,8 @@ export class MasterTenantDataService {
     private readonly tenantModuleRepo: Repository<TenantModule>,
     @InjectRepository(Tenant)
     private readonly tenantRepo: Repository<Tenant>,
+    @InjectRepository(Subscription)
+    private readonly subscriptionRepo: Repository<Subscription>,
   ) {}
 
   async getTenantSettingsByTenantId(tenantId?: string | null): Promise<TenantSettings | null> {
@@ -80,6 +89,26 @@ export class MasterTenantDataService {
     return modules;
   }
 
+  async getTenantLimitsByTenantId(tenantId?: string | null): Promise<TenantPlanLimit[]> {
+    if (!tenantId?.trim()) {
+      return [];
+    }
+
+    const subscription = await this.subscriptionRepo.findOne({
+      where: { tenant: { id: tenantId.trim() }, status: Status.ACTIVE },
+      relations: ['plan', 'plan.plan_limits'],
+    });
+
+    if (!subscription?.plan?.plan_limits?.length) {
+      return [];
+    }
+
+    return subscription.plan.plan_limits.map(({ limitKey, limitValue }) => ({
+      limitKey,
+      limitValue,
+    }));
+  }
+
   async getTenantMasterDataByTenantId(tenantId?: string | null) {
     if (!tenantId?.trim()) {
       return {
@@ -88,17 +117,19 @@ export class MasterTenantDataService {
         settings: null,
         geoPolicy: null,
         theme: null,
+        limits: [],
       };
     }
 
     const normalizedTenantId = tenantId.trim();
 
-    const [tenantCode, settings, geoPolicy, theme, modules] = await Promise.all([
+    const [tenantCode, settings, geoPolicy, theme, modules, limits] = await Promise.all([
       this.getTenantCodeByTenantId(normalizedTenantId),
       this.getTenantSettingsByTenantId(normalizedTenantId),
       this.getTenantGeoPolicyByTenantId(normalizedTenantId),
       this.getTenantThemeByTenantId(normalizedTenantId),
       this.getTenantModulesByTenantId(normalizedTenantId),
+      this.getTenantLimitsByTenantId(normalizedTenantId),
     ]);
 
     return {
@@ -107,6 +138,7 @@ export class MasterTenantDataService {
       geoPolicy,
       theme,
       modules,
+      limits,
     };
   }
 }

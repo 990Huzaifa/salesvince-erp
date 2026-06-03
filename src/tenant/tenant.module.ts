@@ -125,6 +125,7 @@ import { TenantSettings } from 'src/master-db/entities/tenant-settings.entity';
 import { TenantGeoPolicy } from 'src/master-db/entities/tenant-geo-policy.entity';
 import { TenantTheme } from 'src/master-db/entities/tenant-themes.entity';
 import { TenantModule as TenantModuleEntity } from 'src/master-db/entities/tenant-modules.entity';
+import { Subscription } from 'src/master-db/entities/subscription.entity';
 
 @Module({
   imports: [
@@ -143,6 +144,7 @@ import { TenantModule as TenantModuleEntity } from 'src/master-db/entities/tenan
       TenantGeoPolicy,
       TenantTheme,
       TenantModuleEntity,
+      Subscription,
     ]),
   ],
   controllers: [
