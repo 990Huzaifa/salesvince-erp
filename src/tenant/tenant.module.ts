@@ -119,6 +119,7 @@ import { EmployeeService } from './service/hr/employee.service';
 import { PayPolicyService } from './service/hr/pay-policy.service';
 import { SalaryComponentService } from './service/hr/salary-component.service';
 import { EmployeeSalaryStructureService } from './service/hr/employee-salary-structure.service';
+import { MasterTenantDataController } from './controller/master-tenant-data.controller';
 
 @Module({
   imports: [
@@ -180,6 +181,7 @@ import { EmployeeSalaryStructureService } from './service/hr/employee-salary-str
     PayPolicyController,
     SalaryComponentController,
     EmployeeSalaryStructureController,
+    MasterTenantDataController,
   ],
   providers: [
     TenantAuthService,
