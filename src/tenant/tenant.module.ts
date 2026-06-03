@@ -120,6 +120,11 @@ import { PayPolicyService } from './service/hr/pay-policy.service';
 import { SalaryComponentService } from './service/hr/salary-component.service';
 import { EmployeeSalaryStructureService } from './service/hr/employee-salary-structure.service';
 import { MasterTenantDataController } from './controller/master-tenant-data.controller';
+import { MasterTenantDataService } from './service/master-tenant-data.service';
+import { TenantSettings } from 'src/master-db/entities/tenant-settings.entity';
+import { TenantGeoPolicy } from 'src/master-db/entities/tenant-geo-policy.entity';
+import { TenantTheme } from 'src/master-db/entities/tenant-themes.entity';
+import { TenantModule as TenantModuleEntity } from 'src/master-db/entities/tenant-modules.entity';
 
 @Module({
   imports: [
@@ -129,7 +134,16 @@ import { MasterTenantDataController } from './controller/master-tenant-data.cont
     CommonModule,
     TenantRuntimeModule,
     SqlAgentModule,
-    TypeOrmModule.forFeature([Tenant, Country, State, City]),
+    TypeOrmModule.forFeature([
+      Tenant,
+      Country,
+      State,
+      City,
+      TenantSettings,
+      TenantGeoPolicy,
+      TenantTheme,
+      TenantModuleEntity,
+    ]),
   ],
   controllers: [
     AssetController,
@@ -244,6 +258,7 @@ import { MasterTenantDataController } from './controller/master-tenant-data.cont
     PayPolicyService,
     SalaryComponentService,
     EmployeeSalaryStructureService,
+    MasterTenantDataService,
   ],
 })
 export class TenantModule {}
