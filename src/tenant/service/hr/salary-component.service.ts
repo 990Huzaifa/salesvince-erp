@@ -8,6 +8,8 @@ import { ChartOfAccount } from 'src/tenant-db/entities/chart-of-account.entity';
 import { SalaryComponent } from 'src/tenant-db/entities/hr';
 import { CreateSalaryComponentDto } from '../../dto/hr/salary-component/create-salary-component.dto';
 import { UpdateSalaryComponentDto } from '../../dto/hr/salary-component/update-salary-component.dto';
+import { createChartOfAccountForSalaryComponent } from 'src/tenant-db/helpers/salary-component-chart-of-account.helper';
+import { seedDefaultChartOfAccountsForBusiness } from 'src/tenant-db/helpers/chart-of-account-bootstrap.helper';
 import { ActivityLogService } from '../activity-log.service';
 import {
   assertBusinessId,
@@ -103,21 +105,35 @@ export class SalaryComponentService {
       'Salary component',
     );
     await this.assertAccount(tenantDb, scopedBusinessId, dto.accountId);
+    await seedDefaultChartOfAccountsForBusiness(tenantDb, scopedBusinessId);
 
-    const created = await tenantDb.getRepository(SalaryComponent).save(
-      tenantDb.getRepository(SalaryComponent).create({
-        businessId: scopedBusinessId,
-        name,
-        code,
-        componentType: dto.componentType,
-        calculationType: dto.calculationType,
-        defaultValue: dto.defaultValue ?? null,
-        isTaxable: dto.isTaxable ?? false,
-        isRequired: dto.isRequired ?? false,
-        accountId: dto.accountId ?? null,
-        isActive: dto.isActive ?? true,
-      }),
-    );
+    const created = await tenantDb.transaction(async (manager) => {
+      let component = await manager.save(
+        manager.create(SalaryComponent, {
+          businessId: scopedBusinessId,
+          name,
+          code,
+          componentType: dto.componentType,
+          calculationType: dto.calculationType,
+          defaultValue: dto.defaultValue ?? null,
+          isTaxable: dto.isTaxable ?? false,
+          isRequired: dto.isRequired ?? false,
+          accountId: dto.accountId ?? null,
+          isActive: dto.isActive ?? true,
+        }),
+      );
+
+      if (!component.accountId) {
+        const account = await createChartOfAccountForSalaryComponent(
+          manager,
+          component,
+        );
+        component.accountId = account.id;
+        component = await manager.save(component);
+      }
+
+      return component;
+    });
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,

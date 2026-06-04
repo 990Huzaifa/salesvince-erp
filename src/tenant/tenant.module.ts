@@ -115,10 +115,16 @@ import { EmployeeController } from './controller/hr/employee.controller';
 import { PayPolicyController } from './controller/hr/pay-policy.controller';
 import { SalaryComponentController } from './controller/hr/salary-component.controller';
 import { EmployeeSalaryStructureController } from './controller/hr/employee-salary-structure.controller';
+import { PayrollRunController } from './controller/hr/payroll-run.controller';
+import { PayslipController } from './controller/hr/payslip.controller';
+import { SalaryVoucherController } from './controller/vouchers/salary-voucher.controller';
 import { EmployeeService } from './service/hr/employee.service';
 import { PayPolicyService } from './service/hr/pay-policy.service';
 import { SalaryComponentService } from './service/hr/salary-component.service';
 import { EmployeeSalaryStructureService } from './service/hr/employee-salary-structure.service';
+import { PayrollRunService } from './service/hr/payroll-run.service';
+import { PayslipService } from './service/hr/payslip.service';
+import { SalaryVoucherService } from './service/vouchers/salary-voucher.service';
 import { MasterTenantDataController } from './controller/master-tenant-data.controller';
 import { MasterTenantDataService } from './service/master-tenant-data.service';
 import { TenantSettings } from 'src/master-db/entities/tenant-settings.entity';
@@ -197,6 +203,9 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     PayPolicyController,
     SalaryComponentController,
     EmployeeSalaryStructureController,
+    PayrollRunController,
+    PayslipController,
+    SalaryVoucherController,
     MasterTenantDataController,
   ],
   providers: [
@@ -260,6 +269,9 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     PayPolicyService,
     SalaryComponentService,
     EmployeeSalaryStructureService,
+    PayrollRunService,
+    PayslipService,
+    SalaryVoucherService,
     MasterTenantDataService,
   ],
 })

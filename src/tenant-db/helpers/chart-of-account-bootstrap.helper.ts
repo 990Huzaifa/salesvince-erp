@@ -78,9 +78,45 @@ export async function seedDefaultChartOfAccountsForBusiness(
       isPostable: item.isPostable,
       accountKind: ChartOfAccountKind.SYSTEM,
       partyId: null,
+      employeeId: null,
       ...levels,
     });
   });
 
   return coaRepo.save(rows);
+}
+
+/**
+ * Inserts any default COA nodes missing for a business (e.g. after chart template updates).
+ */
+export async function ensureDefaultChartOfAccountNodes(
+  tenantDb: TenantDb,
+  businessId: string,
+): Promise<void> {
+  const coaRepo = tenantDb.getRepository(ChartOfAccount);
+
+  for (const item of DEFAULT_CHART_OF_ACCOUNTS) {
+    const exists = await coaRepo.findOne({
+      where: { businessId, code: item.code, deletedAt: IsNull() },
+      select: ['id'],
+    });
+    if (exists) {
+      continue;
+    }
+
+    const levels = parseAccountCodeLevels(item.code);
+    await coaRepo.save(
+      coaRepo.create({
+        businessId,
+        code: item.code,
+        parentCode: item.parentCode,
+        name: item.name,
+        isPostable: item.isPostable,
+        accountKind: ChartOfAccountKind.SYSTEM,
+        partyId: null,
+        employeeId: null,
+        ...levels,
+      }),
+    );
+  }
 }

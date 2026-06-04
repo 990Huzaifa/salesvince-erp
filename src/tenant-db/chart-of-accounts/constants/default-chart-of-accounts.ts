@@ -22,6 +22,7 @@ export const DEFAULT_CHART_OF_ACCOUNTS: DefaultChartOfAccountItem[] = [
     { code: '2-1-1-2', parentCode: '2-1-1', name: 'Employee Loan Payables', isPostable: false },
     { code: '2-1-2', parentCode: '2-1', name: 'Salaries Payable', isPostable: false },
     { code: '2-1-3', parentCode: '2-1', name: 'Tax Payable', isPostable: false },
+    { code: '2-1-6', parentCode: '2-1', name: 'Provident Fund Payable', isPostable: false },
     { code: '2-1-4', parentCode: '2-1', name: 'Short-Term Loans Payable', isPostable: false },
     { code: '2-1-5', parentCode: '2-1', name: 'Long-Term Loans Payable', isPostable: false },
     

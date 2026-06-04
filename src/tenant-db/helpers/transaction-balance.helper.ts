@@ -12,6 +12,9 @@ export function getAccountBalanceNature(
   if (account.accountKind === ChartOfAccountKind.PARTY_PAYABLE) {
     return 'CREDIT';
   }
+  if (account.accountKind === ChartOfAccountKind.EMPLOYEE_SALARY_PAYABLE) {
+    return 'CREDIT';
+  }
 
   // 1 = Assets, 5 = Expenses → debit nature; 2,3,4 → credit nature
   if (account.level1 === 1 || account.level1 === 5) {

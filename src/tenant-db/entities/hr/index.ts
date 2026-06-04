@@ -7,3 +7,6 @@ export * from './salary-component.entity';
 export * from './pay-policy-component.entity';
 export * from './employee-salary-structure.entity';
 export * from './employee-salary-component.entity';
+export * from './payroll-run.entity';
+export * from './payslip.entity';
+export * from './payslip-line.entity';

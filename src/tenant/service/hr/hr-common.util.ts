@@ -29,6 +29,40 @@ export function roundAmount(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+export type SalaryLineAmountInput = {
+  componentType: string;
+  calculatedAmount: number;
+};
+
+export function computeSalaryTotals(lines: SalaryLineAmountInput[]) {
+  let totalEarnings = 0;
+  let totalDeductions = 0;
+  let basicSalary = 0;
+
+  for (const line of lines) {
+    const amount = roundAmount(line.calculatedAmount);
+    if (line.componentType === 'earning') {
+      totalEarnings += amount;
+      if (!basicSalary) {
+        basicSalary = amount;
+      }
+    } else {
+      totalDeductions += amount;
+    }
+  }
+
+  const grossSalary = roundAmount(totalEarnings);
+  const netSalary = roundAmount(totalEarnings - totalDeductions);
+
+  return {
+    basicSalary,
+    grossSalary,
+    totalEarnings: grossSalary,
+    totalDeductions: roundAmount(totalDeductions),
+    netSalary,
+  };
+}
+
 export function buildFullName(
   firstName: string,
   lastName?: string | null,

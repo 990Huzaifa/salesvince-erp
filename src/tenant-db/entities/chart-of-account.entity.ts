@@ -11,12 +11,14 @@ import {
 } from 'typeorm';
 import { Business } from './business.entity';
 import { Party } from './party.entity';
+import { Employee } from './hr/employee.entity';
 
 export enum ChartOfAccountKind {
   SYSTEM = 'SYSTEM',
   BUSINESS = 'BUSINESS',
   PARTY_RECEIVABLE = 'PARTY_RECEIVABLE',
   PARTY_PAYABLE = 'PARTY_PAYABLE',
+  EMPLOYEE_SALARY_PAYABLE = 'EMPLOYEE_SALARY_PAYABLE',
   PRODUCT_CATEGORY = 'PRODUCT_CATEGORY',
   PRODUCT_SUB_CATEGORY = 'PRODUCT_SUB_CATEGORY',
   PRODUCT_INVENTORY = 'PRODUCT_INVENTORY',
@@ -25,6 +27,7 @@ export enum ChartOfAccountKind {
 @Entity('chart_of_accounts')
 @Index(['businessId', 'code'], { unique: true })
 @Index(['businessId', 'partyId'])
+@Index(['businessId', 'employeeId'])
 @Index(['businessId', 'accountKind'])
 export class ChartOfAccount {
   @PrimaryGeneratedColumn('uuid')
@@ -45,6 +48,13 @@ export class ChartOfAccount {
   @ManyToOne(() => Party, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'partyId' })
   party: Party | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  employeeId: string | null;
+
+  @ManyToOne(() => Employee, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'employeeId' })
+  employee: Employee | null;
 
   @Column({ type: 'uuid', nullable: true })
   productCategoryId: string | null;

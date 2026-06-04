@@ -82,3 +82,15 @@ export enum SalaryStructureStatusEnum {
   INACTIVE = 'inactive',
   REVISED = 'revised',
 }
+
+export enum PayrollRunStatusEnum {
+  DRAFT = 'draft',
+  GENERATED = 'generated',
+  CLOSED = 'closed',
+}
+
+export enum PayslipStatusEnum {
+  DRAFT = 'draft',
+  APPROVED = 'approved',
+  CANCELLED = 'cancelled',
+}

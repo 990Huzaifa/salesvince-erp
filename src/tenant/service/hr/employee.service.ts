@@ -14,6 +14,8 @@ import {
 } from 'src/tenant-db/entities/hr';
 import { CreateEmployeeDto } from '../../dto/hr/employee/create-employee.dto';
 import { UpdateEmployeeDto } from '../../dto/hr/employee/update-employee.dto';
+import { createChartOfAccountsForEmployee } from 'src/tenant-db/helpers/employee-chart-of-account.helper';
+import { seedDefaultChartOfAccountsForBusiness } from 'src/tenant-db/helpers/chart-of-account-bootstrap.helper';
 import { ActivityLogService } from '../activity-log.service';
 import {
   assertBusinessId,
@@ -301,45 +303,60 @@ export class EmployeeService {
       );
     }
 
-    const created = await tenantDb.getRepository(Employee).save(
-      tenantDb.getRepository(Employee).create({
-        businessId: scopedBusinessId,
-        branchId: dto.branchId ?? null,
-        departmentId: dto.departmentId,
-        designationId: dto.designationId,
-        employeeCode,
-        firstName,
-        lastName: dto.lastName?.trim() ?? null,
-        fullName,
-        fatherName: dto.fatherName?.trim() ?? null,
-        cnic: dto.cnic?.trim() ?? null,
-        email: dto.email?.trim().toLowerCase() ?? null,
-        phone: dto.phone?.trim() ?? null,
-        emergencyContact: dto.emergencyContact?.trim() ?? null,
-        address: dto.address?.trim() ?? null,
-        gender: dto.gender ?? null,
-        dateOfBirth: dto.dateOfBirth
-          ? parseDate(dto.dateOfBirth, 'dateOfBirth')
-          : null,
-        maritalStatus: dto.maritalStatus ?? null,
-        profileImage: dto.profileImage ?? null,
-        joiningDate,
-        leavingDate,
-        employmentType: dto.employmentType,
-        employeeStatus: dto.employeeStatus,
-        reportingManagerId: dto.reportingManagerId ?? null,
-        payPolicyId: dto.payPolicyId ?? null,
-        salaryPaymentMethod: dto.salaryPaymentMethod ?? null,
-        bankName: dto.bankName?.trim() ?? null,
-        bankAccountTitle: dto.bankAccountTitle?.trim() ?? null,
-        bankAccountNumber: dto.bankAccountNumber?.trim() ?? null,
-        iban: dto.iban?.trim() ?? null,
-        taxNumber: dto.taxNumber?.trim() ?? null,
-        salaryAccountId: dto.salaryAccountId ?? null,
-        createdBy: actorUserId,
-        updatedBy: actorUserId,
-      }),
-    );
+    await seedDefaultChartOfAccountsForBusiness(tenantDb, scopedBusinessId);
+
+    const created = await tenantDb.transaction(async (manager) => {
+      let employee = await manager.save(
+        manager.create(Employee, {
+          businessId: scopedBusinessId,
+          branchId: dto.branchId ?? null,
+          departmentId: dto.departmentId,
+          designationId: dto.designationId,
+          employeeCode,
+          firstName,
+          lastName: dto.lastName?.trim() ?? null,
+          fullName,
+          fatherName: dto.fatherName?.trim() ?? null,
+          cnic: dto.cnic?.trim() ?? null,
+          email: dto.email?.trim().toLowerCase() ?? null,
+          phone: dto.phone?.trim() ?? null,
+          emergencyContact: dto.emergencyContact?.trim() ?? null,
+          address: dto.address?.trim() ?? null,
+          gender: dto.gender ?? null,
+          dateOfBirth: dto.dateOfBirth
+            ? parseDate(dto.dateOfBirth, 'dateOfBirth')
+            : null,
+          maritalStatus: dto.maritalStatus ?? null,
+          profileImage: dto.profileImage ?? null,
+          joiningDate,
+          leavingDate,
+          employmentType: dto.employmentType,
+          employeeStatus: dto.employeeStatus,
+          reportingManagerId: dto.reportingManagerId ?? null,
+          payPolicyId: dto.payPolicyId ?? null,
+          salaryPaymentMethod: dto.salaryPaymentMethod ?? null,
+          bankName: dto.bankName?.trim() ?? null,
+          bankAccountTitle: dto.bankAccountTitle?.trim() ?? null,
+          bankAccountNumber: dto.bankAccountNumber?.trim() ?? null,
+          iban: dto.iban?.trim() ?? null,
+          taxNumber: dto.taxNumber?.trim() ?? null,
+          salaryAccountId: dto.salaryAccountId ?? null,
+          createdBy: actorUserId,
+          updatedBy: actorUserId,
+        }),
+      );
+
+      if (!employee.salaryAccountId) {
+        const { salaryPayableAccount } = await createChartOfAccountsForEmployee(
+          manager,
+          employee,
+        );
+        employee.salaryAccountId = salaryPayableAccount.id;
+        employee = await manager.save(employee);
+      }
+
+      return employee;
+    });
 
     const full = await this.findForBusiness(
       tenantDb,
