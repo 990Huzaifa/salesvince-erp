@@ -1110,4 +1110,116 @@ export class GrnService {
 
     return { data: this.mapGrn(approved) };
   }
+
+  /**
+   * Syncs all GRNs for an approved purchase order after a financial edit.
+   * Does not post stock movements; updates approved GRN ledger entries and invoices.
+   */
+  async cascadeFromPurchaseOrder(
+    manager: EntityManager,
+    businessId: string,
+    order: PurchaseOrder,
+    vendor: Party,
+  ): Promise<void> {
+    const poItems = order.items ?? [];
+    const poItemByKey = new Map(
+      poItems.map((item) => [this.poItemKey(item), item]),
+    );
+
+    const grns = await manager.getRepository(Grn).find({
+      where: { purchaseOrderId: order.id, businessId, deletedAt: IsNull() },
+      relations: { items: true },
+    });
+
+    const headerTaxPercentage = Number(order.taxPercentage);
+    const deliveryCost = Number(order.deliveryCost);
+    const discountPercentage = Number(order.discountPercentage);
+
+    for (const grn of grns) {
+      const resolvedLines: ResolvedGrnLine[] = [];
+
+      for (const grnItem of grn.items ?? []) {
+        const key = `${grnItem.productId}:${grnItem.uomId}:${grnItem.productFlavourId ?? ''}`;
+        const poItem = poItemByKey.get(key);
+        if (!poItem) {
+          throw new BadRequestException(
+            `GRN line for product ${grnItem.productId} has no matching purchase order item`,
+          );
+        }
+
+        resolvedLines.push(
+          this.resolveLineFromPoItem(
+            poItem,
+            Number(grnItem.receivedQuantity),
+            headerTaxPercentage,
+          ),
+        );
+      }
+
+      const totals = this.computeGrnTotals(resolvedLines, {
+        deliveryCost,
+        taxPercentage: headerTaxPercentage,
+        discountPercentage,
+      });
+
+      const itemRepo = manager.getRepository(GrnItem);
+      for (let index = 0; index < (grn.items ?? []).length; index += 1) {
+        const grnItem = grn.items![index];
+        const line = resolvedLines[index];
+        await itemRepo.update(grnItem.id, {
+          orderedQuantity: line.orderedQuantity,
+          receivedQuantity: line.receivedQuantity,
+          purchaseUnitPrice: line.purchaseUnitPrice,
+          saleUnitMarginAmount: line.saleUnitMarginAmount,
+          saleUnitMarginPercentage: line.saleUnitMarginPercentage,
+          discountPercentage: line.discountPercentage,
+          discountAmount: line.discountAmount,
+          taxPercentage: line.taxPercentage,
+          taxAmount: line.taxAmount,
+          totalAmount: line.totalAmount,
+        });
+      }
+
+      await manager.getRepository(Grn).update(grn.id, {
+        grnDate: order.orderDate,
+        deliveryCost,
+        totalTaxAmount: totals.totalTaxAmount,
+        totalDiscountAmount: totals.totalDiscountAmount,
+        totalAmount: totals.totalAmount,
+      });
+
+      grn.grnDate = order.orderDate;
+      grn.deliveryCost = deliveryCost;
+      grn.totalTaxAmount = totals.totalTaxAmount;
+      grn.totalDiscountAmount = totals.totalDiscountAmount;
+      grn.totalAmount = totals.totalAmount;
+
+      if (grn.status === GrnStatus.APPROVED) {
+        if (!vendor.payableAccountId) {
+          throw new BadRequestException(
+            'Vendor payable account is required to update approved GRN ledger',
+          );
+        }
+
+        await this.transactionService.updateDirectLedgerEntryByReference(
+          manager,
+          {
+            businessId,
+            chartOfAccountId: vendor.payableAccountId,
+            referenceType: AccountTransactionReferenceType.GRN,
+            referenceId: grn.id,
+            transactionDate: order.orderDate,
+            description: `GRN ${grn.grnNumber} - vendor payable`,
+            creditAmount: totals.totalAmount,
+          },
+        );
+
+        const reloaded = await manager.getRepository(Grn).findOneOrFail({
+          where: { id: grn.id },
+          relations: { items: true },
+        });
+        await this.purchaseInvoiceService.syncFromGrn(manager, reloaded);
+      }
+    }
+  }
 }

@@ -26,6 +26,7 @@ import { PurchaseOrderService } from '../../service/purchase/purchase-order.serv
 import { CreatePurchaseOrderDto } from '../../dto/purchase-order/create-purchase-order.dto';
 import { CreateSimplePurchaseOrderDto } from '../../dto/purchase-order/create-simple-purchase-order.dto';
 import { UpdatePurchaseOrderDto } from '../../dto/purchase-order/update-purchase-order.dto';
+import { EditApprovedPurchaseOrderDto } from '../../dto/purchase-order/edit-approved-purchase-order.dto';
 
 @Controller('tenant/purchase-orders')
 @UseGuards(
@@ -156,6 +157,24 @@ export class PurchaseOrderController {
   ) {
     const user = req.user as TenantRequestUser;
     return this.purchaseOrderService.edit(
+      tenantDb,
+      user.businessId,
+      id,
+      dto,
+      user.userId,
+    );
+  }
+
+  @Put('edit-approved/:id')
+  @RequirePermissions('UPDATE_PURCHASE_ORDER')
+  editApproved(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EditApprovedPurchaseOrderDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.purchaseOrderService.editApproved(
       tenantDb,
       user.businessId,
       id,

@@ -272,6 +272,74 @@ export class TransactionService {
     });
   }
 
+  /**
+   * Updates the single direct ledger entry for a reference (e.g. GRN payable credit).
+   * Recalculates running balances on the affected COA afterward.
+   */
+  async updateDirectLedgerEntryByReference(
+    manager: EntityManager,
+    params: {
+      businessId: string;
+      chartOfAccountId: string;
+      referenceType: AccountTransactionReferenceType;
+      referenceId: string;
+      transactionDate?: Date;
+      description?: string;
+      debitAmount?: number;
+      creditAmount?: number;
+    },
+  ): Promise<Transaction> {
+    const debit = params.debitAmount ?? 0;
+    const credit = params.creditAmount ?? 0;
+    const hasDebit = !this.isEffectivelyZero(debit);
+    const hasCredit = !this.isEffectivelyZero(credit);
+
+    if (hasDebit && hasCredit) {
+      throw new BadRequestException('Entry cannot have both debit and credit');
+    }
+    if (!hasDebit && !hasCredit) {
+      throw new BadRequestException('Entry requires a debit or credit amount');
+    }
+    if (debit < 0 || credit < 0) {
+      throw new BadRequestException('Amounts cannot be negative');
+    }
+
+    const txRepo = manager.getRepository(Transaction);
+    const existing = await txRepo.findOne({
+      where: {
+        businessId: params.businessId,
+        chartOfAccountId: params.chartOfAccountId,
+        referenceType: params.referenceType,
+        referenceId: params.referenceId,
+      },
+      order: { createdAt: 'DESC', id: 'DESC' },
+    });
+
+    if (!existing) {
+      throw new NotFoundException(
+        `Ledger entry not found for ${params.referenceType} ${params.referenceId}`,
+      );
+    }
+
+    const account = await this.resolvePostableAccount(
+      manager,
+      params.businessId,
+      params.chartOfAccountId,
+    );
+
+    await txRepo.update(existing.id, {
+      transactionDate: params.transactionDate ?? existing.transactionDate,
+      description: params.description ?? existing.description,
+      debitAmount: hasDebit ? this.roundAmount(debit) : null,
+      creditAmount: hasCredit ? this.roundAmount(credit) : null,
+    });
+
+    await this.recalculateAfterPost(manager, params.businessId, account);
+
+    const refreshed = await txRepo.findOne({ where: { id: existing.id } });
+    return refreshed ?? existing;
+  }
+
   async postJournal(
     manager: EntityManager,
     params: PostJournalParams,

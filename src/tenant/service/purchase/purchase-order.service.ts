@@ -16,8 +16,9 @@ import {
   PurchaseOrder,
   PurchaseOrderItem,
 } from 'src/tenant-db/entities/purchase-order.entity';
-import { Grn } from 'src/tenant-db/entities/grn.entity';
+import { Grn, GrnStatus } from 'src/tenant-db/entities/grn.entity';
 import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity';
+import { PurchaseReturn } from 'src/tenant-db/entities/purchase-return.entity';
 import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
 import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import {
@@ -32,6 +33,8 @@ import { CreateSimplePurchaseOrderDto } from '../../dto/purchase-order/create-si
 import { CreateSimplePurchaseOrderItemDto } from '../../dto/purchase-order/create-simple-purchase-order-item.dto';
 import { UpdatePurchaseOrderDto } from '../../dto/purchase-order/update-purchase-order.dto';
 import { UpdatePurchaseOrderItemDto } from '../../dto/purchase-order/update-purchase-order-item.dto';
+import { EditApprovedPurchaseOrderDto } from '../../dto/purchase-order/edit-approved-purchase-order.dto';
+import { EditApprovedPurchaseOrderItemDto } from '../../dto/purchase-order/edit-approved-purchase-order-item.dto';
 import { ActivityLogService } from '../activity-log.service';
 import { GrnService } from './grn.service';
 
@@ -141,6 +144,93 @@ export class PurchaseOrderService {
       throw new BadRequestException(
         'Only pending purchase orders can be modified or deleted',
       );
+    }
+  }
+
+  private assertApprovedStatus(order: PurchaseOrder): void {
+    if (order.orderStatus !== OrderStatus.APPROVED) {
+      throw new BadRequestException(
+        'Only approved purchase orders can be edited with this endpoint',
+      );
+    }
+  }
+
+  private async assertNoPurchaseReturnsOnOrder(
+    tenantDb: DataSource,
+    businessId: string,
+    orderId: string,
+  ): Promise<void> {
+    const count = await tenantDb
+      .getRepository(PurchaseReturn)
+      .createQueryBuilder('purchaseReturn')
+      .innerJoin('purchaseReturn.purchaseInvoice', 'invoice')
+      .innerJoin('invoice.grn', 'grn')
+      .where('grn.purchaseOrderId = :orderId', { orderId })
+      .andWhere('invoice.businessId = :businessId', { businessId })
+      .getCount();
+
+    if (count > 0) {
+      throw new BadRequestException(
+        'Cannot edit purchase order with existing purchase returns',
+      );
+    }
+  }
+
+  private async syncApprovedOrderItems(
+    manager: EntityManager,
+    orderId: string,
+    items: EditApprovedPurchaseOrderItemDto[],
+    existingItems: PurchaseOrderItem[],
+  ): Promise<void> {
+    if (items.length !== existingItems.length) {
+      throw new BadRequestException(
+        'All purchase order line items must be included',
+      );
+    }
+
+    const existingById = new Map(existingItems.map((row) => [row.id, row]));
+    const payloadIds = new Set(items.map((item) => item.id));
+
+    for (const existing of existingItems) {
+      if (!payloadIds.has(existing.id)) {
+        throw new BadRequestException(
+          'All purchase order line items must be included',
+        );
+      }
+    }
+
+    const itemRepo = manager.getRepository(PurchaseOrderItem);
+
+    for (const item of items) {
+      const existing = existingById.get(item.id);
+      if (!existing || existing.purchaseOrderId !== orderId) {
+        throw new NotFoundException(`Purchase order item ${item.id} not found`);
+      }
+
+      const lineSubtotal = item.purchaseUnitPrice * item.quantity;
+      let discountPercentage =
+        item.discountPercentage ?? Number(existing.discountPercentage);
+      let discountAmount: number;
+      if (item.discountAmount != null) {
+        discountAmount = this.roundAmount(item.discountAmount);
+        discountPercentage =
+          lineSubtotal > 0
+            ? this.roundAmount((discountAmount / lineSubtotal) * 100)
+            : 0;
+      } else {
+        discountAmount = this.roundAmount(
+          (lineSubtotal * discountPercentage) / 100,
+        );
+      }
+      const totalAmount = this.roundAmount(lineSubtotal - discountAmount);
+
+      await itemRepo.update(existing.id, {
+        quantity: item.quantity,
+        purchaseUnitPrice: this.roundAmount(item.purchaseUnitPrice),
+        discountPercentage: this.roundAmount(discountPercentage),
+        discountAmount,
+        totalAmount,
+      });
     }
   }
 
@@ -1176,6 +1266,122 @@ export class PurchaseOrderService {
       businessId: scopedBusinessId,
       action: 'PURCHASE_ORDER_UPDATED',
       description: `Purchase order ${updated.orderNumber} updated`,
+      metadata: { purchaseOrderId: updated.id },
+    });
+
+    return { data: this.mapPurchaseOrder(updated) };
+  }
+
+  async editApproved(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    orderId: string,
+    dto: EditApprovedPurchaseOrderDto,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const order = await this.findOrderForBusiness(
+      tenantDb,
+      scopedBusinessId,
+      orderId,
+    );
+    this.assertApprovedStatus(order);
+    await this.assertNoPurchaseReturnsOnOrder(
+      tenantDb,
+      scopedBusinessId,
+      order.id,
+    );
+
+    const existingItems = [...(order.items ?? [])];
+    if (!existingItems.length) {
+      throw new BadRequestException('Purchase order has no line items');
+    }
+
+    const hasApprovedGrn = await tenantDb.getRepository(Grn).exists({
+      where: {
+        purchaseOrderId: order.id,
+        businessId: scopedBusinessId,
+        status: GrnStatus.APPROVED,
+        deletedAt: IsNull(),
+      },
+    });
+
+    const vendor = order.vendor;
+    if (!vendor) {
+      throw new NotFoundException('Vendor not found on purchase order');
+    }
+    if (hasApprovedGrn && !vendor.payableAccountId) {
+      throw new BadRequestException(
+        'Vendor payable account is required before editing purchase order with approved GRNs',
+      );
+    }
+
+    const updated = await tenantDb.transaction(async (manager) => {
+      await this.syncApprovedOrderItems(
+        manager,
+        order.id,
+        dto.items,
+        existingItems,
+      );
+
+      const syncedItems = await manager.getRepository(PurchaseOrderItem).find({
+        where: { purchaseOrderId: order.id },
+      });
+
+      const resolvedLines: ResolvedLineItem[] = syncedItems.map((item) => ({
+        productId: item.productId,
+        uomId: item.uomId,
+        productFlavourId: item.productFlavourId ?? null,
+        quantity: item.quantity,
+        purchaseUnitPrice: Number(item.purchaseUnitPrice),
+        saleUnitMarginAmount: Number(item.saleUnitMarginAmount),
+        saleUnitMarginPercentage: Number(item.saleUnitMarginPercentage),
+        discountPercentage: Number(item.discountPercentage),
+        discountAmount: Number(item.discountAmount),
+        totalAmount: Number(item.totalAmount),
+      }));
+
+      const totals = this.computeOrderTotals(resolvedLines, {
+        deliveryCost: dto.deliveryCost ?? order.deliveryCost,
+        taxPercentage: dto.taxPercentage ?? order.taxPercentage,
+        discountPercentage:
+          dto.discountPercentage ?? order.discountPercentage,
+        discountAmount: dto.discountAmount ?? order.discountAmount,
+        taxAmount: dto.taxAmount ?? order.taxAmount,
+      });
+
+      await manager.getRepository(PurchaseOrder).update(order.id, {
+        orderDate: new Date(dto.orderDate),
+        notes: dto.notes !== undefined ? dto.notes?.trim() || null : order.notes,
+        orderTotal: totals.orderTotal,
+        deliveryCost: totals.deliveryCost,
+        taxPercentage: totals.taxPercentage,
+        taxAmount: totals.taxAmount,
+        discountPercentage: totals.discountPercentage,
+        discountAmount: totals.discountAmount,
+        totalAmount: totals.totalAmount,
+      });
+
+      const loadedOrder = await manager.getRepository(PurchaseOrder).findOneOrFail({
+        where: { id: order.id },
+        relations: this.orderRelations(),
+      });
+
+      await this.grnService.cascadeFromPurchaseOrder(
+        manager,
+        scopedBusinessId,
+        loadedOrder,
+        vendor,
+      );
+
+      return loadedOrder;
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'PURCHASE_ORDER_EDITED_APPROVED',
+      description: `Approved purchase order ${updated.orderNumber} edited`,
       metadata: { purchaseOrderId: updated.id },
     });
 

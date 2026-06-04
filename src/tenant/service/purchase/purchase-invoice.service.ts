@@ -323,6 +323,67 @@ export class PurchaseInvoiceService {
     });
   }
 
+  /**
+   * Updates an existing purchase invoice from an approved GRN after PO financial edit.
+   */
+  async syncFromGrn(manager: EntityManager, grn: Grn): Promise<PurchaseInvoice | null> {
+    if (grn.status !== GrnStatus.APPROVED) {
+      return null;
+    }
+
+    const invoiceRepo = manager.getRepository(PurchaseInvoice);
+    const invoice = await invoiceRepo.findOne({
+      where: { grnId: grn.id, deletedAt: IsNull() },
+      relations: { items: true },
+    });
+
+    if (!invoice) {
+      return null;
+    }
+
+    const grnItems = (grn.items ?? []).filter(
+      (line) => Number(line.receivedQuantity) > 0,
+    );
+    const grnItemByKey = new Map(
+      grnItems.map((line) => [
+        `${line.productId}:${line.uomId}:${line.productFlavourId ?? ''}`,
+        line,
+      ]),
+    );
+
+    await invoiceRepo.update(invoice.id, {
+      invoiceDate: grn.grnDate,
+      totalTaxAmount: grn.totalTaxAmount,
+      totalDiscountAmount: grn.totalDiscountAmount,
+      totalAmount: grn.totalAmount,
+    });
+
+    const itemRepo = manager.getRepository(PurchaseInvoiceItem);
+    for (const invoiceItem of invoice.items ?? []) {
+      const key = `${invoiceItem.productId}:${invoiceItem.uomId}:${invoiceItem.productFlavourId ?? ''}`;
+      const grnLine = grnItemByKey.get(key);
+      if (!grnLine) {
+        continue;
+      }
+
+      await itemRepo.update(invoiceItem.id, {
+        productFlavourId: grnLine.productFlavourId,
+        quantity: grnLine.receivedQuantity,
+        purchaseUnitPrice: grnLine.purchaseUnitPrice,
+        discountPercentage: grnLine.discountPercentage,
+        discountAmount: grnLine.discountAmount,
+        taxPercentage: grnLine.taxPercentage,
+        taxAmount: grnLine.taxAmount,
+        totalAmount: grnLine.totalAmount,
+      });
+    }
+
+    return invoiceRepo.findOneOrFail({
+      where: { id: invoice.id },
+      relations: this.invoiceRelations(),
+    });
+  }
+
   async list(
     tenantDb: DataSource,
     businessId: string | undefined,
