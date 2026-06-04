@@ -23,6 +23,9 @@ export type TenantJwtPayload = {
   businessCode?: string;
   userBusinessId?: string;
   roleId?: string;
+  roleName?: string;
+  permissions?: string[];
+  isSuperAdmin?: boolean;
 };
 
 export type TenantRequestUser = {
@@ -40,6 +43,9 @@ export type TenantRequestUser = {
   businessCode?: string;
   userBusinessId?: string;
   roleId?: string;
+  roleName?: string;
+  permissions?: string[];
+  isSuperAdmin?: boolean;
 };
 
 @Injectable()
@@ -88,6 +94,9 @@ export class TenantJwtStrategy extends PassportStrategy(Strategy, 'tenant-jwt') 
         businessCode: payload.businessCode,
         userBusinessId: payload.userBusinessId,
         roleId: payload.roleId,
+        roleName: payload.roleName,
+        permissions: payload.permissions ?? [],
+        isSuperAdmin: payload.isSuperAdmin === true,
       };
     }
 

@@ -18,6 +18,7 @@ import {
   UserBusinessStatus,
 } from 'src/tenant-db/entities/user-business.entity';
 import { Role, RoleStatus } from 'src/tenant-db/entities/role.entity';
+import { Permission } from 'src/tenant-db/entities/permission.entity';
 import { TenantLoginDto } from '../dto/tenant-login.dto';
 import { SetupTenantUserPasswordDto } from '../dto/user/setup-tenant-user-password.dto';
 import { SetupTenantUserDto } from '../dto/user/setup-tenant-user.dto';
@@ -36,6 +37,7 @@ export type TenantLoginBusinessRow = {
   userBusinessId: string;
   roleId: string;
   roleName: string;
+  permissions: string[];
   userBusinessStatus: string;
 };
 
@@ -64,7 +66,9 @@ export type TenantBusinessAccessResponse = {
   access_token: string;
   token_type: typeof BUSINESS_ACCESS_TOKEN;
   isSuperAdmin: boolean;
-  permissions?: string[];
+  roleId: string;
+  roleName: string;
+  permissions: string[];
 };
 
 @Injectable()
@@ -160,6 +164,9 @@ export class TenantAuthService {
       businessCode: string;
       userBusinessId: string;
       roleId: string;
+      roleName: string;
+      permissions: string[];
+      isSuperAdmin: boolean;
       userCode: string;
     },
   ): string {
@@ -178,6 +185,9 @@ export class TenantAuthService {
         businessCode: row.businessCode,
         userBusinessId: row.userBusinessId,
         roleId: row.roleId,
+        roleName: row.roleName,
+        permissions: row.permissions,
+        isSuperAdmin: row.isSuperAdmin,
       },
       { expiresIn },
     );
@@ -210,34 +220,62 @@ export class TenantAuthService {
   }
 
   private extractRolePermissionKeys(role: Role): string[] {
-    return (
+    const keys =
       role.rolePermissions
         ?.map((rp) => rp.permission?.key)
-        .filter((key): key is string => Boolean(key)) ?? []
-    );
+        .filter((key): key is string => Boolean(key)) ?? [];
+    return [...new Set(keys)].sort();
+  }
+
+  /** Permission keys from role_permissions (synced on role create/update). */
+  private async resolvePermissionKeys(
+    tenantDb: DataSource,
+    role: Role,
+    isSuperAdmin: boolean,
+  ): Promise<string[]> {
+    if (isSuperAdmin) {
+      const permissions = await tenantDb.getRepository(Permission).find({
+        select: ['key'],
+        order: { key: 'ASC' },
+      });
+      return permissions.map((p) => p.key);
+    }
+    return this.extractRolePermissionKeys(role);
   }
 
   private async buildBusinessesList(
     tenantDb: DataSource,
     userId: string,
+    isSuperAdmin: boolean,
   ): Promise<TenantLoginBusinessRow[]> {
     const ubRepo = tenantDb.getRepository(UserBusiness);
     const rows = await ubRepo.find({
       where: { userId, deletedAt: IsNull() },
-      relations: ['business', 'role'],
+      relations: [
+        'business',
+        'role',
+        'role.rolePermissions',
+        'role.rolePermissions.permission',
+      ],
       order: { lastSelectedAt: 'DESC', createdAt: 'ASC' },
     });
 
-    return rows.map((ub) => ({
-      businessId: ub.businessId,
-      businessCode: ub.business?.code ?? '',
-      businessName: ub.business?.name ?? '',
-      businessStatus: ub.business?.status ?? '',
-      userBusinessId: ub.id,
-      roleId: ub.roleId,
-      roleName: ub.role?.name ?? '',
-      userBusinessStatus: ub.status,
-    }));
+    return Promise.all(
+      rows.map(async (ub) => ({
+        businessId: ub.businessId,
+        businessCode: ub.business?.code ?? '',
+        businessName: ub.business?.name ?? '',
+        businessStatus: ub.business?.status ?? '',
+        userBusinessId: ub.id,
+        roleId: ub.roleId,
+        roleName: ub.role?.name ?? '',
+        permissions:
+          ub.role != null
+            ? await this.resolvePermissionKeys(tenantDb, ub.role, isSuperAdmin)
+            : [],
+        userBusinessStatus: ub.status,
+      })),
+    );
   }
 
   async login(
@@ -271,7 +309,11 @@ export class TenantAuthService {
     user.lastLoginAt = new Date();
     await userRepo.save(user);
 
-    const businesses = await this.buildBusinessesList(tenantDb, user.id);
+    const businesses = await this.buildBusinessesList(
+      tenantDb,
+      user.id,
+      user.isSuperAdmin === true,
+    );
 
     return this.buildLoginResponse(user, tenant, businesses);
   }
@@ -348,23 +390,30 @@ export class TenantAuthService {
       throw new ForbiddenException('Business not found');
     }
 
-    const response: TenantBusinessAccessResponse = {
+    const roleName = ub.role.name;
+    const permissions = await this.resolvePermissionKeys(
+      tenantDb,
+      ub.role,
+      isSuperAdmin,
+    );
+
+    return {
       access_token: this.signBusinessAccessJwt(jwtUser.userId, tenant, {
         businessId: dto.businessId,
         businessCode,
         userBusinessId: ub.id,
         roleId: ub.roleId,
+        roleName,
+        permissions,
+        isSuperAdmin,
         userCode,
       }),
       token_type: BUSINESS_ACCESS_TOKEN,
       isSuperAdmin,
+      roleId: ub.roleId,
+      roleName,
+      permissions,
     };
-
-    if (!isSuperAdmin) {
-      response.permissions = this.extractRolePermissionKeys(ub.role);
-    }
-
-    return response;
   }
 
   private verifyInviteToken(token: string): {
@@ -417,7 +466,11 @@ export class TenantAuthService {
       invite,
     );
 
-    const businesses = await this.buildBusinessesList(tenantDb, user.id);
+    const businesses = await this.buildBusinessesList(
+      tenantDb,
+      user.id,
+      user.isSuperAdmin === true,
+    );
     return this.buildLoginResponse(user, tenant, businesses);
   }
 
