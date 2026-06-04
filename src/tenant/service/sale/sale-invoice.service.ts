@@ -6,6 +6,7 @@ import {
 import { Brackets, DataSource, EntityManager, IsNull } from 'typeorm';
 import {
   DeliveryNote,
+  DeliveryNoteItem,
   DeliveryNoteStatus,
 } from 'src/tenant-db/entities/delivery-note.entity';
 import {
@@ -332,6 +333,73 @@ export class SaleInvoiceService {
           }),
         ),
     );
+
+    return invoiceRepo.findOneOrFail({
+      where: { id: invoice.id },
+      relations: this.invoiceRelations(),
+    });
+  }
+
+  /**
+   * Updates an existing sale invoice from an approved delivery note after SO financial edit.
+   */
+  async syncFromDeliveryNote(
+    manager: EntityManager,
+    deliveryNote: DeliveryNote,
+  ): Promise<SaleInvoice | null> {
+    if (String(deliveryNote.status) !== DeliveryNoteStatus.APPROVED) {
+      return null;
+    }
+
+    const invoiceRepo = manager.getRepository(SaleInvoice);
+    const invoice = await invoiceRepo.findOne({
+      where: { deliveryNoteId: deliveryNote.id, deletedAt: IsNull() },
+      relations: { items: true },
+    });
+
+    if (!invoice) {
+      return null;
+    }
+
+    const freshDnItems = await manager.getRepository(DeliveryNoteItem).find({
+      where: { deliveryNoteId: deliveryNote.id },
+    });
+    const dnItems = freshDnItems.filter(
+      (line) => Number(line.deliveredQuantity) > 0,
+    );
+    const dnItemByKey = new Map(
+      dnItems.map((line) => [
+        `${line.productId}:${line.uomId}:${line.productFlavourId ?? ''}:${line.warehouseId}`,
+        line,
+      ]),
+    );
+
+    await invoiceRepo.update(invoice.id, {
+      invoiceDate: deliveryNote.deliveryNoteDate,
+      totalTaxAmount: Number(deliveryNote.totalTaxAmount),
+      totalDiscountAmount: Number(deliveryNote.totalDiscountAmount),
+      totalAmount: Number(deliveryNote.totalAmount),
+    });
+
+    const itemRepo = manager.getRepository(SaleInvoiceItem);
+    for (const invoiceItem of invoice.items ?? []) {
+      const key = `${invoiceItem.productId}:${invoiceItem.uomId}:${invoiceItem.productFlavourId ?? ''}:${invoiceItem.warehouseId}`;
+      const dnLine = dnItemByKey.get(key);
+      if (!dnLine) {
+        continue;
+      }
+
+      await itemRepo.update(invoiceItem.id, {
+        productFlavourId: dnLine.productFlavourId,
+        quantity: dnLine.deliveredQuantity,
+        saleUnitPrice: Number(dnLine.saleUnitPrice),
+        discountPercentage: Number(dnLine.discountPercentage),
+        discountAmount: Number(dnLine.discountAmount),
+        taxPercentage: Number(dnLine.taxPercentage),
+        taxAmount: Number(dnLine.taxAmount),
+        totalAmount: Number(dnLine.totalAmount),
+      });
+    }
 
     return invoiceRepo.findOneOrFail({
       where: { id: invoice.id },

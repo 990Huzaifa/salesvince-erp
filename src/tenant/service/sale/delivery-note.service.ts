@@ -168,6 +168,35 @@ export class DeliveryNoteService {
     return customer;
   }
 
+  /** Line financials mirrored from SO (prorated by delivered vs ordered qty). */
+  private buildDnLineFromSaleOrderItem(
+    orderItem: SaleOrderItem,
+    deliveredQuantity: number,
+  ): ResolvedDeliveryNoteLine {
+    const orderQty = Number(orderItem.quantity);
+    const receivedQty = deliveredQuantity;
+    const ratio = orderQty > 0 ? receivedQty / orderQty : 0;
+    const saleUnitPrice = this.roundAmount(
+      Number(orderItem.purchaseUnitPrice) + Number(orderItem.saleMarginAmount),
+    );
+
+    return {
+      saleOrderItemId: orderItem.id,
+      warehouseId: orderItem.warehouseId,
+      productId: orderItem.productId,
+      uomId: orderItem.uomId,
+      productFlavourId: orderItem.productFlavourId ?? null,
+      orderedQuantity: orderQty,
+      deliveredQuantity: receivedQty,
+      saleUnitPrice,
+      discountPercentage: Number(orderItem.discountPercentage),
+      discountAmount: this.roundAmount(Number(orderItem.discountAmount) * ratio),
+      taxPercentage: 0,
+      taxAmount: 0,
+      totalAmount: this.roundAmount(Number(orderItem.totalAmount) * ratio),
+    };
+  }
+
   private resolveLineFromSaleOrderItem(
     orderItem: SaleOrderItem,
     deliveredQuantity: number,
@@ -1077,5 +1106,150 @@ export class DeliveryNoteService {
     });
 
     return { data: this.mapDeliveryNote(updated) };
+  }
+
+  /**
+   * Syncs all delivery notes for an approved sale order after a financial edit.
+   * Does not post stock movements; updates approved DN ledger entries and invoices.
+   */
+  async cascadeFromSaleOrder(
+    manager: EntityManager,
+    businessId: string,
+    order: SaleOrder,
+    customer: Party,
+  ): Promise<void> {
+    const soItems = order.items ?? [];
+    const soItemById = new Map(soItems.map((item) => [item.id, item]));
+
+    const deliveryNotes = await manager
+      .getRepository(DeliveryNote)
+      .createQueryBuilder('dn')
+      .leftJoinAndSelect('dn.items', 'items')
+      .where('dn.saleOrderId = :saleOrderId', { saleOrderId: order.id })
+      .getMany();
+
+    const soOrderTotal = Number(order.orderTotal);
+    const soDocumentTotal =
+      Number(order.totalAmount) + Number(order.deliveryCost);
+    const soTaxAmount = Number(order.taxAmount);
+    const soDeliveryCost = Number(order.deliveryCost);
+    const soHeaderDiscount = Number(order.discountAmount);
+    const ledgerBusinessId = order.businessId ?? businessId;
+
+    const dnLineTotals: Array<{ dnId: string; linesSum: number }> = [];
+
+    for (const deliveryNote of deliveryNotes) {
+      const resolvedLines: ResolvedDeliveryNoteLine[] = [];
+
+      for (const dnItem of deliveryNote.items ?? []) {
+        const orderItem = soItemById.get(dnItem.saleOrderItemId);
+        if (!orderItem) {
+          throw new BadRequestException(
+            `Delivery note line ${dnItem.id} has no matching sale order item`,
+          );
+        }
+
+        resolvedLines.push(
+          this.buildDnLineFromSaleOrderItem(
+            orderItem,
+            Number(dnItem.deliveredQuantity),
+          ),
+        );
+      }
+
+      const linesSum = this.roundAmount(
+        resolvedLines.reduce((sum, line) => sum + line.totalAmount, 0),
+      );
+      dnLineTotals.push({ dnId: deliveryNote.id, linesSum });
+
+      const itemRepo = manager.getRepository(DeliveryNoteItem);
+      for (let index = 0; index < (deliveryNote.items ?? []).length; index += 1) {
+        const dnItem = deliveryNote.items![index];
+        const line = resolvedLines[index];
+        await itemRepo.update(dnItem.id, {
+          orderedQuantity: line.orderedQuantity,
+          deliveredQuantity: line.deliveredQuantity,
+          saleUnitPrice: line.saleUnitPrice,
+          discountPercentage: line.discountPercentage,
+          discountAmount: line.discountAmount,
+          taxPercentage: line.taxPercentage,
+          taxAmount: line.taxAmount,
+          totalAmount: line.totalAmount,
+        });
+      }
+    }
+
+    for (const deliveryNote of deliveryNotes) {
+      const linesSum =
+        dnLineTotals.find((row) => row.dnId === deliveryNote.id)?.linesSum ?? 0;
+      const share =
+        deliveryNotes.length === 1
+          ? 1
+          : soOrderTotal > 0
+            ? linesSum / soOrderTotal
+            : 0;
+
+      const lineDiscountSum = this.roundAmount(
+        (deliveryNote.items ?? []).reduce((sum, item) => {
+          const orderItem = soItemById.get(item.saleOrderItemId);
+          if (!orderItem) {
+            return sum;
+          }
+          const orderQty = Number(orderItem.quantity);
+          const ratio =
+            orderQty > 0 ? Number(item.deliveredQuantity) / orderQty : 0;
+          return sum + Number(orderItem.discountAmount) * ratio;
+        }, 0),
+      );
+
+      const headerTotals = {
+        deliveryNoteDate: order.orderDate,
+        deliveryCost: this.roundAmount(soDeliveryCost * share),
+        totalTaxAmount: this.roundAmount(soTaxAmount * share),
+        totalDiscountAmount: this.roundAmount(
+          soHeaderDiscount * share + lineDiscountSum,
+        ),
+        totalAmount: this.roundAmount(soDocumentTotal * share),
+      };
+
+      await manager.getRepository(DeliveryNote).update(deliveryNote.id, headerTotals);
+
+      const isApproved =
+        String(deliveryNote.status) === DeliveryNoteStatus.APPROVED;
+
+      if (!isApproved) {
+        continue;
+      }
+
+      if (!customer.receivableAccountId) {
+        throw new BadRequestException(
+          'Customer receivable account is required to update approved delivery note ledger',
+        );
+      }
+
+      await this.transactionService.updateDirectLedgerEntryByReference(
+        manager,
+        {
+          businessId: ledgerBusinessId,
+          chartOfAccountId: customer.receivableAccountId,
+          referenceType: AccountTransactionReferenceType.DELIVERY_NOTE,
+          referenceId: deliveryNote.id,
+          transactionDate: order.orderDate,
+          description: `Delivery note ${deliveryNote.deliveryNoteNumber} - customer receivable`,
+          debitAmount: headerTotals.totalAmount,
+        },
+      );
+
+      const reloaded = await manager.getRepository(DeliveryNote).findOneOrFail({
+        where: { id: deliveryNote.id },
+      });
+      Object.assign(reloaded, headerTotals);
+      reloaded.status = deliveryNote.status;
+      reloaded.items = await manager.getRepository(DeliveryNoteItem).find({
+        where: { deliveryNoteId: deliveryNote.id },
+      });
+
+      await this.saleInvoiceService.syncFromDeliveryNote(manager, reloaded);
+    }
   }
 }

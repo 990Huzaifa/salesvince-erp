@@ -7,8 +7,12 @@ import {
 import { Brackets, DataSource, EntityManager, In, IsNull } from 'typeorm';
 import { OrderStatus, SaleOrder, SaleOrderItem } from 'src/tenant-db/entities/sale-order.entity';
 import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
-import { DeliveryNote } from 'src/tenant-db/entities/delivery-note.entity';
+import {
+  DeliveryNote,
+  DeliveryNoteStatus,
+} from 'src/tenant-db/entities/delivery-note.entity';
 import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
+import { SaleReturn } from 'src/tenant-db/entities/sale-return.entity';
 import {
   Product,
   ProductFlavour,
@@ -19,6 +23,8 @@ import { CreateSaleOrderDto } from '../../dto/sale-order/create-sale-order.dto';
 import { CreateSaleOrderItemDto } from '../../dto/sale-order/create-sale-order-item.dto';
 import { UpdateSaleOrderDto } from '../../dto/sale-order/update-sale-order.dto';
 import { UpdateSaleOrderItemDto } from '../../dto/sale-order/update-sale-order-item.dto';
+import { EditApprovedSaleOrderDto } from '../../dto/sale-order/edit-approved-sale-order.dto';
+import { EditApprovedSaleOrderItemDto } from '../../dto/sale-order/edit-approved-sale-order-item.dto';
 import { ActivityLogService } from '../activity-log.service';
 import { StockService } from '../stock.service';
 import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
@@ -138,6 +144,126 @@ export class SaleOrderService {
     }
   }
 
+  private assertApprovedStatus(order: SaleOrder): void {
+    if (order.orderStatus !== OrderStatus.APPROVED) {
+      throw new BadRequestException(
+        'Only approved sale orders can be edited with this endpoint',
+      );
+    }
+  }
+
+  private async assertNoSaleReturnsOnOrder(
+    tenantDb: DataSource,
+    businessId: string,
+    orderId: string,
+  ): Promise<void> {
+    const count = await tenantDb
+      .getRepository(SaleReturn)
+      .createQueryBuilder('saleReturn')
+      .innerJoin('saleReturn.saleInvoice', 'invoice')
+      .innerJoin('invoice.deliveryNote', 'deliveryNote')
+      .where('deliveryNote.saleOrderId = :orderId', { orderId })
+      .andWhere('invoice.businessId = :businessId', { businessId })
+      .getCount();
+
+    if (count > 0) {
+      throw new BadRequestException(
+        'Cannot edit sale order with existing sale returns',
+      );
+    }
+  }
+
+  private async syncApprovedOrderItems(
+    manager: EntityManager,
+    orderId: string,
+    items: EditApprovedSaleOrderItemDto[],
+    existingItems: SaleOrderItem[],
+  ): Promise<void> {
+    if (items.length !== existingItems.length) {
+      throw new BadRequestException(
+        'All sale order line items must be included',
+      );
+    }
+
+    const existingById = new Map(existingItems.map((row) => [row.id, row]));
+    const payloadIds = new Set(items.map((item) => item.id));
+
+    for (const existing of existingItems) {
+      if (!payloadIds.has(existing.id)) {
+        throw new BadRequestException(
+          'All sale order line items must be included',
+        );
+      }
+    }
+
+    const itemRepo = manager.getRepository(SaleOrderItem);
+
+    for (const item of items) {
+      const existing = existingById.get(item.id);
+      if (!existing || existing.saleOrderId !== orderId) {
+        throw new NotFoundException(`Sale order item ${item.id} not found`);
+      }
+
+      if (item.quantity !== existing.quantity) {
+        throw new BadRequestException(
+          `Quantity cannot be changed for sale order item ${item.id}`,
+        );
+      }
+
+      const purchaseUnitPrice = this.roundAmount(item.purchaseUnitPrice);
+      let saleMarginAmount =
+        item.saleMarginAmount != null
+          ? Number(item.saleMarginAmount)
+          : Number(existing.saleMarginAmount);
+      let saleMarginPercentage =
+        item.saleMarginPercentage != null
+          ? Number(item.saleMarginPercentage)
+          : Number(existing.saleMarginPercentage);
+
+      if (item.saleMarginAmount == null && item.saleMarginPercentage != null) {
+        saleMarginAmount = this.roundAmount(
+          (purchaseUnitPrice * saleMarginPercentage) / 100,
+        );
+      }
+
+      if (item.saleMarginAmount != null && item.saleMarginPercentage == null) {
+        saleMarginPercentage =
+          purchaseUnitPrice > 0
+            ? this.roundAmount((saleMarginAmount / purchaseUnitPrice) * 100)
+            : 0;
+      }
+
+      const saleUnitPrice = this.roundAmount(
+        purchaseUnitPrice + saleMarginAmount,
+      );
+      const lineSubtotal = saleUnitPrice * item.quantity;
+      let discountPercentage =
+        item.discountPercentage ?? Number(existing.discountPercentage);
+      let discountAmount: number;
+      if (item.discountAmount != null) {
+        discountAmount = this.roundAmount(item.discountAmount);
+        discountPercentage =
+          lineSubtotal > 0
+            ? this.roundAmount((discountAmount / lineSubtotal) * 100)
+            : 0;
+      } else {
+        discountAmount = this.roundAmount(
+          (lineSubtotal * discountPercentage) / 100,
+        );
+      }
+      const totalAmount = this.roundAmount(lineSubtotal - discountAmount);
+
+      await itemRepo.update(existing.id, {
+        purchaseUnitPrice,
+        saleMarginAmount: this.roundAmount(saleMarginAmount),
+        saleMarginPercentage: this.roundAmount(saleMarginPercentage),
+        discountPercentage: this.roundAmount(discountPercentage),
+        discountAmount,
+        totalAmount,
+      });
+    }
+  }
+
   private resolveLineItem(
     item: CreateSaleOrderItemDto,
     pricing: ProductPricing,
@@ -197,18 +323,24 @@ export class SaleOrderService {
     options: {
       taxPercentage?: number;
       discountPercentage?: number;
+      discountAmount?: number;
+      taxAmount?: number;
     },
   ): SaleOrderTotals {
     const orderTotal = this.roundAmount(
       lines.reduce((sum, line) => sum + line.totalAmount, 0),
     );
     const discountPercentage = this.roundAmount(options.discountPercentage ?? 0);
-    const discountAmount = this.roundAmount(
-      (orderTotal * discountPercentage) / 100,
-    );
+    const discountAmount =
+      options.discountAmount != null
+        ? this.roundAmount(options.discountAmount)
+        : this.roundAmount((orderTotal * discountPercentage) / 100);
     const taxableBase = this.roundAmount(orderTotal - discountAmount);
     const taxPercentage = this.roundAmount(options.taxPercentage ?? 0);
-    const taxAmount = this.roundAmount((taxableBase * taxPercentage) / 100);
+    const taxAmount =
+      options.taxAmount != null
+        ? this.roundAmount(options.taxAmount)
+        : this.roundAmount((taxableBase * taxPercentage) / 100);
     const totalAmount = this.roundAmount(taxableBase + taxAmount);
 
     return {
@@ -1032,6 +1164,135 @@ export class SaleOrderService {
       businessId: scopedBusinessId,
       action: 'SALE_ORDER_UPDATED',
       description: `Sale order ${updated.orderNumber} updated`,
+      metadata: { saleOrderId: updated.id },
+    });
+
+    return { data: this.mapSaleOrder(updated) };
+  }
+
+  async editApproved(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    orderId: string,
+    dto: EditApprovedSaleOrderDto,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const order = await this.findOrderForBusiness(
+      tenantDb,
+      scopedBusinessId,
+      orderId,
+    );
+    this.assertApprovedStatus(order);
+    await this.assertNoSaleReturnsOnOrder(
+      tenantDb,
+      scopedBusinessId,
+      order.id,
+    );
+
+    const existingItems = [...(order.items ?? [])];
+    if (!existingItems.length) {
+      throw new BadRequestException('Sale order has no line items');
+    }
+
+    const hasApprovedDn = await tenantDb.getRepository(DeliveryNote).exists({
+      where: {
+        saleOrderId: order.id,
+        status: DeliveryNoteStatus.APPROVED,
+      },
+    });
+
+    const customer = order.customer;
+    if (!customer) {
+      throw new NotFoundException('Customer not found on sale order');
+    }
+    if (hasApprovedDn && !customer.receivableAccountId) {
+      throw new BadRequestException(
+        'Customer receivable account is required before editing sale order with approved delivery notes',
+      );
+    }
+
+    const updated = await tenantDb.transaction(async (manager) => {
+      await this.syncApprovedOrderItems(
+        manager,
+        order.id,
+        dto.items,
+        existingItems,
+      );
+
+      const syncedItems = await manager.getRepository(SaleOrderItem).find({
+        where: { saleOrderId: order.id },
+      });
+
+      const resolvedLines: ResolvedSaleOrderLine[] = syncedItems.map((item) => ({
+        warehouseId: item.warehouseId,
+        productId: item.productId,
+        uomId: item.uomId,
+        productFlavourId: item.productFlavourId ?? null,
+        quantity: item.quantity,
+        purchaseUnitPrice: Number(item.purchaseUnitPrice),
+        saleMarginAmount: Number(item.saleMarginAmount),
+        saleMarginPercentage: Number(item.saleMarginPercentage),
+        discountPercentage: Number(item.discountPercentage),
+        discountAmount: Number(item.discountAmount),
+        totalAmount: Number(item.totalAmount),
+      }));
+
+      const totals = this.computeOrderTotals(resolvedLines, {
+        taxPercentage: dto.taxPercentage ?? order.taxPercentage,
+        discountPercentage:
+          dto.discountPercentage ?? order.discountPercentage,
+        discountAmount: dto.discountAmount ?? order.discountAmount,
+        taxAmount: dto.taxAmount ?? order.taxAmount,
+      });
+
+      const orderDate = new Date(dto.orderDate);
+
+      await manager.getRepository(SaleOrder).update(order.id, {
+        orderDate,
+        notes: dto.notes !== undefined ? dto.notes?.trim() || null : order.notes,
+        deliveryCost: dto.deliveryCost ?? order.deliveryCost,
+        orderTotal: totals.orderTotal,
+        taxPercentage: totals.taxPercentage,
+        taxAmount: totals.taxAmount,
+        discountPercentage: totals.discountPercentage,
+        discountAmount: totals.discountAmount,
+        totalAmount: totals.totalAmount,
+      });
+
+      const orderForCascade = await manager
+        .getRepository(SaleOrder)
+        .findOneOrFail({ where: { id: order.id } });
+      orderForCascade.items = await manager.getRepository(SaleOrderItem).find({
+        where: { saleOrderId: order.id },
+      });
+      orderForCascade.orderDate = orderDate;
+      orderForCascade.deliveryCost = dto.deliveryCost ?? order.deliveryCost;
+      orderForCascade.orderTotal = totals.orderTotal;
+      orderForCascade.taxPercentage = totals.taxPercentage;
+      orderForCascade.taxAmount = totals.taxAmount;
+      orderForCascade.discountPercentage = totals.discountPercentage;
+      orderForCascade.discountAmount = totals.discountAmount;
+      orderForCascade.totalAmount = totals.totalAmount;
+
+      await this.deliveryNoteService.cascadeFromSaleOrder(
+        manager,
+        scopedBusinessId,
+        orderForCascade,
+        customer,
+      );
+
+      return manager.getRepository(SaleOrder).findOneOrFail({
+        where: { id: order.id },
+        relations: this.orderRelations(),
+      });
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'SALE_ORDER_EDITED_APPROVED',
+      description: `Approved sale order ${updated.orderNumber} edited`,
       metadata: { saleOrderId: updated.id },
     });
 

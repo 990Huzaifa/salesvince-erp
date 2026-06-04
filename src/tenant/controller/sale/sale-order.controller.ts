@@ -25,6 +25,7 @@ import { OrderStatus } from 'src/tenant-db/entities/sale-order.entity';
 import { SaleOrderService } from '../../service/sale/sale-order.service';
 import { CreateSaleOrderDto } from '../../dto/sale-order/create-sale-order.dto';
 import { UpdateSaleOrderDto } from '../../dto/sale-order/update-sale-order.dto';
+import { EditApprovedSaleOrderDto } from '../../dto/sale-order/edit-approved-sale-order.dto';
 
 @Controller('tenant/sale-orders')
 @UseGuards(
@@ -137,6 +138,24 @@ export class SaleOrderController {
   ) {
     const user = req.user as TenantRequestUser;
     return this.saleOrderService.edit(
+      tenantDb,
+      user.businessId,
+      id,
+      dto,
+      user.userId,
+    );
+  }
+
+  @Put('edit-approved/:id')
+  @RequirePermissions('UPDATE_SALE_ORDER')
+  editApproved(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: EditApprovedSaleOrderDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.saleOrderService.editApproved(
       tenantDb,
       user.businessId,
       id,
