@@ -386,4 +386,19 @@ export class TenantUtilityController {
             componentType,
         );
     }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+    )
+    @Get('loans')
+    getLoans(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.utilityService.getLoans(tenantDb, user.businessId);
+    }
 }

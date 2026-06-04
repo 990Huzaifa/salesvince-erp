@@ -17,6 +17,7 @@ import { Grn } from 'src/tenant-db/entities/grn.entity';
 import { DeliveryNote } from 'src/tenant-db/entities/delivery-note.entity';
 import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
 import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity';
+import { Loan, LoanStatus } from 'src/tenant-db/entities/loan.entity';
 import { Business } from 'src/tenant-db/entities/business.entity';
 import { ChartOfAccountType } from 'src/tenant-db/chart-of-accounts/constants/chart-of-account-type.enum';
 import {
@@ -565,6 +566,40 @@ export class TenantUtilityService {
       .getRawMany();
 
     return { result: invoices };
+  }
+
+  async getLoans(tenantDb: DataSource, businessId: string) {
+    const loans = await tenantDb
+      .getRepository(Loan)
+      .createQueryBuilder('loan')
+      .leftJoin('loan.loanAcc', 'loanAcc')
+      .leftJoin('loan.receivingAcc', 'receivingAcc')
+      .select('loan.id', 'id')
+      .addSelect('loan.loanNumber', 'loanNumber')
+      .addSelect('loan.loanName', 'loanName')
+      .addSelect('loan.loanType', 'loanType')
+      .addSelect('loan.status', 'status')
+      .addSelect('loan.principalAmount', 'principalAmount')
+      .addSelect('loan.loanAccId', 'loanAccId')
+      .addSelect('loanAcc.code', 'loanAccCode')
+      .addSelect('loanAcc.name', 'loanAccName')
+      .addSelect('loan.receivingAccId', 'receivingAccId')
+      .addSelect('receivingAcc.code', 'receivingAccCode')
+      .addSelect('receivingAcc.name', 'receivingAccName')
+      .where('loan.businessId = :businessId', { businessId })
+      .andWhere('loan.deletedAt IS NULL')
+      .andWhere('loan.status IN (:...statuses)', {
+        statuses: [
+          LoanStatus.APPROVED,
+          LoanStatus.ACTIVE,
+          LoanStatus.PARTIALLY_PAID,
+        ],
+      })
+      .orderBy('loan.loanName', 'ASC')
+      .addOrderBy('loan.loanNumber', 'ASC')
+      .getRawMany();
+
+    return { result: loans };
   }
 
 }
