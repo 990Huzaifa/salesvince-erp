@@ -356,9 +356,9 @@ export class PurchaseInvoiceService {
 
     await invoiceRepo.update(invoice.id, {
       invoiceDate: grn.grnDate,
-      totalTaxAmount: grn.totalTaxAmount,
-      totalDiscountAmount: grn.totalDiscountAmount,
-      totalAmount: grn.totalAmount,
+      totalTaxAmount: Number(grn.totalTaxAmount),
+      totalDiscountAmount: Number(grn.totalDiscountAmount),
+      totalAmount: Number(grn.totalAmount),
     });
 
     const itemRepo = manager.getRepository(PurchaseInvoiceItem);
@@ -372,12 +372,12 @@ export class PurchaseInvoiceService {
       await itemRepo.update(invoiceItem.id, {
         productFlavourId: grnLine.productFlavourId,
         quantity: grnLine.receivedQuantity,
-        purchaseUnitPrice: grnLine.purchaseUnitPrice,
-        discountPercentage: grnLine.discountPercentage,
-        discountAmount: grnLine.discountAmount,
-        taxPercentage: grnLine.taxPercentage,
-        taxAmount: grnLine.taxAmount,
-        totalAmount: grnLine.totalAmount,
+        purchaseUnitPrice: Number(grnLine.purchaseUnitPrice),
+        discountPercentage: Number(grnLine.discountPercentage),
+        discountAmount: Number(grnLine.discountAmount),
+        taxPercentage: Number(grnLine.taxPercentage),
+        taxAmount: Number(grnLine.taxAmount),
+        totalAmount: Number(grnLine.totalAmount),
       });
     }
 

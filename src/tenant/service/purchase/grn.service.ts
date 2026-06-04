@@ -389,6 +389,33 @@ export class GrnService {
     return `${item.productId}:${item.uomId}:${item.productFlavourId ?? ''}`;
   }
 
+  /** Line financials mirrored from PO (prorated by received vs ordered qty). */
+  private buildGrnLineFromPoItem(
+    poItem: PurchaseOrderItem,
+    receivedQuantity: number,
+  ): ResolvedGrnLine {
+    const poQty = Number(poItem.quantity);
+    const receivedQty = receivedQuantity;
+    const ratio = poQty > 0 ? receivedQty / poQty : 0;
+
+    return {
+      purchaseOrderItemId: poItem.id,
+      productId: poItem.productId,
+      uomId: poItem.uomId,
+      productFlavourId: poItem.productFlavourId ?? null,
+      orderedQuantity: poQty,
+      receivedQuantity: receivedQty,
+      purchaseUnitPrice: Number(poItem.purchaseUnitPrice),
+      saleUnitMarginAmount: Number(poItem.saleUnitMarginAmount),
+      saleUnitMarginPercentage: Number(poItem.saleUnitMarginPercentage),
+      discountPercentage: Number(poItem.discountPercentage),
+      discountAmount: this.roundAmount(Number(poItem.discountAmount) * ratio),
+      taxPercentage: 0,
+      taxAmount: 0,
+      totalAmount: this.roundAmount(Number(poItem.totalAmount) * ratio),
+    };
+  }
+
   private resolveCreateLines(
     order: PurchaseOrder,
     dtoItems: CreateGrnItemDto[] | undefined,
@@ -1126,16 +1153,24 @@ export class GrnService {
       poItems.map((item) => [this.poItemKey(item), item]),
     );
 
-    const grns = await manager.getRepository(Grn).find({
-      where: { purchaseOrderId: order.id, businessId, deletedAt: IsNull() },
-      relations: { items: true },
-    });
+    const grns = await manager
+      .getRepository(Grn)
+      .createQueryBuilder('grn')
+      .leftJoinAndSelect('grn.items', 'items')
+      .where('grn.purchaseOrderId = :purchaseOrderId', {
+        purchaseOrderId: order.id,
+      })
+      .andWhere('grn.deletedAt IS NULL')
+      .getMany();
 
-    const headerTaxPercentage = Number(order.taxPercentage);
-    const deliveryCost = Number(order.deliveryCost);
-    const discountPercentage = Number(order.discountPercentage);
-    const headerTaxAmount = Number(order.taxAmount);
-    const headerDiscountAmount = Number(order.discountAmount);
+    const poOrderTotal = Number(order.orderTotal);
+    const poTotalAmount = Number(order.totalAmount);
+    const poTaxAmount = Number(order.taxAmount);
+    const poDeliveryCost = Number(order.deliveryCost);
+    const poHeaderDiscount = Number(order.discountAmount);
+    const ledgerBusinessId = order.businessId ?? businessId;
+
+    const grnLineTotals: Array<{ grnId: string; linesSum: number }> = [];
 
     for (const grn of grns) {
       const resolvedLines: ResolvedGrnLine[] = [];
@@ -1150,22 +1185,14 @@ export class GrnService {
         }
 
         resolvedLines.push(
-          this.resolveLineFromPoItem(
-            poItem,
-            Number(grnItem.receivedQuantity),
-            headerTaxPercentage,
-          ),
+          this.buildGrnLineFromPoItem(poItem, Number(grnItem.receivedQuantity)),
         );
       }
 
-      const totals = this.computeGrnTotals(resolvedLines, {
-        deliveryCost,
-        taxPercentage: headerTaxPercentage,
-        discountPercentage,
-        totalTaxAmount: headerTaxAmount > 0 ? headerTaxAmount : undefined,
-        totalDiscountAmount:
-          headerDiscountAmount > 0 ? headerDiscountAmount : undefined,
-      });
+      const linesSum = this.roundAmount(
+        resolvedLines.reduce((sum, line) => sum + line.totalAmount, 0),
+      );
+      grnLineTotals.push({ grnId: grn.id, linesSum });
 
       const itemRepo = manager.getRepository(GrnItem);
       for (let index = 0; index < (grn.items ?? []).length; index += 1) {
@@ -1184,58 +1211,78 @@ export class GrnService {
           totalAmount: line.totalAmount,
         });
       }
+    }
 
-      await manager.getRepository(Grn).update(grn.id, {
+    for (const grn of grns) {
+      const linesSum =
+        grnLineTotals.find((row) => row.grnId === grn.id)?.linesSum ?? 0;
+      const share =
+        grns.length === 1
+          ? 1
+          : poOrderTotal > 0
+            ? linesSum / poOrderTotal
+            : 0;
+
+      const lineDiscountSum = this.roundAmount(
+        (grn.items ?? []).reduce((sum, item) => {
+          const key = `${item.productId}:${item.uomId}:${item.productFlavourId ?? ''}`;
+          const poItem = poItemByKey.get(key);
+          if (!poItem) {
+            return sum;
+          }
+          const poQty = Number(poItem.quantity);
+          const ratio =
+            poQty > 0 ? Number(item.receivedQuantity) / poQty : 0;
+          return sum + Number(poItem.discountAmount) * ratio;
+        }, 0),
+      );
+
+      const headerTotals = {
         grnDate: order.orderDate,
-        deliveryCost,
-        totalTaxAmount: totals.totalTaxAmount,
-        totalDiscountAmount: totals.totalDiscountAmount,
-        totalAmount: totals.totalAmount,
-      });
+        deliveryCost: this.roundAmount(poDeliveryCost * share),
+        totalTaxAmount: this.roundAmount(poTaxAmount * share),
+        totalDiscountAmount: this.roundAmount(
+          poHeaderDiscount * share + lineDiscountSum,
+        ),
+        totalAmount: this.roundAmount(poTotalAmount * share),
+      };
 
-      grn.grnDate = order.orderDate;
-      grn.deliveryCost = deliveryCost;
-      grn.totalTaxAmount = totals.totalTaxAmount;
-      grn.totalDiscountAmount = totals.totalDiscountAmount;
-      grn.totalAmount = totals.totalAmount;
+      await manager.getRepository(Grn).update(grn.id, headerTotals);
 
       const isApproved = String(grn.status) === GrnStatus.APPROVED;
-
-      if (isApproved) {
-        if (!vendor.payableAccountId) {
-          throw new BadRequestException(
-            'Vendor payable account is required to update approved GRN ledger',
-          );
-        }
-
-        await this.transactionService.updateDirectLedgerEntryByReference(
-          manager,
-          {
-            businessId,
-            chartOfAccountId: vendor.payableAccountId,
-            referenceType: AccountTransactionReferenceType.GRN,
-            referenceId: grn.id,
-            transactionDate: order.orderDate,
-            description: `GRN ${grn.grnNumber} - vendor payable`,
-            creditAmount: totals.totalAmount,
-          },
-        );
-
-        const reloaded = await manager.getRepository(Grn).findOneOrFail({
-          where: { id: grn.id },
-        });
-        reloaded.items = await manager.getRepository(GrnItem).find({
-          where: { grnId: grn.id },
-        });
-        reloaded.grnDate = order.orderDate;
-        reloaded.deliveryCost = deliveryCost;
-        reloaded.totalTaxAmount = totals.totalTaxAmount;
-        reloaded.totalDiscountAmount = totals.totalDiscountAmount;
-        reloaded.totalAmount = totals.totalAmount;
-        reloaded.status = grn.status;
-
-        await this.purchaseInvoiceService.syncFromGrn(manager, reloaded);
+      if (!isApproved) {
+        continue;
       }
+
+      if (!vendor.payableAccountId) {
+        throw new BadRequestException(
+          'Vendor payable account is required to update approved GRN ledger',
+        );
+      }
+
+      await this.transactionService.updateDirectLedgerEntryByReference(
+        manager,
+        {
+          businessId: ledgerBusinessId,
+          chartOfAccountId: vendor.payableAccountId,
+          referenceType: AccountTransactionReferenceType.GRN,
+          referenceId: grn.id,
+          transactionDate: order.orderDate,
+          description: `GRN ${grn.grnNumber} - vendor payable`,
+          creditAmount: headerTotals.totalAmount,
+        },
+      );
+
+      const reloaded = await manager.getRepository(Grn).findOneOrFail({
+        where: { id: grn.id },
+      });
+      Object.assign(reloaded, headerTotals);
+      reloaded.status = grn.status;
+      reloaded.items = await manager.getRepository(GrnItem).find({
+        where: { grnId: grn.id },
+      });
+
+      await this.purchaseInvoiceService.syncFromGrn(manager, reloaded);
     }
   }
 }
