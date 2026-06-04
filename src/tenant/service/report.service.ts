@@ -416,7 +416,7 @@ export class ReportService {
       .addGroupBy('party.code')
       .addGroupBy('party.name')
       .addGroupBy('party.cityId')
-      .orderBy('totalAmount', 'DESC')
+      .orderBy('COALESCE(SUM(invoice.totalAmount), 0)', 'DESC')
       .getRawMany<InvoiceSummaryPartyRow>();
 
     const cityRows = await this.applyInvoiceSummaryFilters(
@@ -435,7 +435,7 @@ export class ReportService {
       filters,
     )
       .groupBy('party.cityId')
-      .orderBy('totalAmount', 'DESC')
+      .orderBy('COALESCE(SUM(invoice.totalAmount), 0)', 'DESC')
       .getRawMany<InvoiceSummaryCityRow>();
 
     const cityNames = await this.resolveCityNameMap([
