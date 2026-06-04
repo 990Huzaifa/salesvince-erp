@@ -305,7 +305,7 @@ export class TransactionService {
     }
 
     const txRepo = manager.getRepository(Transaction);
-    const existing = await txRepo.findOne({
+    let existing = await txRepo.findOne({
       where: {
         businessId: params.businessId,
         chartOfAccountId: params.chartOfAccountId,
@@ -316,6 +316,17 @@ export class TransactionService {
     });
 
     if (!existing) {
+      existing = await txRepo.findOne({
+        where: {
+          businessId: params.businessId,
+          referenceType: params.referenceType,
+          referenceId: params.referenceId,
+        },
+        order: { createdAt: 'DESC', id: 'DESC' },
+      });
+    }
+
+    if (!existing) {
       throw new NotFoundException(
         `Ledger entry not found for ${params.referenceType} ${params.referenceId}`,
       );
@@ -324,7 +335,7 @@ export class TransactionService {
     const account = await this.resolvePostableAccount(
       manager,
       params.businessId,
-      params.chartOfAccountId,
+      existing.chartOfAccountId,
     );
 
     await txRepo.update(existing.id, {

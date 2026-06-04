@@ -1134,6 +1134,8 @@ export class GrnService {
     const headerTaxPercentage = Number(order.taxPercentage);
     const deliveryCost = Number(order.deliveryCost);
     const discountPercentage = Number(order.discountPercentage);
+    const headerTaxAmount = Number(order.taxAmount);
+    const headerDiscountAmount = Number(order.discountAmount);
 
     for (const grn of grns) {
       const resolvedLines: ResolvedGrnLine[] = [];
@@ -1160,6 +1162,9 @@ export class GrnService {
         deliveryCost,
         taxPercentage: headerTaxPercentage,
         discountPercentage,
+        totalTaxAmount: headerTaxAmount > 0 ? headerTaxAmount : undefined,
+        totalDiscountAmount:
+          headerDiscountAmount > 0 ? headerDiscountAmount : undefined,
       });
 
       const itemRepo = manager.getRepository(GrnItem);
@@ -1194,7 +1199,9 @@ export class GrnService {
       grn.totalDiscountAmount = totals.totalDiscountAmount;
       grn.totalAmount = totals.totalAmount;
 
-      if (grn.status === GrnStatus.APPROVED) {
+      const isApproved = String(grn.status) === GrnStatus.APPROVED;
+
+      if (isApproved) {
         if (!vendor.payableAccountId) {
           throw new BadRequestException(
             'Vendor payable account is required to update approved GRN ledger',
@@ -1216,8 +1223,17 @@ export class GrnService {
 
         const reloaded = await manager.getRepository(Grn).findOneOrFail({
           where: { id: grn.id },
-          relations: { items: true },
         });
+        reloaded.items = await manager.getRepository(GrnItem).find({
+          where: { grnId: grn.id },
+        });
+        reloaded.grnDate = order.orderDate;
+        reloaded.deliveryCost = deliveryCost;
+        reloaded.totalTaxAmount = totals.totalTaxAmount;
+        reloaded.totalDiscountAmount = totals.totalDiscountAmount;
+        reloaded.totalAmount = totals.totalAmount;
+        reloaded.status = grn.status;
+
         await this.purchaseInvoiceService.syncFromGrn(manager, reloaded);
       }
     }

@@ -1350,8 +1350,10 @@ export class PurchaseOrderService {
         taxAmount: dto.taxAmount ?? order.taxAmount,
       });
 
+      const orderDate = new Date(dto.orderDate);
+
       await manager.getRepository(PurchaseOrder).update(order.id, {
-        orderDate: new Date(dto.orderDate),
+        orderDate,
         notes: dto.notes !== undefined ? dto.notes?.trim() || null : order.notes,
         orderTotal: totals.orderTotal,
         deliveryCost: totals.deliveryCost,
@@ -1362,19 +1364,37 @@ export class PurchaseOrderService {
         totalAmount: totals.totalAmount,
       });
 
-      const loadedOrder = await manager.getRepository(PurchaseOrder).findOneOrFail({
-        where: { id: order.id },
-        relations: this.orderRelations(),
+      // Reload header + lines outside the identity map (relations stay stale after .update()).
+      const orderForCascade = await manager
+        .getRepository(PurchaseOrder)
+        .findOneOrFail({ where: { id: order.id } });
+      orderForCascade.items = await manager.getRepository(PurchaseOrderItem).find({
+        where: { purchaseOrderId: order.id },
       });
+      orderForCascade.orderDate = orderDate;
+      orderForCascade.orderTotal = totals.orderTotal;
+      orderForCascade.deliveryCost = totals.deliveryCost;
+      orderForCascade.taxPercentage = totals.taxPercentage;
+      orderForCascade.taxAmount = totals.taxAmount;
+      orderForCascade.discountPercentage = totals.discountPercentage;
+      orderForCascade.discountAmount = totals.discountAmount;
+      orderForCascade.totalAmount = totals.totalAmount;
 
       await this.grnService.cascadeFromPurchaseOrder(
         manager,
         scopedBusinessId,
-        loadedOrder,
+        orderForCascade,
         vendor,
       );
 
-      return loadedOrder;
+      orderForCascade.items = await manager
+        .getRepository(PurchaseOrderItem)
+        .find({ where: { purchaseOrderId: order.id } });
+
+      return manager.getRepository(PurchaseOrder).findOneOrFail({
+        where: { id: order.id },
+        relations: this.orderRelations(),
+      });
     });
 
     await this.activityLogService.recordActivityLog(tenantDb, {

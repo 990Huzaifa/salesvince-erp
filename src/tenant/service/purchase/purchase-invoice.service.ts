@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Brackets, DataSource, EntityManager, IsNull } from 'typeorm';
-import { Grn, GrnStatus } from 'src/tenant-db/entities/grn.entity';
+import { Grn, GrnItem, GrnStatus } from 'src/tenant-db/entities/grn.entity';
 import {
   PurchaseInvoice,
   PurchaseInvoiceItem,
@@ -327,7 +327,7 @@ export class PurchaseInvoiceService {
    * Updates an existing purchase invoice from an approved GRN after PO financial edit.
    */
   async syncFromGrn(manager: EntityManager, grn: Grn): Promise<PurchaseInvoice | null> {
-    if (grn.status !== GrnStatus.APPROVED) {
+    if (String(grn.status) !== GrnStatus.APPROVED) {
       return null;
     }
 
@@ -341,7 +341,10 @@ export class PurchaseInvoiceService {
       return null;
     }
 
-    const grnItems = (grn.items ?? []).filter(
+    const freshGrnItems = await manager.getRepository(GrnItem).find({
+      where: { grnId: grn.id },
+    });
+    const grnItems = freshGrnItems.filter(
       (line) => Number(line.receivedQuantity) > 0,
     );
     const grnItemByKey = new Map(
