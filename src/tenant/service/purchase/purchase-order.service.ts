@@ -154,11 +154,20 @@ export class PurchaseOrderService {
       item.saleUnitMarginAmount ?? pricing.saleUnitMarginAmount;
     const saleUnitMarginPercentage =
       item.saleUnitMarginPercentage ?? pricing.saleUnitMarginPercentage;
-    const discountPercentage = item.discountPercentage ?? 0;
     const lineSubtotal = purchaseUnitPrice * item.quantity;
-    const discountAmount = this.roundAmount(
-      (lineSubtotal * discountPercentage) / 100,
-    );
+    let discountPercentage = item.discountPercentage ?? 0;
+    let discountAmount: number;
+    if (item.discountAmount != null) {
+      discountAmount = this.roundAmount(item.discountAmount);
+      discountPercentage =
+        lineSubtotal > 0
+          ? this.roundAmount((discountAmount / lineSubtotal) * 100)
+          : 0;
+    } else {
+      discountAmount = this.roundAmount(
+        (lineSubtotal * discountPercentage) / 100,
+      );
+    }
     const totalAmount = this.roundAmount(lineSubtotal - discountAmount);
 
     return {
@@ -196,6 +205,8 @@ export class PurchaseOrderService {
       deliveryCost?: number;
       taxPercentage?: number;
       discountPercentage?: number;
+      discountAmount?: number;
+      taxAmount?: number;
     },
   ): OrderTotals {
     const orderTotal = this.roundAmount(
@@ -203,12 +214,16 @@ export class PurchaseOrderService {
     );
     const deliveryCost = this.roundAmount(options.deliveryCost ?? 0);
     const discountPercentage = this.roundAmount(options.discountPercentage ?? 0);
-    const discountAmount = this.roundAmount(
-      (orderTotal * discountPercentage) / 100,
-    );
+    const discountAmount =
+      options.discountAmount != null
+        ? this.roundAmount(options.discountAmount)
+        : this.roundAmount((orderTotal * discountPercentage) / 100);
     const taxableBase = this.roundAmount(orderTotal - discountAmount);
     const taxPercentage = this.roundAmount(options.taxPercentage ?? 0);
-    const taxAmount = this.roundAmount((taxableBase * taxPercentage) / 100);
+    const taxAmount =
+      options.taxAmount != null
+        ? this.roundAmount(options.taxAmount)
+        : this.roundAmount((taxableBase * taxPercentage) / 100);
     const totalAmount = this.roundAmount(
       taxableBase + taxAmount + deliveryCost,
     );
@@ -640,6 +655,8 @@ export class PurchaseOrderService {
       deliveryCost: dto.deliveryCost,
       taxPercentage: dto.taxPercentage,
       discountPercentage: dto.discountPercentage,
+      discountAmount: dto.discountAmount,
+      taxAmount: dto.taxAmount,
     });
 
     const created = await this.saveOrderInTransaction(tenantDb, {
@@ -780,6 +797,8 @@ export class PurchaseOrderService {
       deliveryCost: dto.deliveryCost,
       taxPercentage: dto.taxPercentage,
       discountPercentage: dto.discountPercentage,
+      discountAmount: dto.discountAmount,
+      taxAmount: dto.taxAmount,
     });
 
     const created = await this.saveOrderInTransaction(tenantDb, {
@@ -846,6 +865,8 @@ export class PurchaseOrderService {
       deliveryCost: dto.deliveryCost,
       taxPercentage: dto.taxPercentage,
       discountPercentage: dto.discountPercentage,
+      discountAmount: dto.discountAmount,
+      taxAmount: dto.taxAmount,
     });
 
     const created = await tenantDb.transaction(async (manager) => {
@@ -885,6 +906,8 @@ export class PurchaseOrderService {
         deliveryCost: dto.deliveryCost,
         taxPercentage: dto.taxPercentage,
         discountPercentage: dto.discountPercentage,
+        totalDiscountAmount: dto.totalDiscountAmount,
+        totalTaxAmount: dto.totalTaxAmount,
         notes: dto.notes,
         actorUserId,
       });
@@ -1123,6 +1146,8 @@ export class PurchaseOrderService {
         taxPercentage: dto.taxPercentage ?? order.taxPercentage,
         discountPercentage:
           dto.discountPercentage ?? order.discountPercentage,
+        discountAmount: dto.discountAmount ?? order.discountAmount,
+        taxAmount: dto.taxAmount ?? order.taxAmount,
       });
 
       await manager.getRepository(PurchaseOrder).update(order.id, {

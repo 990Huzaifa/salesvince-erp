@@ -44,6 +44,22 @@ export class CreateGrnDto {
   @Min(0)
   discountPercentage?: number;
 
+  /**
+   * Document-level discount total (line + header). Calculated on the backend when omitted.
+   */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  totalDiscountAmount?: number;
+
+  /**
+   * Document-level tax total. Calculated on the backend when omitted.
+   */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  totalTaxAmount?: number;
+
   @IsOptional()
   @IsString()
   @MaxLength(2000)

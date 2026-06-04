@@ -164,9 +164,6 @@ export class TenantAuthService {
       businessCode: string;
       userBusinessId: string;
       roleId: string;
-      roleName: string;
-      permissions: string[];
-      isSuperAdmin: boolean;
       userCode: string;
     },
   ): string {
@@ -175,19 +172,14 @@ export class TenantAuthService {
       {
         tokenType: BUSINESS_ACCESS_TOKEN,
         sub: userId,
-        userId,
         userCode: row.userCode,
         tenantId: tenant.id,
         tenantCode: tenant.code,
         tenantStatus: tenant.status,
-        tenantName: tenant.name,
         businessId: row.businessId,
         businessCode: row.businessCode,
         userBusinessId: row.userBusinessId,
         roleId: row.roleId,
-        roleName: row.roleName,
-        permissions: row.permissions,
-        isSuperAdmin: row.isSuperAdmin,
       },
       { expiresIn },
     );
@@ -403,9 +395,6 @@ export class TenantAuthService {
         businessCode,
         userBusinessId: ub.id,
         roleId: ub.roleId,
-        roleName,
-        permissions,
-        isSuperAdmin,
         userCode,
       }),
       token_type: BUSINESS_ACCESS_TOKEN,

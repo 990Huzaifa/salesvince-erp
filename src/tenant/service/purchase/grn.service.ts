@@ -64,6 +64,8 @@ type CreateApprovedGrnFromOrderInput = {
   deliveryCost?: number;
   taxPercentage?: number;
   discountPercentage?: number;
+  totalDiscountAmount?: number;
+  totalTaxAmount?: number;
   notes?: string | null;
   actorUserId: string;
 };
@@ -278,21 +280,39 @@ export class GrnService {
       deliveryCost?: number;
       taxPercentage?: number;
       discountPercentage?: number;
+      totalDiscountAmount?: number;
+      totalTaxAmount?: number;
     },
   ): GrnTotals {
-    const lineTotal = this.roundAmount(
-      lines.reduce((sum, line) => sum + line.totalAmount, 0),
+    const lineDiscountTotal = this.roundAmount(
+      lines.reduce((sum, line) => sum + line.discountAmount, 0),
+    );
+    const lineBase = this.roundAmount(
+      lines.reduce(
+        (sum, line) =>
+          sum + line.purchaseUnitPrice * line.receivedQuantity,
+        0,
+      ) - lineDiscountTotal,
     );
     const deliveryCost = this.roundAmount(options.deliveryCost ?? 0);
     const discountPercentage = this.roundAmount(options.discountPercentage ?? 0);
-    const totalDiscountAmount = this.roundAmount(
-      (lineTotal * discountPercentage) / 100,
+    const headerDiscountAmount = this.roundAmount(
+      (lineBase * discountPercentage) / 100,
     );
-    const taxableBase = this.roundAmount(lineTotal - totalDiscountAmount);
+    const totalDiscountAmount =
+      options.totalDiscountAmount != null
+        ? this.roundAmount(options.totalDiscountAmount)
+        : this.roundAmount(lineDiscountTotal + headerDiscountAmount);
+    const taxableBase = this.roundAmount(lineBase - headerDiscountAmount);
     const taxPercentage = this.roundAmount(options.taxPercentage ?? 0);
-    const totalTaxAmount = this.roundAmount(
-      (taxableBase * taxPercentage) / 100,
-    );
+    const totalTaxAmount =
+      options.totalTaxAmount != null
+        ? this.roundAmount(options.totalTaxAmount)
+        : taxPercentage > 0
+          ? this.roundAmount((taxableBase * taxPercentage) / 100)
+          : this.roundAmount(
+              lines.reduce((sum, line) => sum + line.taxAmount, 0),
+            );
     const totalAmount = this.roundAmount(
       taxableBase + totalTaxAmount + deliveryCost,
     );
@@ -522,6 +542,8 @@ export class GrnService {
       taxPercentage,
       discountPercentage:
         input.discountPercentage ?? Number(order.discountPercentage),
+      totalDiscountAmount: input.totalDiscountAmount,
+      totalTaxAmount: input.totalTaxAmount,
     });
     const grnNumber = await this.generateGrnNumber(manager);
     const existingNumber = await manager.getRepository(Grn).findOne({
@@ -702,6 +724,8 @@ export class GrnService {
       taxPercentage,
       discountPercentage:
         dto.discountPercentage ?? Number(order.discountPercentage),
+      totalDiscountAmount: dto.totalDiscountAmount,
+      totalTaxAmount: dto.totalTaxAmount,
     });
 
     const targetStatus = this.resolveCreateStatus(dto.status);
@@ -985,6 +1009,8 @@ export class GrnService {
         taxPercentage,
         discountPercentage:
           dto.discountPercentage ?? Number(order.discountPercentage),
+        totalDiscountAmount: dto.totalDiscountAmount,
+        totalTaxAmount: dto.totalTaxAmount,
       });
 
       await grnRepo.update(grn.id, {

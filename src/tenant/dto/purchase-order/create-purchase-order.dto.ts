@@ -46,6 +46,36 @@ export class CreatePurchaseOrderDto {
   @Min(0)
   discountPercentage?: number;
 
+  /** Header discount amount; computed from discountPercentage when omitted. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  discountAmount?: number;
+
+  /** Header tax amount; computed from taxPercentage when omitted. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  taxAmount?: number;
+
+  /**
+   * Document-level discount total (line + header). Used on GRN/invoice when provided;
+   * otherwise calculated on the backend.
+   */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  totalDiscountAmount?: number;
+
+  /**
+   * Document-level tax total. Used on GRN/invoice when provided;
+   * otherwise calculated on the backend.
+   */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  totalTaxAmount?: number;
+
   @IsOptional()
   @IsString()
   @MaxLength(2000)

@@ -40,4 +40,10 @@ export class CreatePurchaseOrderItemDto {
   @IsNumber()
   @Min(0)
   discountPercentage?: number;
+
+  /** Line discount amount; computed from discountPercentage when omitted. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  discountAmount?: number;
 }
