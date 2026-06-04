@@ -75,4 +75,40 @@ export class ReportController {
       user.userId,
     );
   }
+
+  @Get('sales-summary')
+  getSalesSummaryReport(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('partyId') partyId?: string,
+    @Query('cityId') cityId?: string,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportService.getSalesSummaryReport(
+      tenantDb,
+      user.businessId,
+      { startDate, endDate, partyId, cityId },
+      user.userId,
+    );
+  }
+
+  @Get('purchase-summary')
+  getPurchaseSummaryReport(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('partyId') partyId?: string,
+    @Query('cityId') cityId?: string,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportService.getPurchaseSummaryReport(
+      tenantDb,
+      user.businessId,
+      { startDate, endDate, partyId, cityId },
+      user.userId,
+    );
+  }
 }

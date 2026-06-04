@@ -12,7 +12,9 @@ import {
 } from 'src/tenant-db/entities/transaction.entity';
 import { computeBalanceMovement } from 'src/tenant-db/helpers/transaction-balance.helper';
 import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
+import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity';
 import { ActivityLogService } from './activity-log.service';
+import { MasterGeoHelperService } from './master-geo-helper.service';
 
 type BalanceRow = {
   chartOfAccountId: string;
@@ -28,6 +30,40 @@ type ProfitReportOptions = {
   endDate?: string;
 };
 
+type InvoiceSummaryReportOptions = {
+  startDate?: string;
+  endDate?: string;
+  partyId?: string;
+  cityId?: string;
+};
+
+type InvoiceSummaryTotals = {
+  invoiceCount: number;
+  totalAmount: number;
+  totalTaxAmount: number;
+  totalDiscountAmount: number;
+};
+
+type InvoiceSummaryAggregateRow = {
+  invoiceCount: string;
+  totalAmount: string;
+  totalTaxAmount: string;
+  totalDiscountAmount: string;
+};
+
+type InvoiceSummaryPartyRow = InvoiceSummaryAggregateRow & {
+  partyId: string;
+  partyCode: string;
+  partyName: string;
+  cityId: string | null;
+};
+
+type InvoiceSummaryCityRow = InvoiceSummaryAggregateRow & {
+  cityId: string | null;
+};
+
+type InvoiceSummaryKind = 'SALE' | 'PURCHASE';
+
 type CostSnapshot = {
   purchaseUnitPrice: number;
   quantity: number;
@@ -35,7 +71,10 @@ type CostSnapshot = {
 
 @Injectable()
 export class ReportService {
-  constructor(private readonly activityLogService: ActivityLogService) {}
+  constructor(
+    private readonly activityLogService: ActivityLogService,
+    private readonly masterGeoHelperService: MasterGeoHelperService,
+  ) {}
 
   private assertBusinessId(businessId?: string): string {
     if (!businessId) {
@@ -182,6 +221,277 @@ export class ReportService {
     productFlavourId?: string | null,
   ): string {
     return `${productId}:${uomId}:${productFlavourId ?? ''}`;
+  }
+
+  private mapAggregateTotals(
+    row?: InvoiceSummaryAggregateRow | null,
+  ): InvoiceSummaryTotals {
+    return {
+      invoiceCount: Number(row?.invoiceCount ?? 0),
+      totalAmount: this.roundAmount(Number(row?.totalAmount ?? 0)),
+      totalTaxAmount: this.roundAmount(Number(row?.totalTaxAmount ?? 0)),
+      totalDiscountAmount: this.roundAmount(
+        Number(row?.totalDiscountAmount ?? 0),
+      ),
+    };
+  }
+
+  private async resolveCityNameMap(
+    cityIds: Array<string | null | undefined>,
+  ): Promise<Map<string, string | null>> {
+    const uniqueCityIds = [
+      ...new Set(
+        cityIds.filter((cityId): cityId is string => Boolean(cityId?.trim())),
+      ),
+    ];
+    const cityNames = new Map<string, string | null>();
+
+    await Promise.all(
+      uniqueCityIds.map(async (cityId) => {
+        cityNames.set(
+          cityId,
+          await this.masterGeoHelperService.getCityNameById(cityId),
+        );
+      }),
+    );
+
+    return cityNames;
+  }
+
+  private cityDisplayName(
+    cityId: string | null | undefined,
+    cityNames: Map<string, string | null>,
+  ): string {
+    if (!cityId) {
+      return 'Unknown';
+    }
+    return cityNames.get(cityId) ?? 'Unknown';
+  }
+
+  private applyInvoiceSummaryFilters(
+    qb: ReturnType<
+      ReturnType<DataSource['getRepository']>['createQueryBuilder']
+    >,
+    alias: string,
+    partyAlias: string,
+    businessId: string,
+    filters: { startDate?: Date; endDate?: Date; partyId?: string; cityId?: string },
+  ) {
+    qb.where(`${alias}.businessId = :businessId`, { businessId }).andWhere(
+      `${alias}.deletedAt IS NULL`,
+    );
+
+    if (filters.startDate) {
+      qb.andWhere(`${alias}.invoiceDate >= :startDate`, {
+        startDate: filters.startDate,
+      });
+    }
+    if (filters.endDate) {
+      qb.andWhere(`${alias}.invoiceDate <= :endDate`, {
+        endDate: filters.endDate,
+      });
+    }
+    if (filters.partyId) {
+      qb.andWhere(`${partyAlias}.id = :partyId`, {
+        partyId: filters.partyId,
+      });
+    }
+    if (filters.cityId) {
+      qb.andWhere(`${partyAlias}.cityId = :cityId`, {
+        cityId: filters.cityId,
+      });
+    }
+
+    return qb;
+  }
+
+  private addInvoiceSummaryAggregates(
+    qb: ReturnType<
+      ReturnType<DataSource['getRepository']>['createQueryBuilder']
+    >,
+    alias: string,
+  ) {
+    return qb
+      .select('COUNT(*)', 'invoiceCount')
+      .addSelect(`COALESCE(SUM(${alias}.totalAmount), 0)`, 'totalAmount')
+      .addSelect(`COALESCE(SUM(${alias}.totalTaxAmount), 0)`, 'totalTaxAmount')
+      .addSelect(
+        `COALESCE(SUM(${alias}.totalDiscountAmount), 0)`,
+        'totalDiscountAmount',
+      );
+  }
+
+  private async assertSummaryParty(
+    tenantDb: DataSource,
+    businessId: string,
+    partyId: string,
+    allowedTypes: PartyType[],
+  ): Promise<Party> {
+    const party = await tenantDb.getRepository(Party).findOne({
+      where: {
+        id: partyId,
+        businessId,
+        deletedAt: IsNull(),
+      },
+    });
+
+    if (!party) {
+      throw new BadRequestException('Party not found');
+    }
+
+    if (!allowedTypes.includes(party.type)) {
+      throw new BadRequestException('Party type is not valid for this report');
+    }
+
+    return party;
+  }
+
+  private async buildInvoiceSummaryReport(
+    tenantDb: DataSource,
+    businessId: string,
+    kind: InvoiceSummaryKind,
+    options: InvoiceSummaryReportOptions,
+    actorUserId: string,
+    activityAction: string,
+    activityDescription: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const { startDate, endDate } = this.parseDateRange(
+      options.startDate,
+      options.endDate,
+    );
+    const partyId = options.partyId?.trim() || undefined;
+    const cityId = options.cityId?.trim() || undefined;
+    const partyRelation = kind === 'SALE' ? 'customer' : 'vendor';
+    const allowedPartyTypes =
+      kind === 'SALE'
+        ? [PartyType.CUSTOMER, PartyType.BOTH]
+        : [PartyType.VENDOR, PartyType.BOTH];
+
+    if (partyId) {
+      await this.assertSummaryParty(
+        tenantDb,
+        scopedBusinessId,
+        partyId,
+        allowedPartyTypes,
+      );
+    }
+
+    const filters = { startDate, endDate, partyId, cityId };
+    const Entity = kind === 'SALE' ? SaleInvoice : PurchaseInvoice;
+
+    const baseQb = () =>
+      tenantDb
+        .getRepository(Entity)
+        .createQueryBuilder('invoice')
+        .innerJoin(`invoice.${partyRelation}`, 'party');
+
+    const totalsRow = await this.applyInvoiceSummaryFilters(
+      this.addInvoiceSummaryAggregates(baseQb(), 'invoice'),
+      'invoice',
+      'party',
+      scopedBusinessId,
+      filters,
+    ).getRawOne<InvoiceSummaryAggregateRow>();
+
+    const partyRows = await this.applyInvoiceSummaryFilters(
+      baseQb()
+        .select('party.id', 'partyId')
+        .addSelect('party.code', 'partyCode')
+        .addSelect('party.name', 'partyName')
+        .addSelect('party.cityId', 'cityId')
+        .addSelect('COUNT(*)', 'invoiceCount')
+        .addSelect('COALESCE(SUM(invoice.totalAmount), 0)', 'totalAmount')
+        .addSelect('COALESCE(SUM(invoice.totalTaxAmount), 0)', 'totalTaxAmount')
+        .addSelect(
+          'COALESCE(SUM(invoice.totalDiscountAmount), 0)',
+          'totalDiscountAmount',
+        ),
+      'invoice',
+      'party',
+      scopedBusinessId,
+      filters,
+    )
+      .groupBy('party.id')
+      .addGroupBy('party.code')
+      .addGroupBy('party.name')
+      .addGroupBy('party.cityId')
+      .orderBy('totalAmount', 'DESC')
+      .getRawMany<InvoiceSummaryPartyRow>();
+
+    const cityRows = await this.applyInvoiceSummaryFilters(
+      baseQb()
+        .select('party.cityId', 'cityId')
+        .addSelect('COUNT(*)', 'invoiceCount')
+        .addSelect('COALESCE(SUM(invoice.totalAmount), 0)', 'totalAmount')
+        .addSelect('COALESCE(SUM(invoice.totalTaxAmount), 0)', 'totalTaxAmount')
+        .addSelect(
+          'COALESCE(SUM(invoice.totalDiscountAmount), 0)',
+          'totalDiscountAmount',
+        ),
+      'invoice',
+      'party',
+      scopedBusinessId,
+      filters,
+    )
+      .groupBy('party.cityId')
+      .orderBy('totalAmount', 'DESC')
+      .getRawMany<InvoiceSummaryCityRow>();
+
+    const cityNames = await this.resolveCityNameMap([
+      ...partyRows.map((row) => row.cityId),
+      ...cityRows.map((row) => row.cityId),
+    ]);
+
+    const partyWise = partyRows.map((row) => ({
+      partyId: row.partyId,
+      partyCode: row.partyCode,
+      partyName: row.partyName,
+      cityId: row.cityId,
+      cityName: this.cityDisplayName(row.cityId, cityNames),
+      ...this.mapAggregateTotals(row),
+    }));
+
+    const cityWise = cityRows.map((row) => ({
+      cityId: row.cityId,
+      cityName: this.cityDisplayName(row.cityId, cityNames),
+      ...this.mapAggregateTotals(row),
+    }));
+
+    const totals = this.mapAggregateTotals(totalsRow);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: activityAction,
+      description: activityDescription,
+      metadata: {
+        startDate: options.startDate ?? null,
+        endDate: options.endDate ?? null,
+        partyId: partyId ?? null,
+        cityId: cityId ?? null,
+        totals,
+      },
+    });
+
+    return {
+      totals,
+      period: {
+        startDate: options.startDate ?? null,
+        endDate: options.endDate ?? null,
+      },
+      filters: {
+        partyId: partyId ?? null,
+        cityId: cityId ?? null,
+        scope: partyId ? 'PARTY' : cityId ? 'CITY' : 'ALL',
+      },
+      partyWise,
+      cityWise,
+      meta: {
+        partyCount: partyWise.length,
+        cityCount: cityWise.length,
+      },
+    };
   }
 
   private profitGroupKey(
@@ -533,5 +843,39 @@ export class ReportService {
       data,
       meta: { total: data.length },
     };
+  }
+
+  async getSalesSummaryReport(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    options: InvoiceSummaryReportOptions,
+    actorUserId: string,
+  ) {
+    return this.buildInvoiceSummaryReport(
+      tenantDb,
+      businessId,
+      'SALE',
+      options,
+      actorUserId,
+      'SALES_SUMMARY_REPORT_VIEWED',
+      'Sales summary report viewed',
+    );
+  }
+
+  async getPurchaseSummaryReport(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    options: InvoiceSummaryReportOptions,
+    actorUserId: string,
+  ) {
+    return this.buildInvoiceSummaryReport(
+      tenantDb,
+      businessId,
+      'PURCHASE',
+      options,
+      actorUserId,
+      'PURCHASE_SUMMARY_REPORT_VIEWED',
+      'Purchase summary report viewed',
+    );
   }
 }
