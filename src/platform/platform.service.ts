@@ -260,9 +260,9 @@ export class PlatformService {
 
     if (plan && this.whatsappAccountService.planHasWhatsappLimit(plan)) {
       await this.whatsappAccountService.ensureDefaultWhatsappAccount(tenant.id, user, {
-        displayPhoneNumber: dto.whatsappPhoneNumber,
-        phoneCountryCode: dto.whatsappPhoneCountryCode,
-        phoneNationalNumber: dto.whatsappPhoneNationalNumber,
+        displayPhoneNumber: dto.displayPhoneNumber,
+        phoneCountryCode: dto.phoneCountryCode,
+        phoneNationalNumber: dto.phoneNationalNumber,
       });
     }
     // 🔥 AUTO provisioning trigger (run in background, do not block API response)

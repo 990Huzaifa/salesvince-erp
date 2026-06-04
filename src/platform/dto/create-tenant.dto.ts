@@ -38,13 +38,13 @@ export class CreateTenantDto {
 
     @IsOptional()
     @IsString()
-    whatsappPhoneNumber?: string;
+    displayPhoneNumber?: string;
 
     @IsOptional()
     @IsString()
-    whatsappPhoneCountryCode?: string;
+    phoneCountryCode?: string;
 
     @IsOptional()
     @IsString()
-    whatsappPhoneNationalNumber?: string;
+    phoneNationalNumber?: string;
 }
