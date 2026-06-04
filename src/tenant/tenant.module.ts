@@ -87,6 +87,10 @@ import { SaleReturnController } from './controller/sale/sale-return.controller';
 import { SaleReturnService } from './service/sale/sale-return.service';
 import { ReportController } from './controller/report.controller';
 import { ReportService } from './service/report.service';
+import { ReportLedgerService } from './service/report/report-ledger.service';
+import { ReportOutstandingService } from './service/report/report-outstanding.service';
+import { ReportRegisterService } from './service/report/report-register.service';
+import { ReportStockService } from './service/report/report-stock.service';
 import { DashboardController } from './controller/dashboard.controller';
 import { DashboardService } from './service/dashboard.service';
 import { Country } from 'src/master-db/entities/country.entity';
@@ -252,6 +256,10 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     FinanceService,
     MasterGeoHelperService,
     ReportService,
+    ReportLedgerService,
+    ReportOutstandingService,
+    ReportRegisterService,
+    ReportStockService,
     DashboardService,
     SqlAgentChatService,
     LoanService,

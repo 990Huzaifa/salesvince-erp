@@ -1,4 +1,12 @@
-import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseEnumPipe,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
@@ -9,6 +17,22 @@ import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { ReportService } from '../service/report.service';
+import { ReportLedgerService } from '../service/report/report-ledger.service';
+import { ReportOutstandingService } from '../service/report/report-outstanding.service';
+import { ReportRegisterService } from '../service/report/report-register.service';
+import { ReportStockService } from '../service/report/report-stock.service';
+import { ReportGeneralLedgerQueryDto } from '../dto/report/report-ledger.query.dto';
+import { ReportTrialBalanceQueryDto } from '../dto/report/report-ledger.query.dto';
+import { ReportOutstandingDocumentsQueryDto } from '../dto/report/report-outstanding.query.dto';
+import {
+  ReportRegisterDocumentType,
+  ReportRegisterQueryDto,
+} from '../dto/report/report-register.query.dto';
+import {
+  ReportStockMovementQueryDto,
+  ReportStockSummaryQueryDto,
+  ReportStockValuationQueryDto,
+} from '../dto/report/report-stock.query.dto';
 
 @Controller('tenant/reports')
 @UseGuards(
@@ -19,7 +43,13 @@ import { ReportService } from '../service/report.service';
   TenantPermissionGuard,
 )
 export class ReportController {
-  constructor(private readonly reportService: ReportService) {}
+  constructor(
+    private readonly reportService: ReportService,
+    private readonly reportLedgerService: ReportLedgerService,
+    private readonly reportOutstandingService: ReportOutstandingService,
+    private readonly reportRegisterService: ReportRegisterService,
+    private readonly reportStockService: ReportStockService,
+  ) {}
 
   @Get('cash-bank-balances')
   getCashAndBankBalances(
@@ -108,6 +138,181 @@ export class ReportController {
       tenantDb,
       user.businessId,
       { startDate, endDate, partyId, cityId },
+      user.userId,
+    );
+  }
+
+  @Get('ledger/general')
+  getGeneralLedger(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportGeneralLedgerQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportLedgerService.getGeneralLedger(
+      tenantDb,
+      user.businessId,
+      {
+        chartOfAccountId: query.chartOfAccountId,
+        startDate: query.startDate,
+        endDate: query.endDate,
+      },
+      user.userId,
+    );
+  }
+
+  @Get('ledger/trial-balance')
+  getTrialBalance(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportTrialBalanceQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportLedgerService.getTrialBalance(
+      tenantDb,
+      user.businessId,
+      {
+        startDate: query.startDate,
+        endDate: query.endDate,
+        asOfDate: query.asOfDate,
+      },
+      user.userId,
+    );
+  }
+
+  @Get('outstanding/customer-documents')
+  getCustomerDocumentOutstanding(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportOutstandingDocumentsQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportOutstandingService.getCustomerDocumentOutstanding(
+      tenantDb,
+      user.businessId,
+      {
+        partyId: query.partyId,
+        page: query.page,
+        limit: query.limit,
+      },
+      user.userId,
+    );
+  }
+
+  @Get('outstanding/vendor-documents')
+  getVendorDocumentOutstanding(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportOutstandingDocumentsQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportOutstandingService.getVendorDocumentOutstanding(
+      tenantDb,
+      user.businessId,
+      {
+        partyId: query.partyId,
+        page: query.page,
+        limit: query.limit,
+      },
+      user.userId,
+    );
+  }
+
+  @Get('registers/:documentType')
+  getDocumentRegister(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Param('documentType', new ParseEnumPipe(ReportRegisterDocumentType))
+    documentType: ReportRegisterDocumentType,
+    @Query() query: ReportRegisterQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportRegisterService.getRegister(
+      tenantDb,
+      user.businessId,
+      documentType,
+      {
+        startDate: query.startDate,
+        endDate: query.endDate,
+        partyId: query.partyId,
+        warehouseId: query.warehouseId,
+        status: query.status,
+        search: query.search,
+        page: query.page,
+        limit: query.limit,
+      },
+      user.userId,
+    );
+  }
+
+  @Get('stock/summary')
+  getStockSummary(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportStockSummaryQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportStockService.getStockSummary(
+      tenantDb,
+      user.businessId,
+      {
+        scope: query.scope,
+        warehouseId: query.warehouseId,
+        productId: query.productId,
+        uomId: query.uomId,
+        search: query.search,
+        page: query.page,
+        limit: query.limit,
+      },
+      user.userId,
+    );
+  }
+
+  @Get('stock/movements')
+  getStockMovements(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportStockMovementQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportStockService.getStockMovements(
+      tenantDb,
+      user.businessId,
+      {
+        scope: query.scope,
+        warehouseId: query.warehouseId,
+        productId: query.productId,
+        uomId: query.uomId,
+        movementType: query.movementType,
+        referenceType: query.referenceType,
+        search: query.search,
+        startDate: query.startDate,
+        endDate: query.endDate,
+        page: query.page,
+        limit: query.limit,
+      },
+      user.userId,
+    );
+  }
+
+  @Get('stock/valuation')
+  getStockValuation(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportStockValuationQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportStockService.getStockValuation(
+      tenantDb,
+      user.businessId,
+      {
+        scope: query.scope,
+        warehouseId: query.warehouseId,
+        productId: query.productId,
+        search: query.search,
+        page: query.page,
+        limit: query.limit,
+      },
       user.userId,
     );
   }
