@@ -26,11 +26,6 @@ export class CreateLoanDto {
   @IsEnum(LoanType)
   loanType?: LoanType;
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  loanNumber?: string;
-
   @IsUUID()
   @IsNotEmpty()
   loanAccId: string;

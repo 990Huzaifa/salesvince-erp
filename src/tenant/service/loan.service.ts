@@ -87,23 +87,14 @@ export class LoanService {
     return `${LOAN_NUMBER_PREFIX}-${String(next).padStart(5, '0')}`;
   }
 
-  private async resolveLoanNumber(
-    tenantDb: DataSource,
-    loanNumber?: string,
-    skipLoanId?: string,
-  ): Promise<string> {
-    const resolved = loanNumber?.trim() || (await this.generateLoanNumber(tenantDb));
-    if (!resolved) {
-      throw new BadRequestException('Loan number cannot be empty');
-    }
+  private async resolveLoanNumber(tenantDb: DataSource): Promise<string> {
+    const resolved = await this.generateLoanNumber(tenantDb);
 
-    const qb = tenantDb.getRepository(Loan).createQueryBuilder('loan');
-    qb.where('loan.loanNumber = :loanNumber', { loanNumber: resolved });
-    if (skipLoanId) {
-      qb.andWhere('loan.id != :skipLoanId', { skipLoanId });
-    }
-
-    const existing = await qb.getOne();
+    const existing = await tenantDb
+      .getRepository(Loan)
+      .createQueryBuilder('loan')
+      .where('loan.loanNumber = :loanNumber', { loanNumber: resolved })
+      .getOne();
     if (existing) {
       throw new ConflictException('Loan with this loan number already exists');
     }
@@ -255,7 +246,7 @@ export class LoanService {
       'receivingAccId',
     );
 
-    const loanNumber = await this.resolveLoanNumber(tenantDb, dto.loanNumber);
+    const loanNumber = await this.resolveLoanNumber(tenantDb);
     const installmentFrequency =
       dto.installmentFrequency ?? InstallmentFrequency.MONTHLY;
     const customInstallmentIntervalDays = this.assertCustomFrequencyPayload(
@@ -393,14 +384,6 @@ export class LoanService {
 
     if (dto.loanType !== undefined) {
       loan.loanType = dto.loanType;
-    }
-
-    if (dto.loanNumber !== undefined) {
-      loan.loanNumber = await this.resolveLoanNumber(
-        tenantDb,
-        dto.loanNumber,
-        loan.id,
-      );
     }
 
     if (dto.loanAccId !== undefined) {
