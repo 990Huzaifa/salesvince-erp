@@ -568,6 +568,98 @@ export class TenantUtilityService {
     return { result: invoices };
   }
 
+  async getAllUtilityData(tenantDb: DataSource, businessId: string) {
+    const accountTypes = await this.getAccountTypes(tenantDb);
+    const accountListEntries = await Promise.all(
+      accountTypes.result.map(async ({ parentCode }) => [
+        parentCode,
+        (await this.getAccountList(tenantDb, parentCode, businessId)).result,
+      ] as const),
+    );
+
+    const [
+      roles,
+      permissions,
+      businesses,
+      productCategories,
+      productSubCategories,
+      approvedSaleOrders,
+      purchaseOrders,
+      saleOrders,
+      productBrands,
+      flavours,
+      uoms,
+      warehouseList,
+      productList,
+      stockProducts,
+      vendors,
+      customers,
+      saleInvoices,
+      purchaseInvoices,
+      departments,
+      designations,
+      employees,
+      payPolicies,
+      salaryComponents,
+      loans,
+    ] = await Promise.all([
+      this.getRoles(tenantDb),
+      this.getPermissions(tenantDb),
+      this.getBusinesses(tenantDb),
+      this.getProductCategories(tenantDb, businessId),
+      this.getProductSubCategories(tenantDb, businessId),
+      this.getApprovedSaleOrders(tenantDb, businessId),
+      this.getPurchaseOrders(tenantDb, businessId),
+      this.getSaleOrders(tenantDb, businessId),
+      this.getProductBrands(tenantDb, businessId),
+      this.getFlavours(tenantDb, businessId),
+      this.uoms(tenantDb, businessId),
+      this.getWarehouseList(tenantDb, businessId),
+      this.getProductList(tenantDb, businessId),
+      this.getStockProducts(tenantDb, businessId),
+      this.getVendors(tenantDb, businessId),
+      this.getCustomers(tenantDb, businessId),
+      this.getSaleInvoices(tenantDb, businessId),
+      this.getPurchaseInvoices(tenantDb, businessId),
+      this.getDepartments(tenantDb, businessId),
+      this.getDesignations(tenantDb, businessId),
+      this.getEmployees(tenantDb, businessId),
+      this.getPayPolicies(tenantDb, businessId),
+      this.getSalaryComponents(tenantDb, businessId),
+      this.getLoans(tenantDb, businessId),
+    ]);
+
+    return {
+      roles,
+      permissions,
+      businesses,
+      productCategories,
+      productSubCategories,
+      approvedSaleOrders,
+      purchaseOrders,
+      saleOrders,
+      productBrands,
+      flavours,
+      uoms,
+      warehouseList,
+      productList,
+      stockProducts,
+      accountTypes,
+      accountsByParentCode: Object.fromEntries(accountListEntries),
+      vendors,
+      customers,
+      saleInvoices,
+      purchaseInvoices,
+      hrEnums: { result: this.getHrEnums() },
+      departments,
+      designations,
+      employees,
+      payPolicies,
+      salaryComponents,
+      loans,
+    };
+  }
+
   async getLoans(tenantDb: DataSource, businessId: string) {
     const loans = await tenantDb
       .getRepository(Loan)

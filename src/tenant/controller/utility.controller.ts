@@ -19,6 +19,21 @@ export class TenantUtilityController {
         TenantJwtAuthGuard,
         TenantJwtGuard,
         TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+    )
+    @Get('master')
+    async getMasterUtilityData(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.utilityService.getAllUtilityData(tenantDb, user.businessId);
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
     )
     @Get('roles')
     async getRoles(@TenantConnection() tenantDb: DataSource) {
