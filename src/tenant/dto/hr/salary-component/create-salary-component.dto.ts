@@ -46,10 +46,6 @@ export class CreateSalaryComponentDto {
   isRequired?: boolean;
 
   @IsOptional()
-  @IsUUID()
-  accountId?: string;
-
-  @IsOptional()
   @IsBoolean()
   isActive?: boolean;
 }

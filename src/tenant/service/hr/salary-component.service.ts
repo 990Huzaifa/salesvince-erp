@@ -104,7 +104,6 @@ export class SalaryComponentService {
       undefined,
       'Salary component',
     );
-    await this.assertAccount(tenantDb, scopedBusinessId, dto.accountId);
     await seedDefaultChartOfAccountsForBusiness(tenantDb, scopedBusinessId);
 
     const created = await tenantDb.transaction(async (manager) => {
@@ -118,7 +117,6 @@ export class SalaryComponentService {
           defaultValue: dto.defaultValue ?? null,
           isTaxable: dto.isTaxable ?? false,
           isRequired: dto.isRequired ?? false,
-          accountId: dto.accountId ?? null,
           isActive: dto.isActive ?? true,
         }),
       );
@@ -284,10 +282,6 @@ export class SalaryComponentService {
     if (dto.defaultValue !== undefined) row.defaultValue = dto.defaultValue;
     if (dto.isTaxable !== undefined) row.isTaxable = dto.isTaxable;
     if (dto.isRequired !== undefined) row.isRequired = dto.isRequired;
-    if (dto.accountId !== undefined) {
-      await this.assertAccount(tenantDb, scopedBusinessId, dto.accountId);
-      row.accountId = dto.accountId;
-    }
     if (dto.isActive !== undefined) row.isActive = dto.isActive;
 
     const updated = await tenantDb.getRepository(SalaryComponent).save(row);
