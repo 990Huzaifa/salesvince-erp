@@ -20,6 +20,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'CREATE_PRODUCT_SUB_CATEGORY', name: 'Create Sub Category' },
   { key: 'CREATE_PRODUCT_BRAND', name: 'Create Brand' },
   { key: 'CREATE_PRODUCT', name: 'Create Product' },
+  { key: 'CREATE_PRODUCT_MERGE', name: 'Create Product Merge' },
   { key: 'CREATE_FLAVOUR', name: 'Create Flavour' },
   { key: 'CREATE_UOM', name: 'Create UOM' },
   { key: 'CREATE_SALE_ORDER', name: 'Create Sale Order' },

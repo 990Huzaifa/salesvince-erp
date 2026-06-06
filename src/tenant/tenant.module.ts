@@ -105,6 +105,7 @@ import { InventoryController } from './controller/inventory.controller';
 import { InventoryBalanceService } from './service/inventory/inventory-balance.service';
 import { InventoryBatchService } from './service/inventory/inventory-batch.service';
 import { InventoryMovementService } from './service/inventory/inventory-movement.service';
+import { ProductMergeService } from './service/inventory/product-merge.service';
 import { InventoryForecastController } from './controller/inventory-forecast.controller';
 import { InventoryForecastService } from './service/inventory/forecast/inventory-forecast.service';
 import { InventoryForecastMetricsService } from './service/inventory/forecast/inventory-forecast-metrics.service';
@@ -266,6 +267,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     InventoryBalanceService,
     InventoryBatchService,
     InventoryMovementService,
+    ProductMergeService,
     InventoryForecastService,
     InventoryForecastMetricsService,
     InventoryForecastChartService,
