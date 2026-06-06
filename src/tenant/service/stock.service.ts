@@ -112,7 +112,7 @@ export class StockService {
   }
 
   private roundQuantity(value: number): number {
-    return Math.round(value * 1000) / 1000;
+    return Math.round(value);
   }
 
   private async generateBatchNumber(
@@ -485,7 +485,9 @@ export class StockService {
     const results: ReceiveStockLineResult[] = [];
 
     for (const line of input.lines) {
-      if (line.quantity <= 0) {
+      const quantity = this.roundQuantity(line.quantity);
+
+      if (quantity <= 0) {
         throw new BadRequestException('Received quantity must be greater than zero');
       }
 
@@ -506,7 +508,7 @@ export class StockService {
           batchNumber,
           productId: line.productId,
           uomId: line.uomId,
-          quantity: line.quantity,
+          quantity,
           purchaseUnitPrice: this.roundAmount(line.purchaseUnitPrice),
           saleUnitMarginAmount: this.roundAmount(line.saleUnitMarginAmount),
           saleUnitMarginPercentage: this.roundAmount(line.saleUnitMarginPercentage),
@@ -520,7 +522,7 @@ export class StockService {
         warehouseId: input.warehouseId,
         productId: line.productId,
         uomId: line.uomId,
-        quantityDelta: line.quantity,
+        quantityDelta: quantity,
       });
 
       const movement = await movementRepo.save(
@@ -529,7 +531,7 @@ export class StockService {
           warehouseId: input.warehouseId,
           productId: line.productId,
           uomId: line.uomId,
-          quantity: line.quantity,
+          quantity,
           movementType: StockMovementType.IN,
           referenceType: input.referenceType,
         }),
@@ -556,7 +558,9 @@ export class StockService {
     const results: ConsumeStockLineResult[] = [];
 
     for (const line of input.lines) {
-      if (line.quantity <= 0) {
+      const quantity = this.roundQuantity(line.quantity);
+
+      if (quantity <= 0) {
         throw new BadRequestException('Issued quantity must be greater than zero');
       }
 
@@ -564,7 +568,7 @@ export class StockService {
         businessId: input.businessId,
         productId: line.productId,
         uomId: line.uomId,
-        quantity: line.quantity,
+        quantity,
         warehouseId: input.warehouseId,
       });
 
@@ -575,7 +579,7 @@ export class StockService {
         warehouseId: input.warehouseId,
         productId: line.productId,
         uomId: line.uomId,
-        quantityDelta: -line.quantity,
+        quantityDelta: -quantity,
       });
 
       const movement = await movementRepo.save(
@@ -584,7 +588,7 @@ export class StockService {
           warehouseId: input.warehouseId,
           productId: line.productId,
           uomId: line.uomId,
-          quantity: line.quantity,
+          quantity,
           movementType: StockMovementType.OUT,
           referenceType: input.referenceType,
         }),

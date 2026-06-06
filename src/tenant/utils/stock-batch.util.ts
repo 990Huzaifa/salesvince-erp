@@ -22,8 +22,7 @@ export type StockPricingSelection = {
 const roundAmount = (value: number): number =>
   Math.round(value * 100) / 100;
 
-const roundQuantity = (value: number): number =>
-  Math.round(value * 1000) / 1000;
+const roundQuantity = (value: number): number => Math.round(value);
 
 export function sortBatchesByStrategy(
   batches: Batch[],
@@ -54,26 +53,28 @@ function allocateProportionally(
   batches: Batch[],
   requestedQty: number,
 ): BatchAllocation[] {
+  const requested = roundQuantity(requestedQty);
   const withStock = batches.filter((batch) => Number(batch.quantity) > 0);
   const totalQty = withStock.reduce(
     (sum, batch) => sum + Number(batch.quantity),
     0,
   );
 
-  if (totalQty <= 0 || requestedQty <= 0) {
+  if (totalQty <= 0 || requested <= 0) {
     return [];
   }
 
   const allocations: BatchAllocation[] = [];
-  let remaining = requestedQty;
+  let remaining = requested;
 
   for (let index = 0; index < withStock.length; index += 1) {
     const batch = withStock[index];
     const batchQty = Number(batch.quantity);
     const isLast = index === withStock.length - 1;
+    const proportionalTake = Math.floor((batchQty / totalQty) * requested);
     const take = isLast
-      ? roundQuantity(remaining)
-      : roundQuantity(Math.min(batchQty, (batchQty / totalQty) * requestedQty));
+      ? Math.min(batchQty, remaining)
+      : Math.min(batchQty, proportionalTake);
 
     if (take <= 0) {
       continue;
@@ -84,7 +85,7 @@ function allocateProportionally(
       warehouseId: batch.warehouseId,
       quantity: take,
     });
-    remaining = roundQuantity(remaining - take);
+    remaining -= take;
   }
 
   return allocations;

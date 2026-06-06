@@ -3,6 +3,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsDateString,
+  IsInt,
   IsNumber,
   IsOptional,
   IsUUID,
@@ -20,8 +21,9 @@ export class ProductMergeSourceLineDto {
   @IsUUID()
   uomId: string;
 
-  @IsNumber()
-  @Min(0.001)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   quantity: number;
 }
 
@@ -35,8 +37,9 @@ export class ProductMergeResultDto {
   @IsUUID()
   uomId: string;
 
-  @IsNumber()
-  @Min(0.001)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   quantity: number;
 
   @IsNumber()
