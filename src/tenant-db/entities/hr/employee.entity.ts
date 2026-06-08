@@ -49,9 +49,6 @@ export class Employee {
   @JoinColumn({ name: 'businessId' })
   business: Business;
 
-  @Column({ type: 'uuid', nullable: true })
-  branchId: string | null;
-
   @Column({ type: 'uuid' })
   departmentId: string;
 
@@ -139,19 +136,6 @@ export class Employee {
     default: EmployeeStatusEnum.ACTIVE,
   })
   employeeStatus: EmployeeStatusEnum;
-
-  @Column({ type: 'uuid', nullable: true })
-  reportingManagerId: string | null;
-
-  @ManyToOne(() => Employee, (employee) => employee.subordinates, {
-    onDelete: 'SET NULL',
-    nullable: true,
-  })
-  @JoinColumn({ name: 'reportingManagerId' })
-  reportingManager: Employee | null;
-
-  @OneToMany(() => Employee, (employee) => employee.reportingManager)
-  subordinates: Employee[];
 
   @Column({ type: 'uuid', nullable: true })
   shiftId: string | null;

@@ -21,6 +21,8 @@ import { ReportLedgerService } from '../service/report/report-ledger.service';
 import { ReportOutstandingService } from '../service/report/report-outstanding.service';
 import { ReportRegisterService } from '../service/report/report-register.service';
 import { ReportStockService } from '../service/report/report-stock.service';
+import { ReportFinancialService } from '../service/report/report-financial.service';
+import { ReportTaxService } from '../service/report/report-tax.service';
 import { ReportGeneralLedgerQueryDto } from '../dto/report/report-ledger.query.dto';
 import { ReportTrialBalanceQueryDto } from '../dto/report/report-ledger.query.dto';
 import { ReportOutstandingDocumentsQueryDto } from '../dto/report/report-outstanding.query.dto';
@@ -33,6 +35,11 @@ import {
   ReportStockSummaryQueryDto,
   ReportStockValuationQueryDto,
 } from '../dto/report/report-stock.query.dto';
+import {
+  ReportBalanceSheetQueryDto,
+  ReportProfitAndLossQueryDto,
+  ReportTaxSummaryQueryDto,
+} from '../dto/report/report-financial.query.dto';
 
 @Controller('tenant/reports')
 @UseGuards(
@@ -49,6 +56,8 @@ export class ReportController {
     private readonly reportOutstandingService: ReportOutstandingService,
     private readonly reportRegisterService: ReportRegisterService,
     private readonly reportStockService: ReportStockService,
+    private readonly reportFinancialService: ReportFinancialService,
+    private readonly reportTaxService: ReportTaxService,
   ) {}
 
   @Get('cash-bank-balances')
@@ -313,6 +322,54 @@ export class ReportController {
         page: query.page,
         limit: query.limit,
       },
+      user.userId,
+    );
+  }
+
+  @Get('financial/profit-and-loss')
+  getProfitAndLoss(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportProfitAndLossQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportFinancialService.getProfitAndLoss(
+      tenantDb,
+      user.businessId,
+      { startDate: query.startDate, endDate: query.endDate },
+      user.userId,
+    );
+  }
+
+  @Get('financial/balance-sheet')
+  getBalanceSheet(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportBalanceSheetQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportFinancialService.getBalanceSheet(
+      tenantDb,
+      user.businessId,
+      {
+        asOfDate: query.asOfDate,
+        profitPeriodStartDate: query.profitPeriodStartDate,
+      },
+      user.userId,
+    );
+  }
+
+  @Get('tax/summary')
+  getTaxSummary(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportTaxSummaryQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportTaxService.getTaxSummary(
+      tenantDb,
+      user.businessId,
+      { startDate: query.startDate, endDate: query.endDate },
       user.userId,
     );
   }

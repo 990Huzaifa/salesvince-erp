@@ -35,7 +35,6 @@ export class EmployeeService {
     return {
       id: employee.id,
       businessId: employee.businessId,
-      branchId: employee.branchId,
       departmentId: employee.departmentId,
       designationId: employee.designationId,
       employeeCode: employee.employeeCode,
@@ -56,7 +55,6 @@ export class EmployeeService {
       leavingDate: employee.leavingDate,
       employmentType: employee.employmentType,
       employeeStatus: employee.employeeStatus,
-      reportingManagerId: employee.reportingManagerId,
       shiftId: employee.shiftId,
       attendancePolicyId: employee.attendancePolicyId,
       leavePolicyId: employee.leavePolicyId,
@@ -80,13 +78,6 @@ export class EmployeeService {
             name: employee.designation.name,
           }
         : null,
-      reportingManager: employee.reportingManager
-        ? {
-            id: employee.reportingManager.id,
-            fullName: employee.reportingManager.fullName,
-            employeeCode: employee.reportingManager.employeeCode,
-          }
-        : null,
       payPolicy: employee.payPolicy
         ? {
             id: employee.payPolicy.id,
@@ -102,7 +93,6 @@ export class EmployeeService {
   private employeeRelations = {
     department: true,
     designation: true,
-    reportingManager: true,
     payPolicy: true,
   };
 
@@ -158,24 +148,6 @@ export class EmployeeService {
     });
     if (!row) {
       throw new NotFoundException('Pay policy not found');
-    }
-  }
-
-  private async assertReportingManager(
-    tenantDb: DataSource,
-    businessId: string,
-    reportingManagerId?: string | null,
-    employeeId?: string,
-  ): Promise<void> {
-    if (!reportingManagerId) return;
-    if (employeeId && reportingManagerId === employeeId) {
-      throw new BadRequestException('Employee cannot report to themselves');
-    }
-    const row = await tenantDb.getRepository(Employee).findOne({
-      where: { id: reportingManagerId, businessId, deletedAt: IsNull() },
-    });
-    if (!row) {
-      throw new NotFoundException('Reporting manager not found');
     }
   }
 
@@ -258,11 +230,6 @@ export class EmployeeService {
     await this.assertDepartment(tenantDb, scopedBusinessId, dto.departmentId);
     await this.assertDesignation(tenantDb, scopedBusinessId, dto.designationId);
     await this.assertPayPolicy(tenantDb, scopedBusinessId, dto.payPolicyId);
-    await this.assertReportingManager(
-      tenantDb,
-      scopedBusinessId,
-      dto.reportingManagerId,
-    );
     await this.assertSalaryAccount(
       tenantDb,
       scopedBusinessId,
@@ -309,7 +276,6 @@ export class EmployeeService {
       let employee = await manager.save(
         manager.create(Employee, {
           businessId: scopedBusinessId,
-          branchId: dto.branchId ?? null,
           departmentId: dto.departmentId,
           designationId: dto.designationId,
           employeeCode,
@@ -332,7 +298,6 @@ export class EmployeeService {
           leavingDate,
           employmentType: dto.employmentType,
           employeeStatus: dto.employeeStatus,
-          reportingManagerId: dto.reportingManagerId ?? null,
           payPolicyId: dto.payPolicyId ?? null,
           salaryPaymentMethod: dto.salaryPaymentMethod ?? null,
           bankName: dto.bankName?.trim() ?? null,
@@ -495,15 +460,6 @@ export class EmployeeService {
       await this.assertPayPolicy(tenantDb, scopedBusinessId, dto.payPolicyId);
       row.payPolicyId = dto.payPolicyId;
     }
-    if (dto.reportingManagerId !== undefined) {
-      await this.assertReportingManager(
-        tenantDb,
-        scopedBusinessId,
-        dto.reportingManagerId,
-        row.id,
-      );
-      row.reportingManagerId = dto.reportingManagerId;
-    }
     if (dto.salaryAccountId !== undefined) {
       await this.assertSalaryAccount(
         tenantDb,
@@ -586,7 +542,6 @@ export class EmployeeService {
     }
     if (dto.maritalStatus !== undefined) row.maritalStatus = dto.maritalStatus;
     if (dto.profileImage !== undefined) row.profileImage = dto.profileImage;
-    if (dto.branchId !== undefined) row.branchId = dto.branchId;
     if (dto.employmentType !== undefined) {
       row.employmentType = dto.employmentType;
     }

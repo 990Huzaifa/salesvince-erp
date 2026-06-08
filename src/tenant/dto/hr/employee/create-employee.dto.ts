@@ -100,14 +100,6 @@ export class CreateEmployeeDto {
 
   @IsOptional()
   @IsUUID()
-  branchId?: string;
-
-  @IsOptional()
-  @IsUUID()
-  reportingManagerId?: string;
-
-  @IsOptional()
-  @IsUUID()
   payPolicyId?: string;
 
   @IsOptional()
