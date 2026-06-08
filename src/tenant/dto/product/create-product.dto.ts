@@ -46,8 +46,9 @@ export class CreateProductDto {
   @IsUUID()
   subCategoryId: string;
 
+  @IsOptional()
   @IsString()
-  skuCode: string;
+  skuCode?: string | null;
 
   @IsString()
   name: string;

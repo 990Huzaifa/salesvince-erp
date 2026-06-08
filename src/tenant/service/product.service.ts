@@ -38,6 +38,9 @@ import { createChartOfAccountForProduct } from 'src/tenant-db/helpers/product-ch
 import { CreateProductDto } from '../dto/product/create-product.dto';
 import { UpdateProductDto } from '../dto/product/update-product.dto';
 import { BatchPickStrategy } from 'src/tenant-db/entities/product.entity';
+import { generateSequentialCode } from './hr/hr-common.util';
+
+const SKU_CODE_PREFIX = 'SKU';
 
 @Injectable()
 export class ProductService {
@@ -159,6 +162,24 @@ export class ProductService {
     }
   }
 
+  private async resolveSkuCode(
+    tenantDb: DataSource,
+    skuCode?: string | null,
+  ): Promise<string> {
+    const resolved =
+      skuCode?.trim() ||
+      (await generateSequentialCode(
+        tenantDb,
+        Product,
+        'product',
+        'skuCode',
+        SKU_CODE_PREFIX,
+      ));
+
+    await this.ensureSkuUnique(tenantDb, resolved);
+    return resolved;
+  }
+
   private async ensureSkuUnique(
     tenantDb: DataSource,
     skuCode: string,
@@ -206,7 +227,7 @@ export class ProductService {
     const categoryId = dto.categoryId.trim();
     const subCategoryId = dto.subCategoryId.trim();
     const brandId = dto.brandId?.trim();
-    const skuCode = dto.skuCode.trim();
+    const skuCode = await this.resolveSkuCode(tenantDb, dto.skuCode);
     const name = dto.name.trim();
     const description = dto.description?.trim() || null;
     const hsCode = dto.hsCode?.trim() || null;
@@ -222,7 +243,6 @@ export class ProductService {
     if (brandId) {
       await this.ensureBrandExists(tenantDb, brandId);
     }
-    await this.ensureSkuUnique(tenantDb, skuCode);
     if (flavourIds.length) {
       await this.ensureFlavoursExist(tenantDb, flavourIds);
     }
