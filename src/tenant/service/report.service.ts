@@ -10,7 +10,11 @@ import {
   AccountTransactionReferenceType,
   Transaction,
 } from 'src/tenant-db/entities/transaction.entity';
-import { computeBalanceMovement } from 'src/tenant-db/helpers/transaction-balance.helper';
+import {
+  computeBalanceMovement,
+  getAccountBalanceNature,
+} from 'src/tenant-db/helpers/transaction-balance.helper';
+import { Employee } from 'src/tenant-db/entities/hr/employee.entity';
 import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
 import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity';
 import { ActivityLogService } from './activity-log.service';
@@ -178,10 +182,7 @@ export class ReportService {
       if (!account) {
         continue;
       }
-      const nature =
-        account.accountKind === ChartOfAccountKind.PARTY_PAYABLE
-          ? 'CREDIT'
-          : 'DEBIT';
+      const nature = getAccountBalanceNature(account);
       const movement = computeBalanceMovement(
         nature,
         Number(tx.debitAmount ?? 0),
@@ -212,6 +213,27 @@ export class ReportService {
       currentBalance,
       partyType: party.type,
       balanceType: mode,
+    };
+  }
+
+  private mapEmployeeBalance(
+    employee: Employee,
+    account: ChartOfAccount | null,
+    openingBalance: number,
+    currentBalance: number,
+  ) {
+    return {
+      id: employee.id,
+      employeeCode: employee.employeeCode,
+      fullName: employee.fullName,
+      departmentName: employee.department?.name ?? null,
+      designationName: employee.designation?.name ?? null,
+      employeeStatus: employee.employeeStatus,
+      accId: account?.id ?? null,
+      accountCode: account?.code ?? null,
+      openingBalance,
+      currentBalance,
+      balanceType: 'EMPLOYEE' as const,
     };
   }
 
@@ -643,6 +665,66 @@ export class ReportService {
       totals: {
         currentBalance: this.roundAmount(
           data.reduce((sum, party) => sum + party.currentBalance, 0),
+        ),
+      },
+      meta: { total: data.length },
+    };
+  }
+
+  async getEmployeeBalances(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const employees = await tenantDb.getRepository(Employee).find({
+      where: {
+        businessId: scopedBusinessId,
+        deletedAt: IsNull(),
+      },
+      relations: {
+        salaryAccount: true,
+        department: true,
+        designation: true,
+      },
+      order: { fullName: 'ASC' },
+    });
+
+    const accounts = employees
+      .map((employee) => employee.salaryAccount)
+      .filter((account): account is ChartOfAccount => Boolean(account));
+    const accountIds = accounts.map((account) => account.id);
+    const [latestBalances, openingBalances] = await Promise.all([
+      this.getLatestBalanceMap(tenantDb, scopedBusinessId, accountIds),
+      this.getOpeningBalanceMap(tenantDb, scopedBusinessId, accounts),
+    ]);
+
+    const data = employees.map((employee) =>
+      this.mapEmployeeBalance(
+        employee,
+        employee.salaryAccount,
+        employee.salaryAccountId
+          ? openingBalances.get(employee.salaryAccountId) ?? 0
+          : 0,
+        employee.salaryAccountId
+          ? latestBalances.get(employee.salaryAccountId) ?? 0
+          : 0,
+      ),
+    );
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'EMPLOYEE_BALANCE_REPORT_VIEWED',
+      description: 'Employee balance report viewed',
+      metadata: { count: data.length },
+    });
+
+    return {
+      data,
+      totals: {
+        currentBalance: this.roundAmount(
+          data.reduce((sum, employee) => sum + employee.currentBalance, 0),
         ),
       },
       meta: { total: data.length },

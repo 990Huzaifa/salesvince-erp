@@ -99,6 +99,19 @@ export class ReportController {
     );
   }
 
+  @Get('employee-balances')
+  getEmployeeBalances(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportService.getEmployeeBalances(
+      tenantDb,
+      user.businessId,
+      user.userId,
+    );
+  }
+
   @Get('profit')
   getProfitReport(
     @TenantConnection() tenantDb: DataSource,
