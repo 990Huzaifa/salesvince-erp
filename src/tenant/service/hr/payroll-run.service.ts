@@ -1,9 +1,14 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, IsNull } from 'typeorm';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
+import { Tenant } from 'src/master-db/entities/tenant.entity';
+import { Business, BusinessStatus } from 'src/tenant-db/entities/business.entity';
 import {
   Employee,
   EmployeeSalaryStructure,
@@ -18,6 +23,7 @@ import {
   PayslipStatusEnum,
   SalaryStructureStatusEnum,
 } from 'src/tenant-db/entities/hr/hr.enums';
+import { TenantConnectionManager } from 'src/tenant-db/services/tenant-connection-manager.service';
 import { CreatePayrollRunDto } from '../../dto/hr/payroll-run/create-payroll-run.dto';
 import { ActivityLogService } from '../activity-log.service';
 import { assertBusinessId, computeSalaryTotals } from './hr-common.util';
@@ -28,9 +34,22 @@ function getPeriodBounds(periodYear: number, periodMonth: number) {
   return { periodStart, periodEnd };
 }
 
+function getPreviousMonth(ref = new Date()) {
+  const d = new Date(ref.getFullYear(), ref.getMonth() - 1, 1);
+  return { periodYear: d.getFullYear(), periodMonth: d.getMonth() + 1 };
+}
+
 @Injectable()
 export class PayrollRunService {
-  constructor(private readonly activityLogService: ActivityLogService) {}
+  private readonly logger = new Logger(PayrollRunService.name);
+  private isPayrollCronRunning = false;
+
+  constructor(
+    private readonly activityLogService: ActivityLogService,
+    private readonly tenantConnectionManager: TenantConnectionManager,
+    @InjectRepository(Tenant)
+    private readonly tenantRepo: Repository<Tenant>,
+  ) {}
 
   private mapRun(run: PayrollRun, payslipCount?: number) {
     return {
@@ -69,7 +88,7 @@ export class PayrollRunService {
     tenantDb: DataSource,
     businessId: string | undefined,
     dto: CreatePayrollRunDto,
-    actorUserId: string,
+    actorUserId: string | null,
   ) {
     const scopedBusinessId = assertBusinessId(businessId);
 
@@ -123,7 +142,7 @@ export class PayrollRunService {
     tenantDb: DataSource,
     businessId: string | undefined,
     id: string,
-    actorUserId: string,
+    actorUserId: string | null,
   ) {
     const scopedBusinessId = assertBusinessId(businessId);
     const run = await this.findForBusiness(tenantDb, scopedBusinessId, id);
@@ -327,5 +346,192 @@ export class PayrollRunService {
     });
 
     return { data: this.mapRun(run, payslipCount) };
+  }
+
+  async autoGenerateForBusiness(
+    tenantDb: DataSource,
+    businessId: string,
+    periodYear: number,
+    periodMonth: number,
+  ) {
+    const existing = await tenantDb.getRepository(PayrollRun).findOne({
+      where: {
+        businessId,
+        periodYear,
+        periodMonth,
+        deletedAt: IsNull(),
+      },
+    });
+    if (existing) {
+      return { skipped: true as const };
+    }
+
+    const created = await this.create(
+      tenantDb,
+      businessId,
+      { periodYear, periodMonth },
+      null,
+    );
+    const result = await this.generate(
+      tenantDb,
+      businessId,
+      created.data.id,
+      null,
+    );
+
+    await this.activityLogService.recordSystemActivity(
+      tenantDb,
+      'PAYROLL_AUTO_GENERATED',
+      {
+        businessId,
+        description: `Auto payroll generated for ${periodYear}-${periodMonth}`,
+        metadata: {
+          periodYear,
+          periodMonth,
+          generatedCount: result.meta.generatedCount,
+          warnings: result.meta.warnings,
+          skipped: false,
+          payrollRunId: created.data.id,
+        },
+      },
+    );
+
+    return {
+      skipped: false as const,
+      payrollRunId: created.data.id,
+      generatedCount: result.meta.generatedCount,
+      warnings: result.meta.warnings,
+    };
+  }
+
+  async autoGenerateForTenant(tenantDb: DataSource, tenantCode: string) {
+    const { periodYear, periodMonth } = getPreviousMonth();
+    const businesses = await tenantDb.getRepository(Business).find({
+      where: { status: BusinessStatus.ACTIVE, deletedAt: IsNull() },
+      select: ['id', 'code'],
+    });
+
+    const results: {
+      businessId: string;
+      businessCode: string;
+      skipped?: boolean;
+      generatedCount?: number;
+      warnings?: string[];
+      error?: string;
+    }[] = [];
+
+    for (const business of businesses) {
+      try {
+        const outcome = await this.autoGenerateForBusiness(
+          tenantDb,
+          business.id,
+          periodYear,
+          periodMonth,
+        );
+        if (outcome.skipped) {
+          this.logger.debug(
+            `Skipped auto payroll for tenant ${tenantCode}, business ${business.code}: run already exists for ${periodYear}-${periodMonth}`,
+          );
+          results.push({
+            businessId: business.id,
+            businessCode: business.code,
+            skipped: true,
+          });
+          continue;
+        }
+
+        this.logger.log(
+          `Auto payroll generated for tenant ${tenantCode}, business ${business.code}: ${outcome.generatedCount} payslip(s) for ${periodYear}-${periodMonth}`,
+        );
+        results.push({
+          businessId: business.id,
+          businessCode: business.code,
+          skipped: false,
+          generatedCount: outcome.generatedCount,
+          warnings: outcome.warnings,
+        });
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Auto payroll generation failed';
+        this.logger.error(
+          `Auto payroll failed for tenant ${tenantCode}, business ${business.code}`,
+          error instanceof Error ? error.stack : undefined,
+        );
+        results.push({
+          businessId: business.id,
+          businessCode: business.code,
+          error: message,
+        });
+      }
+    }
+
+    return { periodYear, periodMonth, results };
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async generateMonthlyPayslips() {
+    if (process.env.PAYROLL_AUTO_CRON_ENABLED !== 'true') {
+      return;
+    }
+    await this.processMonthlyAutoGeneration('monthly-cron');
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async testPayrollCronJob() {
+    if (process.env.PAYROLL_TEST_CRON_ENABLED !== 'true') {
+      return;
+    }
+    await this.processMonthlyAutoGeneration('test-cron');
+  }
+
+  private async processMonthlyAutoGeneration(source: string) {
+    if (this.isPayrollCronRunning) {
+      this.logger.warn(
+        `Payroll auto-generation cron skipped (${source}): previous run still in progress`,
+      );
+      return;
+    }
+
+    this.isPayrollCronRunning = true;
+    const { periodYear, periodMonth } = getPreviousMonth();
+
+    try {
+      const tenants = await this.tenantRepo.find({
+        where: { isActive: true },
+        select: { id: true, code: true },
+      });
+
+      this.logger.log(
+        `Payroll auto-generation cron started (${source}) for ${periodYear}-${periodMonth}, ${tenants.length} tenant(s)`,
+      );
+
+      for (const tenant of tenants) {
+        try {
+          const tenantDb = await this.tenantConnectionManager.getConnection(
+            tenant.id,
+          );
+          const summary = await this.autoGenerateForTenant(tenantDb, tenant.code);
+          const generated = summary.results.filter(
+            (r) => !r.skipped && !r.error,
+          ).length;
+          const skipped = summary.results.filter((r) => r.skipped).length;
+          const failed = summary.results.filter((r) => r.error).length;
+          if (generated > 0 || failed > 0) {
+            this.logger.log(
+              `Payroll auto-generation for tenant ${tenant.code}: ${generated} business(es) generated, ${skipped} skipped, ${failed} failed`,
+            );
+          }
+        } catch (error) {
+          this.logger.error(
+            `Payroll auto-generation failed for tenant ${tenant.code}`,
+            error instanceof Error ? error.stack : undefined,
+          );
+        }
+      }
+
+      this.logger.log(`Payroll auto-generation cron finished (${source})`);
+    } finally {
+      this.isPayrollCronRunning = false;
+    }
   }
 }
