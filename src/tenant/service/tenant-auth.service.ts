@@ -35,6 +35,7 @@ export type TenantLoginBusinessRow = {
   businessName: string;
   businessStatus: string;
   userBusinessId: string;
+  businessLogo: string | null;
   roleId: string;
   roleName: string;
   permissions: string[];
@@ -69,6 +70,7 @@ export type TenantBusinessAccessResponse = {
   roleId: string;
   roleName: string;
   permissions: string[];
+  businessLogo: string | null;
 };
 
 @Injectable()
@@ -259,6 +261,7 @@ export class TenantAuthService {
         businessName: ub.business?.name ?? '',
         businessStatus: ub.business?.status ?? '',
         userBusinessId: ub.id,
+        businessLogo: ub.business?.logo ?? '',
         roleId: ub.roleId,
         roleName: ub.role?.name ?? '',
         permissions:
@@ -397,6 +400,7 @@ export class TenantAuthService {
         roleId: ub.roleId,
         userCode,
       }),
+      businessLogo: ub.business?.logo,
       token_type: BUSINESS_ACCESS_TOKEN,
       isSuperAdmin,
       roleId: ub.roleId,
