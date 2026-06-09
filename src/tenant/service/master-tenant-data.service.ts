@@ -109,6 +109,19 @@ export class MasterTenantDataService {
     }));
   }
 
+  async getBackupRetentionLimit(tenantId?: string | null): Promise<number> {
+    const limits = await this.getTenantLimitsByTenantId(tenantId);
+    const backupLimit = limits.find((l) => l.limitKey === LIMIT_KEY.DAILY_BACKUP);
+    if (!backupLimit || backupLimit.limitValue <= 0) {
+      return 0;
+    }
+    return backupLimit.limitValue;
+  }
+
+  async tenantHasBackupFeature(tenantId?: string | null): Promise<boolean> {
+    return (await this.getBackupRetentionLimit(tenantId)) > 0;
+  }
+
   async getTenantMasterDataByTenantId(tenantId?: string | null) {
     if (!tenantId?.trim()) {
       return {

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
     CopyObjectCommand,
     DeleteObjectCommand,
+    GetObjectCommand,
     HeadObjectCommand,
     PutObjectCommand,
     S3Client,
@@ -94,6 +95,14 @@ export class S3Service {
             Bucket: this.bucketName,
             Key: key,
             ContentType: contentType,
+        });
+        return getSignedUrl(this.s3Client, command, { expiresIn: expiresInSeconds });
+    }
+
+    async getPresignedGetObjectUrl(key: string, expiresInSeconds: number) {
+        const command = new GetObjectCommand({
+            Bucket: this.bucketName,
+            Key: key,
         });
         return getSignedUrl(this.s3Client, command, { expiresIn: expiresInSeconds });
     }

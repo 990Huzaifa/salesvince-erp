@@ -469,6 +469,7 @@ export class PayrollRunService {
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
+  // @Cron('0 0 1 * *')
   async generateMonthlyPayslips() {
     if (process.env.PAYROLL_AUTO_CRON_ENABLED !== 'true') {
       return;

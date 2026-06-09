@@ -8,6 +8,7 @@ export enum LIMIT_KEY {
     SQL_AGENT_DAILY = 'SQL_AGENT_DAILY',
     SQL_AGENT_MONTHLY = 'SQL_AGENT_MONTHLY',
     WHATSAPP = 'WHATSAPP',
+    DAILY_BACKUP = 'DAILY_BACKUP',
 }
 
 export enum BillingCycle {

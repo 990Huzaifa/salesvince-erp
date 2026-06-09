@@ -212,6 +212,11 @@ export const TENANT_PERMISSIONS = [
   { key: 'DELETE_PURCHASE_ORDER', name: 'Delete Purchase Order' },
   { key: 'APPROVE_LOAN', name: 'Approve Loan' },
 
+  { key: 'LIST_DATABASE_BACKUP', name: 'List Database Backups' },
+  { key: 'VIEW_DATABASE_BACKUP', name: 'View Database Backup' },
+  { key: 'DOWNLOAD_DATABASE_BACKUP', name: 'Download Database Backup' },
+  { key: 'TRIGGER_DATABASE_BACKUP', name: 'Trigger Database Backup' },
+
 ];
 
 export async function seedTenantPermissions(dataSource: DataSource) {
