@@ -1,20 +1,22 @@
 import { Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
-import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection, TenantId } from 'src/common/tenant/tenant-connection.decorator';
 import { DatabaseBackupTrigger } from 'src/tenant-db/entities/database-backup.entity';
 import { TenantDatabaseBackupService } from '../service/tenant-database-backup.service';
+import { TenantSuperAdminGuard } from 'src/auth/tenant-super-admin.guard';
+import { TenantLoginOnlyGuard } from 'src/auth/tenant-login-only.guard';
 
 @Controller('tenant/backups')
 @UseGuards(
   TenantJwtAuthGuard,
   TenantJwtGuard,
   TenantConnectionGuard,
-  TenantPermissionGuard,
+  TenantLoginOnlyGuard,
+  TenantSuperAdminGuard,
 )
 export class DatabaseBackupController {
   constructor(private readonly backupService: TenantDatabaseBackupService) {}
