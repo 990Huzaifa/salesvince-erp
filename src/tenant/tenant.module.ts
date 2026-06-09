@@ -135,8 +135,10 @@ import { SalaryVoucherService } from './service/vouchers/salary-voucher.service'
 import { MasterTenantDataController } from './controller/master-tenant-data.controller';
 import { MasterTenantDataService } from './service/master-tenant-data.service';
 import { DatabaseBackupController } from './controller/database-backup.controller';
+import { ProfileController } from './controller/profile.controller';
 import { TenantDatabaseBackupService } from './service/tenant-database-backup.service';
 import { PgDumpService } from './service/pg-dump.service';
+import { ProfileService } from './service/profile.service';
 import { TenantSettings } from 'src/master-db/entities/tenant-settings.entity';
 import { TenantGeoPolicy } from 'src/master-db/entities/tenant-geo-policy.entity';
 import { TenantTheme } from 'src/master-db/entities/tenant-themes.entity';
@@ -218,6 +220,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     SalaryVoucherController,
     MasterTenantDataController,
     DatabaseBackupController,
+    ProfileController,
   ],
   providers: [
     TenantAuthService,
@@ -293,6 +296,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     MasterTenantDataService,
     TenantDatabaseBackupService,
     PgDumpService,
+    ProfileService,
   ],
 })
 export class TenantModule {}
