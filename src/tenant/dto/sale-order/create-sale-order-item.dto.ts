@@ -32,12 +32,7 @@ export class CreateSaleOrderItemDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
-  saleMarginAmount?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  saleMarginPercentage?: number;
+  saleUnitPrice?: number;
 
   @IsOptional()
   @IsNumber()

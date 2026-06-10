@@ -134,10 +134,7 @@ export class SaleOrderItem {
     purchaseUnitPrice: number;
 
     @Column({type: 'decimal', precision: 18, scale: 2})
-    saleMarginAmount: number;
-
-    @Column({type: 'decimal', precision: 18, scale: 2})
-    saleMarginPercentage: number;
+    saleUnitPrice: number;
 
     @Column()
     quantity: number;

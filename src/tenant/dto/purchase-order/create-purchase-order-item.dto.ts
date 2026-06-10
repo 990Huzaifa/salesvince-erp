@@ -29,12 +29,7 @@ export class CreatePurchaseOrderItemDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
-  saleUnitMarginAmount?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  saleUnitMarginPercentage?: number;
+  saleUnitPrice?: number;
 
   @IsOptional()
   @IsNumber()

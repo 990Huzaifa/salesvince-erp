@@ -176,9 +176,7 @@ export class DeliveryNoteService {
     const orderQty = Number(orderItem.quantity);
     const receivedQty = deliveredQuantity;
     const ratio = orderQty > 0 ? receivedQty / orderQty : 0;
-    const saleUnitPrice = this.roundAmount(
-      Number(orderItem.purchaseUnitPrice) + Number(orderItem.saleMarginAmount),
-    );
+    const saleUnitPrice = this.roundAmount(Number(orderItem.saleUnitPrice));
 
     return {
       saleOrderItemId: orderItem.id,
@@ -202,9 +200,7 @@ export class DeliveryNoteService {
     deliveredQuantity: number,
     headerTaxPercentage: number,
   ): ResolvedDeliveryNoteLine {
-    const saleUnitPrice = this.roundAmount(
-      Number(orderItem.purchaseUnitPrice) + Number(orderItem.saleMarginAmount),
-    );
+    const saleUnitPrice = this.roundAmount(Number(orderItem.saleUnitPrice));
     const lineSubtotal = saleUnitPrice * deliveredQuantity;
     const discountPercentage = this.roundAmount(
       Number(orderItem.discountPercentage),

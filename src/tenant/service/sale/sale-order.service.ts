@@ -39,8 +39,7 @@ type ResolvedSaleOrderLine = {
   productFlavourId: string | null;
   quantity: number;
   purchaseUnitPrice: number;
-  saleMarginAmount: number;
-  saleMarginPercentage: number;
+  saleUnitPrice: number;
   discountPercentage: number;
   discountAmount: number;
   totalAmount: number;
@@ -211,30 +210,10 @@ export class SaleOrderService {
       }
 
       const purchaseUnitPrice = this.roundAmount(item.purchaseUnitPrice);
-      let saleMarginAmount =
-        item.saleMarginAmount != null
-          ? Number(item.saleMarginAmount)
-          : Number(existing.saleMarginAmount);
-      let saleMarginPercentage =
-        item.saleMarginPercentage != null
-          ? Number(item.saleMarginPercentage)
-          : Number(existing.saleMarginPercentage);
-
-      if (item.saleMarginAmount == null && item.saleMarginPercentage != null) {
-        saleMarginAmount = this.roundAmount(
-          (purchaseUnitPrice * saleMarginPercentage) / 100,
-        );
-      }
-
-      if (item.saleMarginAmount != null && item.saleMarginPercentage == null) {
-        saleMarginPercentage =
-          purchaseUnitPrice > 0
-            ? this.roundAmount((saleMarginAmount / purchaseUnitPrice) * 100)
-            : 0;
-      }
-
       const saleUnitPrice = this.roundAmount(
-        purchaseUnitPrice + saleMarginAmount,
+        item.saleUnitPrice != null
+          ? Number(item.saleUnitPrice)
+          : Number(existing.saleUnitPrice),
       );
       const lineSubtotal = saleUnitPrice * item.quantity;
       let discountPercentage =
@@ -255,13 +234,21 @@ export class SaleOrderService {
 
       await itemRepo.update(existing.id, {
         purchaseUnitPrice,
-        saleMarginAmount: this.roundAmount(saleMarginAmount),
-        saleMarginPercentage: this.roundAmount(saleMarginPercentage),
+        saleUnitPrice,
         discountPercentage: this.roundAmount(discountPercentage),
         discountAmount,
         totalAmount,
       });
     }
+  }
+
+  private defaultSaleUnitPriceFromPricing(
+    purchaseUnitPrice: number,
+    pricing: ProductPricing,
+  ): number {
+    return this.roundAmount(
+      Number(purchaseUnitPrice) + Number(pricing.saleUnitMarginAmount),
+    );
   }
 
   private resolveLineItem(
@@ -271,32 +258,13 @@ export class SaleOrderService {
     const purchaseUnitPrice = Number(
       item.purchaseUnitPrice ?? pricing.purchaseUnitPrice,
     );
-    let saleMarginAmount =
-      item.saleMarginAmount != null
-        ? Number(item.saleMarginAmount)
-        : Number(pricing.saleUnitMarginAmount);
-    let saleMarginPercentage =
-      item.saleMarginPercentage != null
-        ? Number(item.saleMarginPercentage)
-        : Number(pricing.saleUnitMarginPercentage);
-
-    if (item.saleMarginAmount == null && item.saleMarginPercentage != null) {
-      saleMarginAmount = this.roundAmount(
-        (purchaseUnitPrice * saleMarginPercentage) / 100,
-      );
-    }
-
-    if (item.saleMarginAmount != null && item.saleMarginPercentage == null) {
-      saleMarginPercentage =
-        purchaseUnitPrice > 0
-          ? this.roundAmount((saleMarginAmount / purchaseUnitPrice) * 100)
-          : 0;
-    }
+    const saleUnitPrice = this.roundAmount(
+      item.saleUnitPrice != null
+        ? Number(item.saleUnitPrice)
+        : this.defaultSaleUnitPriceFromPricing(purchaseUnitPrice, pricing),
+    );
 
     const discountPercentage = item.discountPercentage ?? 0;
-    const saleUnitPrice = this.roundAmount(
-      purchaseUnitPrice + saleMarginAmount,
-    );
     const lineSubtotal = saleUnitPrice * item.quantity;
     const discountAmount = this.roundAmount(
       (lineSubtotal * discountPercentage) / 100,
@@ -310,8 +278,7 @@ export class SaleOrderService {
       productFlavourId: item.productFlavourId ?? null,
       quantity: item.quantity,
       purchaseUnitPrice: this.roundAmount(purchaseUnitPrice),
-      saleMarginAmount: this.roundAmount(saleMarginAmount),
-      saleMarginPercentage: this.roundAmount(saleMarginPercentage),
+      saleUnitPrice,
       discountPercentage: this.roundAmount(discountPercentage),
       discountAmount,
       totalAmount,
@@ -459,8 +426,7 @@ export class SaleOrderService {
         productFlavourId: line.productFlavourId,
         uomId: line.uomId,
         purchaseUnitPrice: line.purchaseUnitPrice,
-        saleMarginAmount: line.saleMarginAmount,
-        saleMarginPercentage: line.saleMarginPercentage,
+        saleUnitPrice: line.saleUnitPrice,
         quantity: line.quantity,
         discountPercentage: line.discountPercentage,
         discountAmount: line.discountAmount,
@@ -549,8 +515,7 @@ export class SaleOrderService {
           }
         : null,
       purchaseUnitPrice: item.purchaseUnitPrice,
-      saleMarginAmount: item.saleMarginAmount,
-      saleMarginPercentage: item.saleMarginPercentage,
+      saleUnitPrice: item.saleUnitPrice,
       quantity: item.quantity,
       discountPercentage: item.discountPercentage,
       discountAmount: item.discountAmount,
@@ -748,8 +713,7 @@ export class SaleOrderService {
           productFlavourId: line.productFlavourId,
           uomId: line.uomId,
           purchaseUnitPrice: line.purchaseUnitPrice,
-          saleMarginAmount: line.saleMarginAmount,
-          saleMarginPercentage: line.saleMarginPercentage,
+          saleUnitPrice: line.saleUnitPrice,
           quantity: line.quantity,
           discountPercentage: line.discountPercentage,
           discountAmount: line.discountAmount,
@@ -766,8 +730,7 @@ export class SaleOrderService {
           productFlavourId: line.productFlavourId,
           uomId: line.uomId,
           purchaseUnitPrice: line.purchaseUnitPrice,
-          saleMarginAmount: line.saleMarginAmount,
-          saleMarginPercentage: line.saleMarginPercentage,
+          saleUnitPrice: line.saleUnitPrice,
           quantity: line.quantity,
           discountPercentage: line.discountPercentage,
           discountAmount: line.discountAmount,
@@ -1122,8 +1085,7 @@ export class SaleOrderService {
           productFlavourId: item.productFlavourId ?? undefined,
           quantity: item.quantity,
           purchaseUnitPrice: Number(item.purchaseUnitPrice),
-          saleMarginAmount: Number(item.saleMarginAmount),
-          saleMarginPercentage: Number(item.saleMarginPercentage),
+          saleUnitPrice: Number(item.saleUnitPrice),
           discountPercentage: Number(item.discountPercentage),
         }));
 
@@ -1231,8 +1193,7 @@ export class SaleOrderService {
         productFlavourId: item.productFlavourId ?? null,
         quantity: item.quantity,
         purchaseUnitPrice: Number(item.purchaseUnitPrice),
-        saleMarginAmount: Number(item.saleMarginAmount),
-        saleMarginPercentage: Number(item.saleMarginPercentage),
+        saleUnitPrice: Number(item.saleUnitPrice),
         discountPercentage: Number(item.discountPercentage),
         discountAmount: Number(item.discountAmount),
         totalAmount: Number(item.totalAmount),

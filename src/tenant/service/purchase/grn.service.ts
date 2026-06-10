@@ -42,8 +42,7 @@ type ResolvedGrnLine = {
   orderedQuantity: number;
   receivedQuantity: number;
   purchaseUnitPrice: number;
-  saleUnitMarginAmount: number;
-  saleUnitMarginPercentage: number;
+  saleUnitPrice: number;
   discountPercentage: number;
   discountAmount: number;
   taxPercentage: number;
@@ -88,6 +87,20 @@ export class GrnService {
 
   private roundAmount(value: number): number {
     return Math.round(value * 100) / 100;
+  }
+
+  private stockMarginFromSaleUnitPrice(
+    purchaseUnitPrice: number,
+    saleUnitPrice: number,
+  ): { saleUnitMarginAmount: number; saleUnitMarginPercentage: number } {
+    const saleUnitMarginAmount = this.roundAmount(
+      saleUnitPrice - purchaseUnitPrice,
+    );
+    const saleUnitMarginPercentage =
+      purchaseUnitPrice > 0
+        ? this.roundAmount((saleUnitMarginAmount / purchaseUnitPrice) * 100)
+        : 0;
+    return { saleUnitMarginAmount, saleUnitMarginPercentage };
   }
 
   private assertPendingStatus(grn: Grn): void {
@@ -174,14 +187,22 @@ export class GrnService {
       batchNumberPrefix: grn.grnNumber,
       lines: items
         .filter((item) => item.receivedQuantity > 0)
-        .map((item) => ({
-          productId: item.productId,
-          uomId: item.uomId,
-          quantity: item.receivedQuantity,
-          purchaseUnitPrice: Number(item.purchaseUnitPrice),
-          saleUnitMarginAmount: Number(item.saleUnitMarginAmount),
-          saleUnitMarginPercentage: Number(item.saleUnitMarginPercentage),
-        })),
+        .map((item) => {
+          const purchaseUnitPrice = Number(item.purchaseUnitPrice);
+          const saleUnitPrice = Number(item.saleUnitPrice);
+          const margin = this.stockMarginFromSaleUnitPrice(
+            purchaseUnitPrice,
+            saleUnitPrice,
+          );
+          return {
+            productId: item.productId,
+            uomId: item.uomId,
+            quantity: item.receivedQuantity,
+            purchaseUnitPrice,
+            saleUnitMarginAmount: margin.saleUnitMarginAmount,
+            saleUnitMarginPercentage: margin.saleUnitMarginPercentage,
+          };
+        }),
     });
 
     await this.transactionService.postDirectLedgerEntry(manager, {
@@ -264,8 +285,7 @@ export class GrnService {
       orderedQuantity: poItem.quantity,
       receivedQuantity,
       purchaseUnitPrice: Number(poItem.purchaseUnitPrice),
-      saleUnitMarginAmount: Number(poItem.saleUnitMarginAmount),
-      saleUnitMarginPercentage: Number(poItem.saleUnitMarginPercentage),
+      saleUnitPrice: Number(poItem.saleUnitPrice),
       discountPercentage: Number(poItem.discountPercentage),
       discountAmount,
       taxPercentage: headerTaxPercentage,
@@ -335,8 +355,7 @@ export class GrnService {
         orderedQuantity: line.orderedQuantity,
         receivedQuantity: line.receivedQuantity,
         purchaseUnitPrice: line.purchaseUnitPrice,
-        saleUnitMarginAmount: line.saleUnitMarginAmount,
-        saleUnitMarginPercentage: line.saleUnitMarginPercentage,
+        saleUnitPrice: line.saleUnitPrice,
         discountPercentage: line.discountPercentage,
         discountAmount: line.discountAmount,
         taxPercentage: line.taxPercentage,
@@ -406,8 +425,7 @@ export class GrnService {
       orderedQuantity: poQty,
       receivedQuantity: receivedQty,
       purchaseUnitPrice: Number(poItem.purchaseUnitPrice),
-      saleUnitMarginAmount: Number(poItem.saleUnitMarginAmount),
-      saleUnitMarginPercentage: Number(poItem.saleUnitMarginPercentage),
+      saleUnitPrice: Number(poItem.saleUnitPrice),
       discountPercentage: Number(poItem.discountPercentage),
       discountAmount: this.roundAmount(Number(poItem.discountAmount) * ratio),
       taxPercentage: 0,
@@ -659,8 +677,7 @@ export class GrnService {
       orderedQuantity: item.orderedQuantity,
       receivedQuantity: item.receivedQuantity,
       purchaseUnitPrice: item.purchaseUnitPrice,
-      saleUnitMarginAmount: item.saleUnitMarginAmount,
-      saleUnitMarginPercentage: item.saleUnitMarginPercentage,
+      saleUnitPrice: item.saleUnitPrice,
       discountPercentage: item.discountPercentage,
       discountAmount: item.discountAmount,
       taxPercentage: item.taxPercentage,
@@ -1021,8 +1038,7 @@ export class GrnService {
           orderedQuantity: item.orderedQuantity,
           receivedQuantity: item.receivedQuantity,
           purchaseUnitPrice: Number(item.purchaseUnitPrice),
-          saleUnitMarginAmount: Number(item.saleUnitMarginAmount),
-          saleUnitMarginPercentage: Number(item.saleUnitMarginPercentage),
+          saleUnitPrice: Number(item.saleUnitPrice),
           discountPercentage: Number(item.discountPercentage),
           discountAmount: Number(item.discountAmount),
           taxPercentage: Number(item.taxPercentage),
@@ -1202,8 +1218,7 @@ export class GrnService {
           orderedQuantity: line.orderedQuantity,
           receivedQuantity: line.receivedQuantity,
           purchaseUnitPrice: line.purchaseUnitPrice,
-          saleUnitMarginAmount: line.saleUnitMarginAmount,
-          saleUnitMarginPercentage: line.saleUnitMarginPercentage,
+          saleUnitPrice: line.saleUnitPrice,
           discountPercentage: line.discountPercentage,
           discountAmount: line.discountAmount,
           taxPercentage: line.taxPercentage,

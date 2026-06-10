@@ -138,10 +138,7 @@ export class GrnItem {
     purchaseUnitPrice: number;
 
     @Column({type: 'decimal', precision: 18, scale: 2})
-    saleUnitMarginAmount: number;
-
-    @Column({type: 'decimal', precision: 18, scale: 2})
-    saleUnitMarginPercentage: number;
+    saleUnitPrice: number;
 
     @Column({type: 'decimal', precision: 18, scale: 2})
     discountPercentage: number;
