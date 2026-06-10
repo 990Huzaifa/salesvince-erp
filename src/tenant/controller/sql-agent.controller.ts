@@ -1,5 +1,6 @@
 import {
   Body,
+  Delete,
   Controller,
   Get,
   HttpCode,
@@ -109,5 +110,16 @@ export class SqlAgentController {
       user.businessId,
       dto,
     );
+  }
+
+  @Delete('sessions/:id')
+  @RequirePermissions('USE_SQL_AGENT')
+  deleteSession(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id') sessionId: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.sqlAgentChatService.deleteSession(tenantDb, sessionId, user.userId, user.businessId);
   }
 }

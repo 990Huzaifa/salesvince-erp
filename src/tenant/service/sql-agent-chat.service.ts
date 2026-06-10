@@ -87,6 +87,16 @@ export class SqlAgentChatService {
     return { session, messages };
   }
 
+  async deleteSession(
+    tenantDb: DataSource,
+    sessionId: string,
+    userId: string,
+    businessId: string,
+  ) {
+    await tenantDb.getRepository(SqlAgentSession).delete({ id: sessionId, userId, businessId });
+    return { deleted: true };
+  }
+
   /**
    * Accepts the user message, notifies via Pusher, and processes the agent in the background.
    */
