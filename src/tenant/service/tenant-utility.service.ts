@@ -25,8 +25,10 @@ import {
   Designation,
   Employee,
   PayPolicy,
+  Payslip,
   SalaryComponent,
 } from 'src/tenant-db/entities/hr';
+import { SalaryVoucher } from 'src/tenant-db/entities/salary-voucher.entity';
 import {
   ComponentTypeEnum,
   EmployeeStatusEnum,
@@ -35,6 +37,7 @@ import {
   MaritalStatusEnum,
   OvertimeRateTypeEnum,
   PayCycleEnum,
+  PayslipStatusEnum,
   PayrollTypeEnum,
   SalaryCalculationTypeEnum,
   SalaryPaymentMethodEnum,
@@ -657,6 +660,53 @@ export class TenantUtilityService {
       payPolicies,
       salaryComponents,
       loans,
+    };
+  }
+
+  async getPayslip(tenantDb: DataSource, businessId: string) {
+    const rows = await tenantDb
+      .getRepository(Payslip)
+      .createQueryBuilder('payslip')
+      .innerJoin('payslip.employee', 'employee')
+      .select('payslip.id', 'id')
+      .addSelect('payslip.periodYear', 'periodYear')
+      .addSelect('payslip.periodMonth', 'periodMonth')
+      .addSelect('payslip.paymentDate', 'paymentDate')
+      .addSelect('employee.fullName', 'employeeName')
+      .where('payslip.businessId = :businessId', { businessId })
+      .andWhere('payslip.deletedAt IS NULL')
+      .andWhere('payslip.status = :status', {
+        status: PayslipStatusEnum.APPROVED,
+      })
+      .andWhere((qb) => {
+        const voucherSubQuery = qb
+          .subQuery()
+          .select('1')
+          .from(SalaryVoucher, 'salaryVoucher')
+          .where('salaryVoucher.payslipId = payslip.id')
+          .andWhere('salaryVoucher.businessId = :businessId')
+          .getQuery();
+
+        return `NOT EXISTS ${voucherSubQuery}`;
+      })
+      .orderBy('payslip.periodYear', 'DESC')
+      .addOrderBy('payslip.periodMonth', 'DESC')
+      .addOrderBy('employee.fullName', 'ASC')
+      .getRawMany<{
+        id: string;
+        periodYear: number;
+        periodMonth: number;
+        paymentDate: string;
+        employeeName: string;
+      }>();
+
+    return {
+      result: rows.map((row) => ({
+        id: row.id,
+        month: `${row.periodYear}-${String(row.periodMonth).padStart(2, '0')}`,
+        date: row.paymentDate,
+        employeeName: row.employeeName,
+      })),
     };
   }
 

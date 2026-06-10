@@ -408,6 +408,21 @@ export class TenantUtilityController {
         TenantConnectionGuard,
         TenantBusinessAccessGuard,
     )
+    @Get('payslip')
+    getPayslips(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.utilityService.getPayslip(tenantDb, user.businessId);
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+    )
     @Get('loans')
     getLoans(
         @TenantConnection() tenantDb: DataSource,
