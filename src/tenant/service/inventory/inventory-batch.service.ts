@@ -73,12 +73,8 @@ export class InventoryBatchService {
         .addSelect('COALESCE(SUM(batch.quantity), 0)', 'quantity')
         .addSelect('COALESCE(AVG(batch.purchaseUnitPrice), 0)', 'avgPurchaseUnitPrice')
         .addSelect(
-          'COALESCE(AVG(batch.saleUnitMarginAmount), 0)',
-          'avgSaleUnitMarginAmount',
-        )
-        .addSelect(
-          'COALESCE(AVG(batch.saleUnitMarginPercentage), 0)',
-          'avgSaleUnitMarginPercentage',
+          'COALESCE(AVG(batch.saleUnitPrice), 0)',
+          'avgSaleUnitPrice',
         )
         .groupBy('batch.productId')
         .addGroupBy('product.name')
@@ -98,8 +94,7 @@ export class InventoryBatchService {
           batchCount: string;
           quantity: string;
           avgPurchaseUnitPrice: string;
-          avgSaleUnitMarginAmount: string;
-          avgSaleUnitMarginPercentage: string;
+          avgSaleUnitPrice: string;
         }>();
 
       return {
@@ -112,8 +107,7 @@ export class InventoryBatchService {
           batchCount: Number(row.batchCount),
           quantity: Number(row.quantity),
           avgPurchaseUnitPrice: Number(row.avgPurchaseUnitPrice),
-          avgSaleUnitMarginAmount: Number(row.avgSaleUnitMarginAmount),
-          avgSaleUnitMarginPercentage: Number(row.avgSaleUnitMarginPercentage),
+          avgSaleUnitPrice: Number(row.avgSaleUnitPrice),
         })),
         meta: { total: Number(countRow?.total ?? 0), page, limit, scope },
       };
@@ -165,8 +159,7 @@ export class InventoryBatchService {
       .addSelect('batch.expiryDate', 'expiryDate')
       .addSelect('batch.quantity', 'quantity')
       .addSelect('batch.purchaseUnitPrice', 'purchaseUnitPrice')
-      .addSelect('batch.saleUnitMarginAmount', 'saleUnitMarginAmount')
-      .addSelect('batch.saleUnitMarginPercentage', 'saleUnitMarginPercentage')
+      .addSelect('batch.saleUnitPrice', 'saleUnitPrice')
       .addSelect('batch.warehouseId', 'warehouseId')
       .addSelect('warehouse.name', 'warehouseName')
       .addSelect('warehouse.code', 'warehouseCode')
@@ -188,8 +181,7 @@ export class InventoryBatchService {
         expiryDate: Date | null;
         quantity: string;
         purchaseUnitPrice: string;
-        saleUnitMarginAmount: string;
-        saleUnitMarginPercentage: string;
+        saleUnitPrice: string;
         warehouseId: string;
         warehouseName: string;
         warehouseCode: string;
@@ -210,8 +202,7 @@ export class InventoryBatchService {
         expiryDate: row.expiryDate,
         quantity: Number(row.quantity),
         purchaseUnitPrice: Number(row.purchaseUnitPrice),
-        saleUnitMarginAmount: Number(row.saleUnitMarginAmount),
-        saleUnitMarginPercentage: Number(row.saleUnitMarginPercentage),
+        saleUnitPrice: Number(row.saleUnitPrice),
         warehouseId: row.warehouseId,
         warehouseName: row.warehouseName,
         warehouseCode: row.warehouseCode,

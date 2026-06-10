@@ -9,8 +9,7 @@ export type BatchAllocation = {
 
 export type StockPricingSelection = {
   purchaseUnitPrice: number;
-  saleUnitMarginAmount: number;
-  saleUnitMarginPercentage: number;
+  saleUnitPrice: number;
   selectedBatch: {
     id: string;
     batchNumber: string;
@@ -156,8 +155,7 @@ export function selectStockPricing(
   if (batches.length === 0) {
     return {
       purchaseUnitPrice: 0,
-      saleUnitMarginAmount: 0,
-      saleUnitMarginPercentage: 0,
+      saleUnitPrice: 0,
       selectedBatch: null,
     };
   }
@@ -171,8 +169,7 @@ export function selectStockPricing(
     if (totalQuantity <= 0) {
       return {
         purchaseUnitPrice: 0,
-        saleUnitMarginAmount: 0,
-        saleUnitMarginPercentage: 0,
+        saleUnitPrice: 0,
         selectedBatch: null,
       };
     }
@@ -186,10 +183,7 @@ export function selectStockPricing(
 
     return {
       purchaseUnitPrice: roundAmount(weightedAverage('purchaseUnitPrice')),
-      saleUnitMarginAmount: roundAmount(weightedAverage('saleUnitMarginAmount')),
-      saleUnitMarginPercentage: roundAmount(
-        weightedAverage('saleUnitMarginPercentage'),
-      ),
+      saleUnitPrice: roundAmount(weightedAverage('saleUnitPrice')),
       selectedBatch: null,
     };
   }
@@ -198,10 +192,7 @@ export function selectStockPricing(
 
   return {
     purchaseUnitPrice: Number(selectedBatch.purchaseUnitPrice ?? 0),
-    saleUnitMarginAmount: Number(selectedBatch.saleUnitMarginAmount ?? 0),
-    saleUnitMarginPercentage: Number(
-      selectedBatch.saleUnitMarginPercentage ?? 0,
-    ),
+    saleUnitPrice: Number(selectedBatch.saleUnitPrice ?? 0),
     selectedBatch: {
       id: selectedBatch.id,
       batchNumber: selectedBatch.batchNumber,

@@ -20,8 +20,7 @@ export type ReceiveStockLineInput = {
   uomId: string;
   quantity: number;
   purchaseUnitPrice: number;
-  saleUnitMarginAmount: number;
-  saleUnitMarginPercentage: number;
+  saleUnitPrice: number;
   expiryDate?: Date | null;
   batchNumber?: string;
 };
@@ -510,8 +509,7 @@ export class StockService {
           uomId: line.uomId,
           quantity,
           purchaseUnitPrice: this.roundAmount(line.purchaseUnitPrice),
-          saleUnitMarginAmount: this.roundAmount(line.saleUnitMarginAmount),
-          saleUnitMarginPercentage: this.roundAmount(line.saleUnitMarginPercentage),
+          saleUnitPrice: this.roundAmount(line.saleUnitPrice),
           batchDate: input.batchDate,
           expiryDate: line.expiryDate ?? null,
         }),

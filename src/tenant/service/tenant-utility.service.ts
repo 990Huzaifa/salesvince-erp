@@ -337,8 +337,7 @@ export class TenantUtilityService {
           quantityAvailable: row.quantityAvailable,
           quantityOnHand: row.quantityOnHand,
           purchaseUnitPrice: pricing.purchaseUnitPrice,
-          saleUnitMarginAmount: pricing.saleUnitMarginAmount,
-          saleUnitMarginPercentage: pricing.saleUnitMarginPercentage,
+          saleUnitPrice: pricing.saleUnitPrice,
           selectedBatch: pricing.selectedBatch,
         };
       }),

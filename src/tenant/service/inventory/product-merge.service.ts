@@ -41,31 +41,6 @@ export class ProductMergeService {
     return `${warehouseId}:${productId}:${uomId}`;
   }
 
-  private normalizeMargins(
-    purchaseUnitPrice: number,
-    saleUnitMarginAmount: number,
-    saleUnitMarginPercentage: number,
-  ): { saleUnitMarginAmount: number; saleUnitMarginPercentage: number } {
-    let amount = Number(saleUnitMarginAmount);
-    let percentage = Number(saleUnitMarginPercentage);
-
-    if (!amount && percentage) {
-      amount = this.roundAmount((purchaseUnitPrice * percentage) / 100);
-    }
-
-    if (amount && !percentage) {
-      percentage =
-        purchaseUnitPrice > 0
-          ? this.roundAmount((amount / purchaseUnitPrice) * 100)
-          : 0;
-    }
-
-    return {
-      saleUnitMarginAmount: this.roundAmount(amount),
-      saleUnitMarginPercentage: this.roundAmount(percentage),
-    };
-  }
-
   private assertNoDuplicateSourceLines(
     dto: CreateProductMergeDto,
   ): void {
@@ -369,12 +344,6 @@ export class ProductMergeService {
         manager,
         allAllocations,
       );
-      const margins = this.normalizeMargins(
-        dto.result.purchaseUnitPrice,
-        dto.result.saleUnitMarginAmount,
-        dto.result.saleUnitMarginPercentage,
-      );
-
       const inResults = await this.stockService.receiveStockIn(manager, {
         businessId: scopedBusinessId,
         warehouseId: dto.result.warehouseId,
@@ -388,8 +357,7 @@ export class ProductMergeService {
             uomId: dto.result.uomId,
             quantity: dto.result.quantity,
             purchaseUnitPrice: dto.result.purchaseUnitPrice,
-            saleUnitMarginAmount: margins.saleUnitMarginAmount,
-            saleUnitMarginPercentage: margins.saleUnitMarginPercentage,
+            saleUnitPrice: dto.result.saleUnitPrice,
           },
         ],
       });

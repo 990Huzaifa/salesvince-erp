@@ -89,20 +89,6 @@ export class GrnService {
     return Math.round(value * 100) / 100;
   }
 
-  private stockMarginFromSaleUnitPrice(
-    purchaseUnitPrice: number,
-    saleUnitPrice: number,
-  ): { saleUnitMarginAmount: number; saleUnitMarginPercentage: number } {
-    const saleUnitMarginAmount = this.roundAmount(
-      saleUnitPrice - purchaseUnitPrice,
-    );
-    const saleUnitMarginPercentage =
-      purchaseUnitPrice > 0
-        ? this.roundAmount((saleUnitMarginAmount / purchaseUnitPrice) * 100)
-        : 0;
-    return { saleUnitMarginAmount, saleUnitMarginPercentage };
-  }
-
   private assertPendingStatus(grn: Grn): void {
     if (grn.status !== GrnStatus.PENDING) {
       throw new BadRequestException(
@@ -187,22 +173,13 @@ export class GrnService {
       batchNumberPrefix: grn.grnNumber,
       lines: items
         .filter((item) => item.receivedQuantity > 0)
-        .map((item) => {
-          const purchaseUnitPrice = Number(item.purchaseUnitPrice);
-          const saleUnitPrice = Number(item.saleUnitPrice);
-          const margin = this.stockMarginFromSaleUnitPrice(
-            purchaseUnitPrice,
-            saleUnitPrice,
-          );
-          return {
-            productId: item.productId,
-            uomId: item.uomId,
-            quantity: item.receivedQuantity,
-            purchaseUnitPrice,
-            saleUnitMarginAmount: margin.saleUnitMarginAmount,
-            saleUnitMarginPercentage: margin.saleUnitMarginPercentage,
-          };
-        }),
+        .map((item) => ({
+          productId: item.productId,
+          uomId: item.uomId,
+          quantity: item.receivedQuantity,
+          purchaseUnitPrice: Number(item.purchaseUnitPrice),
+          saleUnitPrice: Number(item.saleUnitPrice),
+        })),
     });
 
     await this.transactionService.postDirectLedgerEntry(manager, {

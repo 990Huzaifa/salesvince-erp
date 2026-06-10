@@ -34,8 +34,7 @@ type ResolvedReturnLine = {
   quantity: number;
   lineAmount: number;
   purchaseUnitPrice: number;
-  saleUnitMarginAmount: number;
-  saleUnitMarginPercentage: number;
+  saleUnitPrice: number;
 };
 
 @Injectable()
@@ -55,20 +54,6 @@ export class SaleReturnService {
 
   private roundAmount(value: number): number {
     return Math.round(value * 100) / 100;
-  }
-
-  private stockMarginFromSaleUnitPrice(
-    purchaseUnitPrice: number,
-    saleUnitPrice: number,
-  ): { saleUnitMarginAmount: number; saleUnitMarginPercentage: number } {
-    const saleUnitMarginAmount = this.roundAmount(
-      saleUnitPrice - purchaseUnitPrice,
-    );
-    const saleUnitMarginPercentage =
-      purchaseUnitPrice > 0
-        ? this.roundAmount((saleUnitMarginAmount / purchaseUnitPrice) * 100)
-        : 0;
-    return { saleUnitMarginAmount, saleUnitMarginPercentage };
   }
 
   private returnRelations() {
@@ -220,13 +205,6 @@ export class SaleReturnService {
         invoiceItem,
       );
 
-      const purchaseUnitPrice = Number(orderItem?.purchaseUnitPrice ?? 0);
-      const saleUnitPrice = Number(orderItem?.saleUnitPrice ?? 0);
-      const margin = this.stockMarginFromSaleUnitPrice(
-        purchaseUnitPrice,
-        saleUnitPrice,
-      );
-
       resolved.push({
         warehouseId: invoiceItem.warehouseId,
         productId: invoiceItem.productId,
@@ -234,9 +212,8 @@ export class SaleReturnService {
         productFlavourId: invoiceItem.productFlavourId ?? null,
         quantity: line.quantity,
         lineAmount: this.lineAmountForQuantity(invoiceItem, line.quantity),
-        purchaseUnitPrice,
-        saleUnitMarginAmount: margin.saleUnitMarginAmount,
-        saleUnitMarginPercentage: margin.saleUnitMarginPercentage,
+        purchaseUnitPrice: Number(orderItem?.purchaseUnitPrice ?? 0),
+        saleUnitPrice: Number(orderItem?.saleUnitPrice ?? 0),
       });
     }
 
@@ -430,8 +407,7 @@ export class SaleReturnService {
           uomId: line.uomId,
           quantity: line.quantity,
           purchaseUnitPrice: line.purchaseUnitPrice,
-          saleUnitMarginAmount: line.saleUnitMarginAmount,
-          saleUnitMarginPercentage: line.saleUnitMarginPercentage,
+          saleUnitPrice: line.saleUnitPrice,
         })),
       });
     }
@@ -631,13 +607,6 @@ export class SaleReturnService {
         invoiceItem,
       );
 
-      const purchaseUnitPrice = Number(orderItem?.purchaseUnitPrice ?? 0);
-      const saleUnitPrice = Number(orderItem?.saleUnitPrice ?? 0);
-      const margin = this.stockMarginFromSaleUnitPrice(
-        purchaseUnitPrice,
-        saleUnitPrice,
-      );
-
       return {
         warehouseId: item.warehouseId,
         productId: item.productId,
@@ -645,9 +614,8 @@ export class SaleReturnService {
         productFlavourId: item.productFlavourId ?? null,
         quantity: Number(item.quantity),
         lineAmount: this.lineAmountForQuantity(invoiceItem, Number(item.quantity)),
-        purchaseUnitPrice,
-        saleUnitMarginAmount: margin.saleUnitMarginAmount,
-        saleUnitMarginPercentage: margin.saleUnitMarginPercentage,
+        purchaseUnitPrice: Number(orderItem?.purchaseUnitPrice ?? 0),
+        saleUnitPrice: Number(orderItem?.saleUnitPrice ?? 0),
       };
     });
   }

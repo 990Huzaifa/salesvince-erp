@@ -48,11 +48,7 @@ export class ProductMergeResultDto {
 
   @IsNumber()
   @Min(0)
-  saleUnitMarginAmount: number;
-
-  @IsNumber()
-  @Min(0)
-  saleUnitMarginPercentage: number;
+  saleUnitPrice: number;
 }
 
 export class CreateProductMergeDto {
