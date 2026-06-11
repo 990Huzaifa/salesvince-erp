@@ -5,6 +5,10 @@ import { extname } from 'node:path';
 import { S3Service } from 'src/common/s3/s3.service';
 import { ASSET_RULES, AssetPurpose } from '../config/asset-rules.config';
 import { CreateProductAsyncDto } from '../dto/product/create-product-async.dto';
+import {
+  snapshotUploadedFile,
+  UploadedFileSnapshot,
+} from '../utils/snapshot-uploaded-file';
 import { ActivityLogService } from './activity-log.service';
 import { NotificationService } from './notification.service';
 import { ProductService } from './product.service';
@@ -32,10 +36,11 @@ export class ProductCreateJobService {
     tenantDb: DataSource,
     tenantCode: string,
     dto: CreateProductAsyncDto,
-    image: Express.Multer.File | undefined,
+    uploadedFile: Express.Multer.File | undefined,
     user: any,
   ) {
-    this.validateImageFile(image);
+    const fileSnapshot = snapshotUploadedFile(uploadedFile, 'file');
+    this.validateImageFile(fileSnapshot);
     await this.productService.validateForCreate(tenantDb, dto, user);
 
     const job = this.tenantJobService.createJob({
@@ -59,7 +64,7 @@ export class ProductCreateJobService {
       },
     });
 
-    void this.processCreateJob(tenantDb, job.id, tenantCode, dto, image, user).catch(
+    void this.processCreateJob(tenantDb, job.id, tenantCode, dto, fileSnapshot, user).catch(
       (error) => {
         this.logger.error(
           `Product create job ${job.id} failed unexpectedly`,
@@ -76,38 +81,34 @@ export class ProductCreateJobService {
     };
   }
 
-  private validateImageFile(image: Express.Multer.File | undefined): void {
-    if (!image) {
+  private validateImageFile(file: UploadedFileSnapshot | undefined): void {
+    if (!file) {
       return;
     }
 
     const rules = ASSET_RULES[AssetPurpose.PRODUCT_IMAGE];
     const allowedMimeTypes = rules.allowedMimeTypes as readonly string[];
 
-    if (!allowedMimeTypes.includes(image.mimetype)) {
+    if (!allowedMimeTypes.includes(file.mimetype)) {
       throw new BadRequestException(
-        `Image MIME type ${image.mimetype} is not allowed. Allowed: ${allowedMimeTypes.join(', ')}`,
+        `File MIME type ${file.mimetype} is not allowed. Allowed: ${allowedMimeTypes.join(', ')}`,
       );
     }
 
-    if (image.size > rules.maxSizeBytes) {
+    if (file.size > rules.maxSizeBytes) {
       throw new BadRequestException(
-        `Image exceeds maximum size of ${rules.maxSizeBytes} bytes`,
+        `File exceeds maximum size of ${rules.maxSizeBytes} bytes`,
       );
-    }
-
-    if (!image.buffer?.length) {
-      throw new BadRequestException('Image file is empty');
     }
   }
 
-  private resolveImageExtension(image: Express.Multer.File): string {
-    const fromMime = MIME_TO_EXTENSION[image.mimetype];
+  private resolveImageExtension(file: UploadedFileSnapshot): string {
+    const fromMime = MIME_TO_EXTENSION[file.mimetype];
     if (!fromMime) {
       throw new BadRequestException('Could not map image MIME type to an extension');
     }
 
-    let ext = extname(image.originalname).toLowerCase().replace(/^\./, '');
+    let ext = extname(file.originalname).toLowerCase().replace(/^\./, '');
     if (ext === 'jpeg') {
       ext = 'jpg';
     }
@@ -117,7 +118,7 @@ export class ProductCreateJobService {
       'image/png': ['png'],
       'image/webp': ['webp'],
     };
-    const names = allowedForMime[image.mimetype];
+    const names = allowedForMime[file.mimetype];
     if (ext && names?.includes(ext)) {
       return ext;
     }
@@ -125,18 +126,18 @@ export class ProductCreateJobService {
     return fromMime;
   }
 
-  private async uploadProductImage(
+  private async uploadProductImageFile(
     tenantCode: string,
-    image: Express.Multer.File,
+    file: UploadedFileSnapshot,
   ): Promise<{ key: string; url: string }> {
     const rules = ASSET_RULES[AssetPurpose.PRODUCT_IMAGE];
-    const extension = this.resolveImageExtension(image);
+    const extension = this.resolveImageExtension(file);
     const key = `tenants/${tenantCode}/${rules.folder}/${randomUUID()}.${extension}`;
 
     const uploaded = await this.s3Service.uploadObject(
       key,
-      image.buffer,
-      image.mimetype,
+      file.buffer,
+      file.mimetype,
     );
 
     return { key: uploaded.key, url: uploaded.url };
@@ -147,7 +148,7 @@ export class ProductCreateJobService {
     jobId: string,
     tenantCode: string,
     dto: CreateProductAsyncDto,
-    image: Express.Multer.File | undefined,
+    file: UploadedFileSnapshot | undefined,
     user: any,
   ): Promise<void> {
     this.tenantJobService.startJob(jobId);
@@ -156,8 +157,8 @@ export class ProductCreateJobService {
     let imageUrl: string | null = null;
 
     try {
-      if (image) {
-        const uploaded = await this.uploadProductImage(tenantCode, image);
+      if (file) {
+        const uploaded = await this.uploadProductImageFile(tenantCode, file);
         uploadedKey = uploaded.key;
         imageUrl = uploaded.url;
       }

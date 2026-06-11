@@ -7,7 +7,7 @@ import {
   Put,
   Query,
   Req,
-  UploadedFile,
+  UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -28,9 +28,11 @@ import { CreateProductDto } from '../dto/product/create-product.dto';
 import { UpdateProductDto } from '../dto/product/update-product.dto';
 import { ProductCreateJobService } from '../service/product-create-job.service';
 import { ProductService } from '../service/product.service';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
+import { productImageUploadOptions } from '../config/product-image-upload.config';
 import { parseJsonFormField } from '../utils/parse-json-form-field';
+import { resolveUploadedFile } from '../utils/snapshot-uploaded-file';
 
 @Controller('tenant/products')
 @UseGuards(
@@ -59,11 +61,20 @@ export class ProductController {
 
   @Post('create-async')
   @RequirePermissions('CREATE_PRODUCT')
-  @UseInterceptors(FileInterceptor('image'))
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'file', maxCount: 1 },
+        { name: 'image', maxCount: 1 },
+      ],
+      productImageUploadOptions,
+    ),
+  )
   createAsync(
     @TenantConnection() tenantDb: DataSource,
     @Body('data') data: string,
-    @UploadedFile() image: Express.Multer.File,
+    @UploadedFiles()
+    files: { file?: Express.Multer.File[]; image?: Express.Multer.File[] },
     @Req() req: Request,
     @TenantCode() tenantCode: string,
   ) {
@@ -72,7 +83,7 @@ export class ProductController {
       tenantDb,
       tenantCode,
       dto,
-      image,
+      resolveUploadedFile(files),
       req.user,
     );
   }
