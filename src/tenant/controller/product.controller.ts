@@ -91,9 +91,9 @@ export class ProductController {
     @Param('id') id: string,
     @Body() dto: UpdateProductDto,
     @Req() req: Request,
-    @TenantId() tenantId: string,
+    @TenantCode() tenantCode: string,
   ) {
-    return this.productService.edit(tenantDb, tenantId, id, dto, req.user);
+    return this.productService.edit(tenantDb, tenantCode, id, dto, req.user);
   }
 
   @Put('update/:id/status')

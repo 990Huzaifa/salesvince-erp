@@ -471,7 +471,7 @@ export class ProductService {
 
   async edit(
     tenantDb: DataSource,
-    tenantId: string,
+    tenantCode: string,
     id: string,
     dto: UpdateProductDto,
     user: any,
@@ -575,7 +575,7 @@ export class ProductService {
         if (uniqueAssetIds.length) {
           const urls = await this.collectApprovedProductImageUrls(
             manager,
-            tenantId,
+            tenantCode,
             uniqueAssetIds,
             user,
           );
