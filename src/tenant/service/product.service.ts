@@ -35,6 +35,7 @@ import { S3Service } from 'src/common/s3/s3.service';
 import { randomUUID } from 'node:crypto';
 import { extname } from 'node:path';
 import { createChartOfAccountForProduct } from 'src/tenant-db/helpers/product-chart-of-account.helper';
+import { CreateProductAsyncDto } from '../dto/product/create-product-async.dto';
 import { CreateProductDto } from '../dto/product/create-product.dto';
 import { UpdateProductDto } from '../dto/product/update-product.dto';
 import { BatchPickStrategy } from 'src/tenant-db/entities/product.entity';
@@ -223,17 +224,17 @@ export class ProductService {
     }
   }
 
-  async create(tenantDb: DataSource, tenantCode: string, dto: CreateProductDto, user: any) {
+  async validateForCreate(
+    tenantDb: DataSource,
+    dto: CreateProductAsyncDto,
+    user: any,
+  ): Promise<void> {
     const categoryId = dto.categoryId.trim();
     const subCategoryId = dto.subCategoryId.trim();
     const brandId = dto.brandId?.trim();
-    const skuCode = await this.resolveSkuCode(tenantDb, dto.skuCode);
-    const name = dto.name.trim();
-    const description = dto.description?.trim() || null;
-    const hsCode = dto.hsCode?.trim() || null;
     const barcode = dto.barcode?.trim() || null;
     const flavourIds = (dto.flavourIds ?? []).map((id) => id.trim()).filter(Boolean);
-    const batchPickStrategy = dto.batchPickStrategy ?? BatchPickStrategy.LIFO;
+    const skuCode = dto.skuCode?.trim();
 
     await this.ensureCategoryExists(tenantDb, categoryId, user);
     await this.ensureSubCategoryExists(tenantDb, subCategoryId, categoryId, user);
@@ -250,29 +251,31 @@ export class ProductService {
       tenantDb,
       dto.pricing.map((item) => item.uomId.trim()),
     );
+    if (skuCode) {
+      await this.ensureSkuUnique(tenantDb, skuCode);
+    }
+  }
 
-    const uniqueAssetIds = dto.assetIds?.length
-      ? this.dedupeAssetIdsPreserveOrder(
-          dto.assetIds.map((id) => id.trim()).filter(Boolean),
-        )
-      : [];
+  async createWithImageUrl(
+    tenantDb: DataSource,
+    dto: CreateProductAsyncDto,
+    imageUrl: string | null,
+    user: any,
+  ): Promise<Product> {
+    const categoryId = dto.categoryId.trim();
+    const subCategoryId = dto.subCategoryId.trim();
+    const brandId = dto.brandId?.trim();
+    const skuCode = await this.resolveSkuCode(tenantDb, dto.skuCode);
+    const name = dto.name.trim();
+    const description = dto.description?.trim() || null;
+    const hsCode = dto.hsCode?.trim() || null;
+    const flavourIds = (dto.flavourIds ?? []).map((id) => id.trim()).filter(Boolean);
+    const batchPickStrategy = dto.batchPickStrategy ?? BatchPickStrategy.LIFO;
 
-    const createdProduct = await tenantDb.transaction(async (manager) => {
+    return tenantDb.transaction(async (manager) => {
       const productRepo = manager.getRepository(Product);
       const productFlavourRepo = manager.getRepository(ProductFlavour);
       const productPricingRepo = manager.getRepository(ProductPricing);
-      const assetRepo = manager.getRepository(Asset);
-
-      let productImage: string | null = dto.image?.trim() || null;
-      if (uniqueAssetIds.length) {
-        const urls = await this.collectApprovedProductImageUrls(
-          manager,
-          tenantCode,
-          uniqueAssetIds,
-          user,
-        );
-        productImage = urls.join(',');
-      }
 
       const product = productRepo.create({
         businessId: user.businessId,
@@ -283,7 +286,7 @@ export class ProductService {
         name,
         description,
         hsCode,
-        image: productImage,
+        image: imageUrl,
         isActive: dto.isActive,
         createdBy: user.userId,
         batchPickStrategy,
@@ -291,20 +294,6 @@ export class ProductService {
 
       const savedProduct = await productRepo.save(product);
       await createChartOfAccountForProduct(manager, savedProduct);
-
-      if (uniqueAssetIds.length) {
-        const now = new Date();
-        for (const assetId of uniqueAssetIds) {
-          await assetRepo.update(
-            { id: assetId },
-            {
-              entityType: AssetEntityType.PRODUCT,
-              entityId: savedProduct.id,
-              attachedAt: now,
-            },
-          );
-        }
-      }
 
       if (flavourIds.length) {
         const flavourRows = [...new Set(flavourIds)].map((flavourId) =>
@@ -330,6 +319,51 @@ export class ProductService {
 
       return savedProduct;
     });
+  }
+
+  async create(tenantDb: DataSource, tenantCode: string, dto: CreateProductDto, user: any) {
+    await this.validateForCreate(tenantDb, dto, user);
+
+    const uniqueAssetIds = dto.assetIds?.length
+      ? this.dedupeAssetIdsPreserveOrder(
+          dto.assetIds.map((id) => id.trim()).filter(Boolean),
+        )
+      : [];
+
+    let productImage: string | null = dto.image?.trim() || null;
+    if (uniqueAssetIds.length) {
+      productImage = await tenantDb.transaction(async (manager) => {
+        const urls = await this.collectApprovedProductImageUrls(
+          manager,
+          tenantCode,
+          uniqueAssetIds,
+          user,
+        );
+        return urls.join(',');
+      });
+    }
+
+    const createdProduct = await this.createWithImageUrl(
+      tenantDb,
+      dto,
+      productImage,
+      user,
+    );
+
+    if (uniqueAssetIds.length) {
+      const now = new Date();
+      const assetRepo = tenantDb.getRepository(Asset);
+      for (const assetId of uniqueAssetIds) {
+        await assetRepo.update(
+          { id: assetId },
+          {
+            entityType: AssetEntityType.PRODUCT,
+            entityId: createdProduct.id,
+            attachedAt: now,
+          },
+        );
+      }
+    }
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: user.userId,

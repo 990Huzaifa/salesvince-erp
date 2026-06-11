@@ -7,7 +7,7 @@ import {
   Put,
   Query,
   Req,
-  UploadedFiles,
+  UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
@@ -23,11 +23,14 @@ import {
   TenantConnection,
   TenantId,
 } from 'src/common/tenant/tenant-connection.decorator';
+import { CreateProductAsyncDto } from '../dto/product/create-product-async.dto';
 import { CreateProductDto } from '../dto/product/create-product.dto';
 import { UpdateProductDto } from '../dto/product/update-product.dto';
+import { ProductCreateJobService } from '../service/product-create-job.service';
 import { ProductService } from '../service/product.service';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
+import { parseJsonFormField } from '../utils/parse-json-form-field';
 
 @Controller('tenant/products')
 @UseGuards(
@@ -38,7 +41,10 @@ import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard
   TenantBusinessAccessGuard,
 )
 export class ProductController {
-  constructor(private readonly productService: ProductService) {}
+  constructor(
+    private readonly productService: ProductService,
+    private readonly productCreateJobService: ProductCreateJobService,
+  ) {}
 
   @Post('create')
   @RequirePermissions('CREATE_PRODUCT')
@@ -51,6 +57,25 @@ export class ProductController {
     return this.productService.create(tenantDb, tenantCode, dto, req.user);
   }
 
+  @Post('create-async')
+  @RequirePermissions('CREATE_PRODUCT')
+  @UseInterceptors(FileInterceptor('image'))
+  createAsync(
+    @TenantConnection() tenantDb: DataSource,
+    @Body('data') data: string,
+    @UploadedFile() image: Express.Multer.File,
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    const dto = parseJsonFormField(data, CreateProductAsyncDto);
+    return this.productCreateJobService.createAsync(
+      tenantDb,
+      tenantCode,
+      dto,
+      image,
+      req.user,
+    );
+  }
 
   @Get()
   @RequirePermissions('LIST_PRODUCT')

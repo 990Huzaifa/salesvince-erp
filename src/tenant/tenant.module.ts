@@ -55,6 +55,7 @@ import { TransactionController } from './controller/transaction.controller';
 import { AssetController } from './controller/asset.controller';
 import { AssetService } from './service/asset.service';
 import { ProductController } from './controller/product.controller';
+import { ProductCreateJobService } from './service/product-create-job.service';
 import { ProductService } from './service/product.service';
 import { TenantUtilityController } from './controller/utility.controller';
 import { TenantUtilityService } from './service/tenant-utility.service';
@@ -249,6 +250,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     ProductCategoryService,
     ProductSubCategoryService,
     ProductService,
+    ProductCreateJobService,
     AssetService,
     TenantUtilityService,
     PurchaseQuotationService,
