@@ -25,13 +25,17 @@ import {
 } from 'src/common/tenant/tenant-connection.decorator';
 import { CreateProductAsyncDto } from '../dto/product/create-product-async.dto';
 import { CreateProductDto } from '../dto/product/create-product.dto';
+import { UpdateProductAsyncDto } from '../dto/product/update-product-async.dto';
 import { UpdateProductDto } from '../dto/product/update-product.dto';
 import { ProductCreateJobService } from '../service/product-create-job.service';
 import { ProductService } from '../service/product.service';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
 import { productImageUploadOptions } from '../config/product-image-upload.config';
-import { parseJsonFormField } from '../utils/parse-json-form-field';
+import {
+  parseJsonFormField,
+  parseOptionalJsonFormField,
+} from '../utils/parse-json-form-field';
 import { resolveUploadedFile } from '../utils/snapshot-uploaded-file';
 
 @Controller('tenant/products')
@@ -118,6 +122,37 @@ export class ProductController {
     @Req() req: Request,
   ) {
     return this.productService.view(tenantDb, id, req.user);
+  }
+
+  @Post('update-async/:id')
+  @RequirePermissions('UPDATE_PRODUCT')
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'file', maxCount: 1 },
+        { name: 'image', maxCount: 1 },
+      ],
+      productImageUploadOptions,
+    ),
+  )
+  updateAsync(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id') id: string,
+    @Body('data') data: string,
+    @UploadedFiles()
+    files: { file?: Express.Multer.File[]; image?: Express.Multer.File[] },
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    const dto = parseOptionalJsonFormField(data, UpdateProductAsyncDto);
+    return this.productCreateJobService.updateAsync(
+      tenantDb,
+      tenantCode,
+      id,
+      dto,
+      resolveUploadedFile(files),
+      req.user,
+    );
   }
 
   @Put('update/:id')

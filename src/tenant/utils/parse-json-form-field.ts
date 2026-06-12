@@ -35,3 +35,15 @@ export function parseJsonFormField<T extends object>(
 
   return instance;
 }
+
+export function parseOptionalJsonFormField<T extends object>(
+  raw: string | undefined,
+  dtoClass: new () => T,
+  fieldName = 'data',
+): T {
+  if (!raw?.trim()) {
+    return plainToInstance(dtoClass, {});
+  }
+
+  return parseJsonFormField(raw, dtoClass, fieldName);
+}

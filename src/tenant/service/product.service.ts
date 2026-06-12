@@ -37,6 +37,7 @@ import { extname } from 'node:path';
 import { createChartOfAccountForProduct } from 'src/tenant-db/helpers/product-chart-of-account.helper';
 import { CreateProductAsyncDto } from '../dto/product/create-product-async.dto';
 import { CreateProductDto } from '../dto/product/create-product.dto';
+import { UpdateProductAsyncDto } from '../dto/product/update-product-async.dto';
 import { UpdateProductDto } from '../dto/product/update-product.dto';
 import { BatchPickStrategy } from 'src/tenant-db/entities/product.entity';
 import { generateSequentialCode } from './hr/hr-common.util';
@@ -254,6 +255,69 @@ export class ProductService {
     if (skuCode) {
       await this.ensureSkuUnique(tenantDb, skuCode);
     }
+  }
+
+  async validateForUpdate(
+    tenantDb: DataSource,
+    id: string,
+    dto: UpdateProductAsyncDto,
+    user: any,
+  ): Promise<Product> {
+    const product = await tenantDb.getRepository(Product).findOne({
+      where: { id, isDelete: false },
+    });
+
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    if (dto.categoryId !== undefined) {
+      await this.ensureCategoryExists(tenantDb, dto.categoryId.trim(), user);
+    }
+
+    if (dto.subCategoryId !== undefined) {
+      const categoryId = dto.categoryId?.trim() ?? product.categoryId;
+      await this.ensureSubCategoryExists(
+        tenantDb,
+        dto.subCategoryId.trim(),
+        categoryId,
+        user,
+      );
+    } else if (dto.categoryId !== undefined && product.subCategoryId) {
+      await this.ensureSubCategoryExists(
+        tenantDb,
+        product.subCategoryId,
+        dto.categoryId.trim(),
+        user,
+      );
+    }
+
+    if (dto.brandId !== undefined) {
+      const nextBrandId = dto.brandId?.trim();
+      if (nextBrandId) {
+        await this.ensureBrandExists(tenantDb, nextBrandId);
+      }
+    }
+
+    if (dto.skuCode !== undefined) {
+      await this.ensureSkuUnique(tenantDb, dto.skuCode.trim(), id);
+    }
+
+    if (dto.flavourIds !== undefined) {
+      const flavourIds = dto.flavourIds.map((item) => item.trim()).filter(Boolean);
+      if (flavourIds.length) {
+        await this.ensureFlavoursExist(tenantDb, flavourIds);
+      }
+    }
+
+    if (dto.pricing !== undefined && dto.pricing.length) {
+      await this.ensureUomsExist(
+        tenantDb,
+        dto.pricing.map((item) => item.uomId.trim()),
+      );
+    }
+
+    return product;
   }
 
   async createWithImageUrl(
@@ -501,6 +565,179 @@ export class ProductService {
     });
 
     return product;
+  }
+
+  async updateWithImageUrl(
+    tenantDb: DataSource,
+    id: string,
+    dto: UpdateProductAsyncDto,
+    imageUrl: string | undefined,
+    user: any,
+  ): Promise<Product> {
+    return tenantDb.transaction(async (manager) => {
+      const productRepo = manager.getRepository(Product);
+      const product = await productRepo.findOne({
+        where: { id, isDelete: false },
+      });
+
+      if (!product) {
+        throw new NotFoundException('Product not found');
+      }
+
+      if (dto.batchPickStrategy !== undefined) {
+        product.batchPickStrategy = dto.batchPickStrategy ?? BatchPickStrategy.LIFO;
+      }
+
+      if (dto.barcode !== undefined) {
+        product.barcode = dto.barcode?.trim() || null;
+      }
+
+      if (dto.categoryId !== undefined) {
+        product.categoryId = dto.categoryId.trim();
+      }
+
+      if (dto.subCategoryId !== undefined) {
+        product.subCategoryId = dto.subCategoryId.trim();
+      }
+
+      if (dto.brandId !== undefined) {
+        const nextBrandId = dto.brandId?.trim();
+        product.brandId = nextBrandId || null;
+      }
+
+      if (dto.skuCode !== undefined) {
+        product.skuCode = dto.skuCode.trim();
+      }
+
+      if (dto.name !== undefined) {
+        product.name = dto.name.trim();
+      }
+
+      if (dto.description !== undefined) {
+        product.description = dto.description?.trim() || null;
+      }
+
+      if (dto.hsCode !== undefined) {
+        product.hsCode = dto.hsCode?.trim() || null;
+      }
+
+      if (imageUrl !== undefined) {
+        product.image = imageUrl;
+      }
+
+      if (dto.isActive !== undefined) {
+        product.isActive = dto.isActive;
+      }
+
+      if (dto.flavourIds !== undefined) {
+        const flavourIds = dto.flavourIds.map((item) => item.trim()).filter(Boolean);
+        const requestedFlavourIds = [...new Set(flavourIds)];
+        const productFlavourRepo = manager.getRepository(ProductFlavour);
+        const existingFlavours = await productFlavourRepo.find({
+          where: { productId: product.id },
+        });
+        const existingFlavourIdSet = new Set(existingFlavours.map((item) => item.flavourId));
+
+        const newFlavourRows = requestedFlavourIds
+          .filter((flavourId) => !existingFlavourIdSet.has(flavourId))
+          .map((flavourId) =>
+            productFlavourRepo.create({
+              productId: product.id,
+              flavourId,
+            }),
+          );
+
+        if (newFlavourRows.length) {
+          await productFlavourRepo.save(newFlavourRows);
+        }
+
+        const flavourRowsToRemove = existingFlavours.filter(
+          (item) => !requestedFlavourIds.includes(item.flavourId),
+        );
+        for (const row of flavourRowsToRemove) {
+          try {
+            await productFlavourRepo.delete({ id: row.id });
+          } catch (error) {
+            if (
+              error instanceof QueryFailedError &&
+              (error as any).driverError?.code === '23503'
+            ) {
+              throw new BadRequestException(
+                `Flavour is already in use and cannot be removed from this product.`,
+              );
+            }
+            throw error;
+          }
+        }
+      }
+
+      if (dto.pricing !== undefined) {
+        const requestedPricingByUom = new Map(
+          dto.pricing.map((item) => [
+            item.uomId.trim(),
+            {
+              purchaseUnitPrice: item.purchaseUnitPrice,
+              saleUnitMarginAmount: item.saleUnitMarginAmount,
+              saleUnitMarginPercentage: item.saleUnitMarginPercentage,
+              quantity: Number(item.quantity),
+            },
+          ]),
+        );
+        const requestedUomIds = [...requestedPricingByUom.keys()];
+        const productPricingRepo = manager.getRepository(ProductPricing);
+        const existingPricing = await productPricingRepo.find({
+          where: { productId: product.id },
+        });
+
+        const existingPricingByUom = new Map(
+          existingPricing.map((item) => [item.uomId, item]),
+        );
+
+        for (const [uomId, requestedPricing] of requestedPricingByUom) {
+          const currentPricing = existingPricingByUom.get(uomId);
+          if (currentPricing) {
+            currentPricing.purchaseUnitPrice = requestedPricing.purchaseUnitPrice;
+            currentPricing.saleUnitMarginAmount = requestedPricing.saleUnitMarginAmount;
+            currentPricing.saleUnitMarginPercentage = requestedPricing.saleUnitMarginPercentage;
+            currentPricing.quantity = requestedPricing.quantity;
+            await productPricingRepo.save(currentPricing);
+            continue;
+          }
+
+          await productPricingRepo.save(
+            productPricingRepo.create({
+              productId: product.id,
+              uomId,
+              purchaseUnitPrice: requestedPricing.purchaseUnitPrice,
+              saleUnitMarginAmount: requestedPricing.saleUnitMarginAmount,
+              saleUnitMarginPercentage: requestedPricing.saleUnitMarginPercentage,
+              quantity: requestedPricing.quantity,
+            }),
+          );
+        }
+
+        const pricingRowsToRemove = existingPricing.filter(
+          (item) => !requestedUomIds.includes(item.uomId),
+        );
+        for (const row of pricingRowsToRemove) {
+          try {
+            await productPricingRepo.delete({ id: row.id });
+          } catch (error) {
+            if (
+              error instanceof QueryFailedError &&
+              (error as any).driverError?.code === '23503'
+            ) {
+              throw new BadRequestException(
+                `Pricing is already in use and cannot be removed from this product.`,
+              );
+            }
+            throw error;
+          }
+        }
+      }
+
+      return productRepo.save(product);
+    });
   }
 
   async edit(
