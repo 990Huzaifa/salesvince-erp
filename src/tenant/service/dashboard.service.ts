@@ -134,6 +134,13 @@ export class DashboardService {
     return { start, end };
   }
 
+  private rollingDaysBounds(days: number): { start: Date; end: Date } {
+    const { start: todayStart, end } = this.todayBounds();
+    const start = new Date(todayStart);
+    start.setUTCDate(start.getUTCDate() - (days - 1));
+    return { start, end };
+  }
+
   private calcMonthTrend(
     current: number,
     previous: number,
@@ -1071,6 +1078,116 @@ export class DashboardService {
       total: this.roundAmount(grandTotal),
       segments,
     };
+  }
+
+  async getAverageOrderValue(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const { start: todayStart, end: todayEnd } = this.todayBounds();
+    const { start: last30Start, end: last30End } = this.rollingDaysBounds(30);
+    const { start: last60Start, end: last60End } = this.rollingDaysBounds(60);
+
+    const [
+      todayHighest,
+      last30Highest,
+      last60Highest,
+      orders,
+    ] = await Promise.all([
+      this.getHighestSaleOrderAmount(
+        tenantDb,
+        scopedBusinessId,
+        todayStart,
+        todayEnd,
+      ),
+      this.getHighestSaleOrderAmount(
+        tenantDb,
+        scopedBusinessId,
+        last30Start,
+        last30End,
+      ),
+      this.getHighestSaleOrderAmount(
+        tenantDb,
+        scopedBusinessId,
+        last60Start,
+        last60End,
+      ),
+      this.fetchSaleOrdersForAov(
+        tenantDb,
+        scopedBusinessId,
+        last60Start,
+        last60End,
+      ),
+    ]);
+
+    return {
+      today_highest_amount_order: { total_amount: todayHighest },
+      last_30_days_highest_amount_order: { total_amount: last30Highest },
+      last_60_days_highest_amount_order: { total_amount: last60Highest },
+      orders,
+    };
+  }
+
+  private async getHighestSaleOrderAmount(
+    tenantDb: DataSource,
+    businessId: string,
+    start: Date,
+    end: Date,
+  ): Promise<string | null> {
+    const row = await tenantDb
+      .getRepository(SaleOrder)
+      .createQueryBuilder('so')
+      .select('MAX(so.totalAmount)', 'maxAmount')
+      .where('so.businessId = :businessId', { businessId })
+      .andWhere('so.orderDate >= :start', { start })
+      .andWhere('so.orderDate <= :end', { end })
+      .andWhere('so.orderStatus = :status', { status: OrderStatus.APPROVED })
+      .getRawOne<{ maxAmount: string | null }>();
+
+    const amount = Number(row?.maxAmount ?? 0);
+    return amount > 0 ? this.formatAmount(amount) : null;
+  }
+
+  private async fetchSaleOrdersForAov(
+    tenantDb: DataSource,
+    businessId: string,
+    start: Date,
+    end: Date,
+  ) {
+    const rows = await tenantDb
+      .getRepository(SaleOrder)
+      .createQueryBuilder('so')
+      .leftJoin('so.customer', 'customer')
+      .select('so.id', 'id')
+      .addSelect('so.orderNumber', 'orderNumber')
+      .addSelect('so.orderDate', 'orderDate')
+      .addSelect('so.totalAmount', 'totalAmount')
+      .addSelect('so.orderStatus', 'orderStatus')
+      .addSelect('customer.name', 'customerName')
+      .where('so.businessId = :businessId', { businessId })
+      .andWhere('so.orderDate >= :start', { start })
+      .andWhere('so.orderDate <= :end', { end })
+      .andWhere('so.orderStatus = :status', { status: OrderStatus.APPROVED })
+      .orderBy('so.orderDate', 'DESC')
+      .addOrderBy('so.createdAt', 'DESC')
+      .getRawMany<{
+        id: string;
+        orderNumber: string;
+        orderDate: Date;
+        totalAmount: string;
+        orderStatus: OrderStatus;
+        customerName: string | null;
+      }>();
+
+    return rows.map((row) => ({
+      id: row.id,
+      order_number: row.orderNumber,
+      order_date: row.orderDate,
+      order_status: row.orderStatus,
+      customer_name: row.customerName,
+      total_amount: this.formatAmount(Number(row.totalAmount ?? 0)),
+    }));
   }
 
   async getSaleAnalytics(

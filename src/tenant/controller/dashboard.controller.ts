@@ -107,4 +107,16 @@ export class DashboardController {
       query.limit ?? 10,
     );
   }
+
+  @Get('average-order-value')
+  getAverageOrderValue(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.dashboardService.getAverageOrderValue(
+      tenantDb,
+      user.businessId,
+    );
+  }
 }
