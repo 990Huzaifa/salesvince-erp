@@ -114,6 +114,34 @@ export class ProductController {
     );
   }
 
+  @Post(':id/images')
+  @RequirePermissions('UPDATE_PRODUCT')
+  @UseInterceptors(
+    FileFieldsInterceptor(
+      [
+        { name: 'file', maxCount: 1 },
+        { name: 'image', maxCount: 1 },
+      ],
+      productImageUploadOptions,
+    ),
+  )
+  uploadImage(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id') id: string,
+    @UploadedFiles()
+    files: { file?: Express.Multer.File[]; image?: Express.Multer.File[] },
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    return this.productService.uploadProductImage(
+      tenantDb,
+      tenantCode,
+      id,
+      resolveUploadedFile(files),
+      req.user,
+    );
+  }
+
   @Get(':id')
   @RequirePermissions('VIEW_PRODUCT')
   view(

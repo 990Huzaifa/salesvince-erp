@@ -33,7 +33,12 @@ import {
 import { ActivityLogService } from './activity-log.service';
 import { S3Service } from 'src/common/s3/s3.service';
 import { randomUUID } from 'node:crypto';
-import { extname } from 'node:path';
+import { basename, extname } from 'node:path';
+import { extractS3KeyFromUrl } from '../utils/extract-s3-key-from-url';
+import {
+  snapshotUploadedFile,
+  type UploadedFileSnapshot,
+} from '../utils/snapshot-uploaded-file';
 import { createChartOfAccountForProduct } from 'src/tenant-db/helpers/product-chart-of-account.helper';
 import { CreateProductAsyncDto } from '../dto/product/create-product-async.dto';
 import { CreateProductDto } from '../dto/product/create-product.dto';
@@ -43,6 +48,19 @@ import { BatchPickStrategy } from 'src/tenant-db/entities/product.entity';
 import { generateSequentialCode } from './hr/hr-common.util';
 
 const SKU_CODE_PREFIX = 'SKU';
+
+const PRODUCT_IMAGE_MIME_TO_EXTENSION: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
+
+const PRODUCT_IMAGE_EXTENSION_TO_MIME: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+};
 
 @Injectable()
 export class ProductService {
@@ -1014,6 +1032,189 @@ export class ProductService {
     });
 
     return this.view(tenantDb, id, user);
+  }
+
+  private validateProductImageFile(file: UploadedFileSnapshot): void {
+    const rules = ASSET_RULES[AssetPurpose.PRODUCT_IMAGE];
+    const allowedMimeTypes = rules.allowedMimeTypes as readonly string[];
+
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException(
+        `File MIME type ${file.mimetype} is not allowed. Allowed: ${allowedMimeTypes.join(', ')}`,
+      );
+    }
+
+    if (file.size > rules.maxSizeBytes) {
+      throw new BadRequestException(
+        `File exceeds maximum size of ${rules.maxSizeBytes} bytes`,
+      );
+    }
+  }
+
+  private sanitizeProductImageFileName(name: string): string {
+    const base = basename(name).trim();
+    return base.length > 0 ? base.slice(0, 512) : 'unnamed';
+  }
+
+  private resolveProductImageExtension(file: UploadedFileSnapshot): string {
+    const fromMime = PRODUCT_IMAGE_MIME_TO_EXTENSION[file.mimetype];
+    if (!fromMime) {
+      throw new BadRequestException('Could not map image MIME type to an extension');
+    }
+
+    let ext = extname(file.originalname).toLowerCase().replace(/^\./, '');
+    if (ext === 'jpeg') {
+      ext = 'jpg';
+    }
+
+    const allowedForMime: Record<string, string[]> = {
+      'image/jpeg': ['jpg', 'jpeg'],
+      'image/png': ['png'],
+      'image/webp': ['webp'],
+    };
+    const names = allowedForMime[file.mimetype];
+    if (ext && names?.includes(ext)) {
+      return ext;
+    }
+
+    return fromMime;
+  }
+
+  private resolveProductImageContentType(fileExtension: string): string {
+    const contentType = PRODUCT_IMAGE_EXTENSION_TO_MIME[fileExtension.toLowerCase()];
+    if (!contentType) {
+      throw new BadRequestException('Unsupported file extension for content type resolution');
+    }
+
+    return contentType;
+  }
+
+  private async removeLinkedProductImageAssets(
+    manager: EntityManager,
+    productId: string,
+    excludeAssetId?: string,
+  ): Promise<string[]> {
+    const assetRepo = manager.getRepository(Asset);
+    const linkedAssets = await assetRepo.find({
+      where: {
+        entityType: AssetEntityType.PRODUCT,
+        entityId: productId,
+        purpose: AssetPurpose.PRODUCT_IMAGE,
+      },
+    });
+
+    const s3Keys: string[] = [];
+    for (const asset of linkedAssets) {
+      if (excludeAssetId && asset.id === excludeAssetId) {
+        continue;
+      }
+      s3Keys.push(asset.s3Key);
+      await assetRepo.delete({ id: asset.id });
+    }
+
+    return s3Keys;
+  }
+
+  private async deleteS3Keys(keys: Iterable<string | null | undefined>): Promise<void> {
+    const uniqueKeys = [
+      ...new Set(
+        [...keys].filter((key): key is string => Boolean(key?.trim())),
+      ),
+    ];
+
+    await Promise.all(
+      uniqueKeys.map((key) => this.s3Service.deleteObject(key).catch(() => undefined)),
+    );
+  }
+
+  async uploadProductImage(
+    tenantDb: DataSource,
+    tenantCode: string,
+    productId: string,
+    file: Express.Multer.File | undefined,
+    user: any,
+  ) {
+    const snapshot = snapshotUploadedFile(file, 'image');
+    if (!snapshot) {
+      throw new BadRequestException('Image file is required');
+    }
+
+    this.validateProductImageFile(snapshot);
+
+    const product = await tenantDb.getRepository(Product).findOne({
+      where: { id: productId, isDelete: false },
+      select: ['id', 'name', 'skuCode', 'image'],
+    });
+    if (!product) {
+      throw new NotFoundException('Product not found');
+    }
+
+    const previousImageKey = extractS3KeyFromUrl(product.image);
+    const rules = ASSET_RULES[AssetPurpose.PRODUCT_IMAGE];
+    const assetId = randomUUID();
+    const extension = this.resolveProductImageExtension(snapshot);
+    const tempKey = `tenants/${tenantCode}/temp/uploads/${assetId}.${extension}`;
+    const destKey = `tenants/${tenantCode}/${rules.folder}/${assetId}.${extension}`;
+    const contentType = this.resolveProductImageContentType(extension);
+    let uploadedTemp = false;
+
+    try {
+      await this.s3Service.uploadObject(tempKey, snapshot.buffer, snapshot.mimetype);
+      uploadedTemp = true;
+      await this.s3Service.copyObject(tempKey, destKey, contentType);
+
+      const now = new Date();
+      const imageUrl = this.s3Service.getObjectUrl(destKey);
+      let oldAssetKeys: string[] = [];
+
+      await tenantDb.transaction(async (manager) => {
+        const assetRepo = manager.getRepository(Asset);
+        const productRepo = manager.getRepository(Product);
+
+        const asset = assetRepo.create({
+          id: assetId,
+          uploadedById: user.userId,
+          purpose: AssetPurpose.PRODUCT_IMAGE,
+          s3Key: destKey,
+          entityType: AssetEntityType.PRODUCT,
+          entityId: productId,
+          originalFileName: this.sanitizeProductImageFileName(snapshot.originalname),
+          fileExtension: extension,
+          fileSize: snapshot.size,
+          status: AssetStatus.APPROVED,
+          confirmedAt: now,
+          attachedAt: now,
+        });
+        await assetRepo.save(asset);
+
+        oldAssetKeys = await this.removeLinkedProductImageAssets(
+          manager,
+          productId,
+          assetId,
+        );
+
+        await productRepo.update(productId, { image: imageUrl });
+      });
+
+      await this.s3Service.deleteObject(tempKey).catch(() => undefined);
+      await this.deleteS3Keys([...oldAssetKeys, previousImageKey]);
+
+      await this.activityLogService.recordActivityLog(tenantDb, {
+        actorId: user.userId,
+        businessId: user.businessId,
+        action: 'PRODUCT_IMAGE_UPLOADED',
+        description: `Product ${product.name} image uploaded`,
+        metadata: { productId, assetId, skuCode: product.skuCode },
+      });
+
+      return this.view(tenantDb, productId, user);
+    } catch (error) {
+      if (uploadedTemp) {
+        await this.s3Service.deleteObject(tempKey).catch(() => undefined);
+      }
+      await this.s3Service.deleteObject(destKey).catch(() => undefined);
+      throw error;
+    }
   }
 
   async updateStatus(tenantDb: DataSource, id: string, status: boolean, user: any) {
