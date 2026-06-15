@@ -208,27 +208,56 @@ export class EmployeeSalaryStructureService {
     }
   }
 
-  private async saveComponentLines(
+  private async syncComponentLines(
     tenantDb: DataSource,
     businessId: string,
     structure: EmployeeSalaryStructure,
     components: EmployeeSalaryComponentItemDto[],
   ): Promise<void> {
     const repo = tenantDb.getRepository(EmployeeSalaryComponent);
+    const existing = await repo.find({
+      where: {
+        employeeSalaryStructureId: structure.id,
+        businessId,
+      },
+      withDeleted: true,
+    });
+    const existingBySalaryComponentId = new Map(
+      existing.map((row) => [row.salaryComponentId, row]),
+    );
+    const incomingSalaryComponentIds = new Set(
+      components.map((item) => item.salaryComponentId),
+    );
+
     for (const line of components) {
-      await repo.save(
-        repo.create({
-          businessId,
-          employeeSalaryStructureId: structure.id,
-          employeeId: structure.employeeId,
-          salaryComponentId: line.salaryComponentId,
-          componentType: line.componentType,
-          calculationType: line.calculationType,
-          value: line.value ?? line.calculatedAmount,
-          calculatedAmount: line.calculatedAmount,
-          isActive: line.isActive ?? true,
-        }),
-      );
+      const prior = existingBySalaryComponentId.get(line.salaryComponentId);
+      const nextValues = {
+        businessId,
+        employeeSalaryStructureId: structure.id,
+        employeeId: structure.employeeId,
+        salaryComponentId: line.salaryComponentId,
+        componentType: line.componentType,
+        calculationType: line.calculationType,
+        value: line.value ?? line.calculatedAmount,
+        calculatedAmount: line.calculatedAmount,
+        isActive: line.isActive ?? true,
+        deletedAt: null,
+      };
+
+      if (prior) {
+        if (prior.deletedAt) {
+          await repo.recover(prior);
+        }
+        await repo.save({ ...prior, ...nextValues });
+      } else {
+        await repo.save(repo.create(nextValues));
+      }
+    }
+
+    for (const row of existing) {
+      if (!row.deletedAt && !incomingSalaryComponentIds.has(row.salaryComponentId)) {
+        await repo.softRemove(row);
+      }
     }
   }
 
@@ -286,7 +315,7 @@ export class EmployeeSalaryStructureService {
       }),
     );
 
-    await this.saveComponentLines(
+    await this.syncComponentLines(
       tenantDb,
       scopedBusinessId,
       structure,
@@ -463,19 +492,6 @@ export class EmployeeSalaryStructureService {
         dto.components,
       );
 
-      const existingLines = await tenantDb
-        .getRepository(EmployeeSalaryComponent)
-        .find({
-          where: {
-            employeeSalaryStructureId: row.id,
-            businessId: scopedBusinessId,
-            deletedAt: IsNull(),
-          },
-        });
-      for (const line of existingLines) {
-        await tenantDb.getRepository(EmployeeSalaryComponent).softRemove(line);
-      }
-
       const totals = this.computeTotals(dto.components);
       row.basicSalary = dto.basicSalary ?? totals.basicSalary;
       row.grossSalary = totals.grossSalary;
@@ -484,7 +500,7 @@ export class EmployeeSalaryStructureService {
       row.netSalary = totals.netSalary;
 
       await tenantDb.getRepository(EmployeeSalaryStructure).save(row);
-      await this.saveComponentLines(
+      await this.syncComponentLines(
         tenantDb,
         scopedBusinessId,
         row,
