@@ -138,4 +138,20 @@ export class SalaryVoucherController {
       user.userId,
     );
   }
+
+  @Post('cancel/:id')
+  @RequirePermissions('CANCEL_SALARY_VOUCHER')
+  cancel(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.salaryVoucherService.cancel(
+      tenantDb,
+      user.businessId!,
+      id,
+      user.userId,
+    );
+  }
 }

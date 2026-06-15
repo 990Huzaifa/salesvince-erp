@@ -138,4 +138,20 @@ export class ExpenseVoucherController {
       user.userId,
     );
   }
+
+  @Post('cancel/:id')
+  @RequirePermissions('CANCEL_EXPENSE_VOUCHER')
+  cancel(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.expenseVoucherService.cancel(
+      tenantDb,
+      user.businessId!,
+      id,
+      user.userId,
+    );
+  }
 }

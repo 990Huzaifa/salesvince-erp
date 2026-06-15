@@ -138,4 +138,20 @@ export class SaleVoucherController {
       user.userId,
     );
   }
+
+  @Post('cancel/:id')
+  @RequirePermissions('CANCEL_SALE_VOUCHER')
+  cancel(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.saleVoucherService.cancel(
+      tenantDb,
+      user.businessId!,
+      id,
+      user.userId,
+    );
+  }
 }

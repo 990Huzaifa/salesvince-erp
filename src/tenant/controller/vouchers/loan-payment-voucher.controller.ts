@@ -140,4 +140,20 @@ export class LoanPaymentVoucherController {
       user.userId,
     );
   }
+
+  @Post('cancel/:id')
+  @RequirePermissions('CANCEL_LOAN_PAYMENT_VOUCHER')
+  cancel(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.loanPaymentVoucherService.cancel(
+      tenantDb,
+      user.businessId!,
+      id,
+      user.userId,
+    );
+  }
 }

@@ -418,6 +418,43 @@ export class SalaryVoucherService {
     return approved;
   }
 
+  async cancel(
+    tenantDb: DataSource,
+    businessId: string,
+    id: string,
+    userId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+
+    const cancelled = await tenantDb.transaction(async (manager) => {
+      const voucher = await manager.getRepository(SalaryVoucher).findOne({
+        where: { id, businessId: scopedBusinessId },
+      });
+      if (!voucher) {
+        throw new NotFoundException('Salary voucher not found');
+      }
+      if (voucher.status === VoucherStatus.PAID) {
+        throw new BadRequestException('Paid vouchers cannot be cancelled');
+      }
+      if (voucher.status === VoucherStatus.CANCELLED) {
+        throw new BadRequestException('Cancelled vouchers cannot be cancelled');
+      }
+
+      voucher.status = VoucherStatus.CANCELLED;
+      return manager.getRepository(SalaryVoucher).save(voucher);
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: userId,
+      businessId: scopedBusinessId,
+      action: 'SALARY_VOUCHER_CANCELLED',
+      description: `Salary voucher ${cancelled.voucherNumber} cancelled`,
+      metadata: { voucherId: cancelled.id },
+    });
+
+    return cancelled;
+  }
+
   async list(
     tenantDb: DataSource,
     businessId: string,

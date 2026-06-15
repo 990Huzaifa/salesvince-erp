@@ -93,4 +93,15 @@ export class PurchaseReturnVoucherService {
       userId,
     );
   }
+
+
+  cancel(tenantDb: DataSource, businessId: string, id: string, userId: string) {
+    return this.voucherOps.cancel(
+      tenantDb,
+      businessId,
+      PURCHASE_RETURN_VOUCHER_CONFIG,
+      id,
+      userId,
+    );
+  }
 }

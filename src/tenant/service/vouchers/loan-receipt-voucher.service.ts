@@ -93,4 +93,14 @@ export class LoanReceiptVoucherService {
       userId,
     );
   }
+
+  cancel(tenantDb: DataSource, businessId: string, id: string, userId: string) {
+    return this.voucherOps.cancel(
+      tenantDb,
+      businessId,
+      LOAN_RECEIPT_VOUCHER_CONFIG,
+      id,
+      userId,
+    );
+  }
 }
