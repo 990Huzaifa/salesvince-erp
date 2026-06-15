@@ -169,29 +169,47 @@ export class PayPolicyService {
   ): Promise<void> {
     const repo = tenantDb.getRepository(PayPolicyComponent);
     const existing = await repo.find({
-      where: { payPolicyId, businessId, deletedAt: IsNull() },
+      where: { payPolicyId, businessId },
+      withDeleted: true,
     });
-
-    for (const row of existing) {
-      await repo.softRemove(row);
-    }
+    const existingBySalaryComponentId = new Map(
+      existing.map((row) => [row.salaryComponentId, row]),
+    );
+    const incomingSalaryComponentIds = new Set(
+      items.map((item) => item.salaryComponentId),
+    );
 
     let sortOrder = 0;
     for (const item of items) {
-      await repo.save(
-        repo.create({
-          businessId,
-          payPolicyId,
-          salaryComponentId: item.salaryComponentId,
-          calculationType: item.calculationType,
-          value: item.value ?? null,
-          basedOnComponentId: item.basedOnComponentId ?? null,
-          formula: item.formula?.trim() ?? null,
-          sortOrder: item.sortOrder ?? sortOrder,
-          isActive: item.isActive ?? true,
-        }),
-      );
+      const prior = existingBySalaryComponentId.get(item.salaryComponentId);
+      const nextValues = {
+        businessId,
+        payPolicyId,
+        salaryComponentId: item.salaryComponentId,
+        calculationType: item.calculationType,
+        value: item.value ?? null,
+        basedOnComponentId: item.basedOnComponentId ?? null,
+        formula: item.formula?.trim() ?? null,
+        sortOrder: item.sortOrder ?? sortOrder,
+        isActive: item.isActive ?? true,
+        deletedAt: null,
+      };
+
+      if (prior) {
+        if (prior.deletedAt) {
+          await repo.recover(prior);
+        }
+        await repo.save({ ...prior, ...nextValues });
+      } else {
+        await repo.save(repo.create(nextValues));
+      }
       sortOrder += 1;
+    }
+
+    for (const row of existing) {
+      if (!row.deletedAt && !incomingSalaryComponentIds.has(row.salaryComponentId)) {
+        await repo.softRemove(row);
+      }
     }
   }
 
