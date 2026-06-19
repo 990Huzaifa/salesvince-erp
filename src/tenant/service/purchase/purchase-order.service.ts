@@ -1497,7 +1497,11 @@ export class PurchaseOrderService {
       scopedBusinessId, 
       orderId,
     );
-    this.assertApprovedStatus(order);
+    if (order.orderStatus !== OrderStatus.PENDING) {
+      throw new BadRequestException(
+        'Only pending purchase orders can be rejected',
+      );
+    }
 
     order.orderStatus = OrderStatus.REJECTED;
     const rejected = await tenantDb.getRepository(PurchaseOrder).save(order);

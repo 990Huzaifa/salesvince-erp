@@ -141,6 +141,22 @@ export class PurchaseReturnVoucherController {
     );
   }
 
+  @Post('reject/:id')
+  @RequirePermissions('REJECT_PURCHASE_RETURN_VOUCHER')
+  reject(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.purchaseReturnVoucherService.reject(
+      tenantDb,
+      user.businessId!,
+      id,
+      user.userId,
+    );
+  }
+
   @Post('cancel/:id')
   @RequirePermissions('CANCEL_PURCHASE_RETURN_VOUCHER')
   cancel(

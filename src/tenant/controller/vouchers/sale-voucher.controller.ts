@@ -139,6 +139,22 @@ export class SaleVoucherController {
     );
   }
 
+  @Post('reject/:id')
+  @RequirePermissions('REJECT_SALE_VOUCHER')
+  reject(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.saleVoucherService.reject(
+      tenantDb,
+      user.businessId!,
+      id,
+      user.userId,
+    );
+  }
+
   @Post('cancel/:id')
   @RequirePermissions('CANCEL_SALE_VOUCHER')
   cancel(

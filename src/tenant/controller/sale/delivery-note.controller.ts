@@ -145,4 +145,20 @@ export class DeliveryNoteController {
       user.userId,
     );
   }
+
+  @Post('reject/:id')
+  @RequirePermissions('REJECT_DELIVERY_NOTE')
+  reject(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.deliveryNoteService.reject(
+      tenantDb,
+      user.businessId,
+      id,
+      user.userId,
+    );
+  }
 }

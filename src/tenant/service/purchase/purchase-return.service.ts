@@ -721,6 +721,42 @@ export class PurchaseReturnService {
     return { data: this.mapPurchaseReturn(approved) };
   }
 
+  async reject(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    returnId: string,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const purchaseReturn = await this.findReturnForBusiness(
+      tenantDb,
+      scopedBusinessId,
+      returnId,
+    );
+    this.assertPendingStatus(
+      purchaseReturn,
+      'Only pending purchase returns can be rejected',
+    );
+
+    purchaseReturn.status = PurchaseReturnStatus.REJECTED;
+    const rejected = await tenantDb
+      .getRepository(PurchaseReturn)
+      .save(purchaseReturn);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'PURCHASE_RETURN_REJECTED',
+      description: `Purchase return ${rejected.returnNumber} rejected`,
+      metadata: { purchaseReturnId: rejected.id },
+    });
+
+    return {
+      message: 'Purchase return rejected',
+      data: { id: rejected.id, returnNumber: rejected.returnNumber },
+    };
+  }
+
   async list(
     tenantDb: DataSource,
     businessId: string | undefined,

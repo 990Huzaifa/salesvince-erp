@@ -94,6 +94,15 @@ export class PurchaseReturnVoucherService {
     );
   }
 
+  reject(tenantDb: DataSource, businessId: string, id: string, userId: string) {
+    return this.voucherOps.reject(
+      tenantDb,
+      businessId,
+      PURCHASE_RETURN_VOUCHER_CONFIG,
+      id,
+      userId,
+    );
+  }
 
   cancel(tenantDb: DataSource, businessId: string, id: string, userId: string) {
     return this.voucherOps.cancel(

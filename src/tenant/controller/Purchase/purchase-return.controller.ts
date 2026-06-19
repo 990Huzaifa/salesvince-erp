@@ -127,6 +127,22 @@ export class PurchaseReturnController {
     );
   }
 
+  @Post('reject/:id')
+  @RequirePermissions('REJECT_PURCHASE_RETURN')
+  reject(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.purchaseReturnService.reject(
+      tenantDb,
+      user.businessId,
+      id,
+      user.userId,
+    );
+  }
+
   @Put('update/:id')
   @RequirePermissions('UPDATE_PURCHASE_RETURN')
   edit(

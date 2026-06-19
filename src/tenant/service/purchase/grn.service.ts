@@ -1072,7 +1072,11 @@ export class GrnService {
       scopedBusinessId,
       grnId,
     );
-    this.assertPendingStatus(grn);
+    if (grn.status !== GrnStatus.PENDING && grn.status !== GrnStatus.REJECTED) {
+      throw new BadRequestException(
+        'Only pending or rejected GRNs can be deleted',
+      );
+    }
 
     await tenantDb.getRepository(Grn).softRemove(grn);
 
@@ -1129,6 +1133,37 @@ export class GrnService {
     });
 
     return { data: this.mapGrn(approved) };
+  }
+
+  async reject(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    grnId: string,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const grn = await this.findGrnForBusiness(
+      tenantDb,
+      scopedBusinessId,
+      grnId,
+    );
+    this.assertPendingStatus(grn);
+
+    grn.status = GrnStatus.REJECTED;
+    const rejected = await tenantDb.getRepository(Grn).save(grn);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'GRN_REJECTED',
+      description: `GRN ${rejected.grnNumber} rejected`,
+      metadata: { grnId: rejected.id },
+    });
+
+    return {
+      message: 'GRN rejected',
+      data: { id: rejected.id, grnNumber: rejected.grnNumber },
+    };
   }
 
   /**

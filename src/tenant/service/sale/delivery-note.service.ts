@@ -970,6 +970,40 @@ export class DeliveryNoteService {
     return { data: this.mapDeliveryNote(approved) };
   }
 
+  async reject(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    deliveryNoteId: string,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const deliveryNote = await this.findDeliveryNoteForBusiness(
+      tenantDb,
+      scopedBusinessId,
+      deliveryNoteId,
+    );
+    this.assertPendingStatus(deliveryNote);
+
+    deliveryNote.status = DeliveryNoteStatus.REJECTED;
+    const rejected = await tenantDb.getRepository(DeliveryNote).save(deliveryNote);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'DELIVERY_NOTE_REJECTED',
+      description: `Delivery note ${rejected.deliveryNoteNumber} rejected`,
+      metadata: { deliveryNoteId: rejected.id },
+    });
+
+    return {
+      message: 'Delivery note rejected',
+      data: {
+        id: rejected.id,
+        deliveryNoteNumber: rejected.deliveryNoteNumber,
+      },
+    };
+  }
+
   async edit(
     tenantDb: DataSource,
     businessId: string | undefined,

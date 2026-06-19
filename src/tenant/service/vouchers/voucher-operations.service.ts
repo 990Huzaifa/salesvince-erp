@@ -1064,4 +1064,45 @@ export class VoucherOperationsService {
 
     return cancelled;
   }
+
+  async reject<T extends VoucherEntity>(
+    tenantDb: DataSource,
+    businessId: string,
+    config: VoucherConfig<T>,
+    id: string,
+    userId: string,
+  ) {
+    const rejected = await tenantDb.transaction(async (manager) => {
+      const voucher = await this.findVoucherOrThrow(
+        manager.connection,
+        businessId,
+        config,
+        id,
+      );
+
+      if (voucher.status === VoucherStatus.PAID) {
+        throw new BadRequestException('Paid vouchers cannot be rejected');
+      }
+      if (voucher.status === VoucherStatus.CANCELLED) {
+        throw new BadRequestException('Cancelled vouchers cannot be rejected');
+      }
+
+      voucher.status = VoucherStatus.CANCELLED;
+      const saved = await this.getRepo(manager, config.entity).save(voucher);
+      return saved;
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: userId,
+      businessId,
+      action: `${config.activityKey}_REJECTED`,
+      description: `${config.activityKey} ${rejected.voucherNumber} rejected`,
+      metadata: { voucherId: rejected.id },
+    });
+
+    return {
+      message: `${config.activityKey} rejected`,
+      data: { id: rejected.id, voucherNumber: rejected.voucherNumber },
+    };
+  }
 }

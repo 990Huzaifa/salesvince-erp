@@ -127,6 +127,22 @@ export class SaleReturnController {
     );
   }
 
+  @Post('reject/:id')
+  @RequirePermissions('REJECT_SALE_RETURN')
+  reject(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.saleReturnService.reject(
+      tenantDb,
+      user.businessId,
+      id,
+      user.userId,
+    );
+  }
+
   @Put('update/:id')
   @RequirePermissions('UPDATE_SALE_RETURN')
   edit(

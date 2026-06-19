@@ -164,4 +164,20 @@ export class GrnController {
       user.userId,
     );
   }
+
+  @Post('reject/:id')
+  @RequirePermissions('REJECT_PURCHASE_STOCK')
+  reject(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.grnService.reject(
+      tenantDb,
+      user.businessId,
+      id,
+      user.userId,
+    );
+  }
 }

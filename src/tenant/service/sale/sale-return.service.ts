@@ -756,6 +756,40 @@ export class SaleReturnService {
     return { data: this.mapSaleReturn(approved) };
   }
 
+  async reject(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    returnId: string,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const saleReturn = await this.findReturnForBusiness(
+      tenantDb,
+      scopedBusinessId,
+      returnId,
+    );
+    this.assertPendingStatus(
+      saleReturn,
+      'Only pending sale returns can be rejected',
+    );
+
+    saleReturn.status = SaleReturnStatus.REJECTED;
+    const rejected = await tenantDb.getRepository(SaleReturn).save(saleReturn);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'SALE_RETURN_REJECTED',
+      description: `Sale return ${rejected.returnNumber} rejected`,
+      metadata: { saleReturnId: rejected.id },
+    });
+
+    return {
+      message: 'Sale return rejected',
+      data: { id: rejected.id, returnNumber: rejected.returnNumber },
+    };
+  }
+
   async list(
     tenantDb: DataSource,
     businessId: string | undefined,

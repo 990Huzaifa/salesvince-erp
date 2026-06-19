@@ -1272,7 +1272,11 @@ export class SaleOrderService {
       scopedBusinessId,
       orderId,
     );
-    this.assertPendingStatus(order);
+    if (order.orderStatus !== OrderStatus.PENDING && order.orderStatus !== OrderStatus.REJECTED) {
+      throw new BadRequestException(
+        'Only pending or rejected sale orders can be deleted',
+      );
+    }
 
     await tenantDb.getRepository(SaleOrder).remove(order);
 
@@ -1339,5 +1343,41 @@ export class SaleOrderService {
     });
 
     return { data: this.mapSaleOrder(loaded) };
+  }
+
+  async reject(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    orderId: string,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const order = await this.findOrderForBusiness(
+      tenantDb,
+      scopedBusinessId,
+      orderId,
+    );
+
+    if (order.orderStatus !== OrderStatus.PENDING) {
+      throw new BadRequestException(
+        'Only pending sale orders can be rejected',
+      );
+    }
+
+    order.orderStatus = OrderStatus.REJECTED;
+    const rejected = await tenantDb.getRepository(SaleOrder).save(order);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'SALE_ORDER_REJECTED',
+      description: `Sale order ${rejected.orderNumber} rejected`,
+      metadata: { saleOrderId: rejected.id },
+    });
+
+    return {
+      message: 'Sale order rejected',
+      data: { id: rejected.id, orderNumber: rejected.orderNumber },
+    };
   }
 }

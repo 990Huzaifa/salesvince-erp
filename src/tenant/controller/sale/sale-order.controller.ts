@@ -195,4 +195,20 @@ export class SaleOrderController {
       user.userId,
     );
   }
+
+  @Post('reject/:id')
+  @RequirePermissions('REJECT_SALE_ORDER')
+  reject(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.saleOrderService.reject(
+      tenantDb,
+      user.businessId,
+      id,
+      user.userId,
+    );
+  }
 }
