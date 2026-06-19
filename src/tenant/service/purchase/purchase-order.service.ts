@@ -1422,7 +1422,10 @@ export class PurchaseOrderService {
       scopedBusinessId,
       orderId,
     );
-    this.assertPendingStatus(order);
+
+    if (order.orderStatus !== OrderStatus.PENDING && order.orderStatus !== OrderStatus.REJECTED) {
+      throw new BadRequestException('Only pending or rejected purchase orders can be deleted');
+    }
 
     await tenantDb.getRepository(PurchaseOrder).remove(order);
 
@@ -1480,5 +1483,36 @@ export class PurchaseOrderService {
     });
 
     return { data: this.mapPurchaseOrder(loaded) };
+  }
+
+  async reject(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    orderId: string,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const order = await this.findOrderForBusiness(
+      tenantDb,
+      scopedBusinessId, 
+      orderId,
+    );
+    this.assertApprovedStatus(order);
+
+    order.orderStatus = OrderStatus.REJECTED;
+    const rejected = await tenantDb.getRepository(PurchaseOrder).save(order);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'PURCHASE_ORDER_REJECTED',
+      description: `Purchase order ${rejected.orderNumber} rejected`,
+      metadata: { purchaseOrderId: rejected.id },
+    });
+
+    return {
+      message: 'Purchase order rejected',
+      data: { id: rejected.id, orderNumber: rejected.orderNumber },
+    };
   }
 }
