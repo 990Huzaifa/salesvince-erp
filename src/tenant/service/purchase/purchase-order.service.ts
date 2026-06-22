@@ -35,7 +35,10 @@ import { UpdatePurchaseOrderDto } from '../../dto/purchase-order/update-purchase
 import { UpdatePurchaseOrderItemDto } from '../../dto/purchase-order/update-purchase-order-item.dto';
 import { EditApprovedPurchaseOrderDto } from '../../dto/purchase-order/edit-approved-purchase-order.dto';
 import { EditApprovedPurchaseOrderItemDto } from '../../dto/purchase-order/edit-approved-purchase-order-item.dto';
+import * as XLSX from 'xlsx';
 import { ActivityLogService } from '../activity-log.service';
+import { NotificationService } from '../notification.service';
+import { TenantJob, TenantJobService } from '../tenant-job.service';
 import { GrnService } from './grn.service';
 
 const ORDER_NUMBER_PREFIX = 'PO';
@@ -62,11 +65,21 @@ type OrderTotals = {
   totalAmount: number;
 };
 
+type PurchaseOrderImportRow = {
+  row: number;
+  orderNumber: string;
+  vendorName: string;
+  orderDate: string;
+  warehouseId: string;
+};
+
 @Injectable()
 export class PurchaseOrderService {
   constructor(
     private readonly activityLogService: ActivityLogService,
     private readonly grnService: GrnService,
+    private readonly notificationService: NotificationService,
+    private readonly tenantJobService: TenantJobService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -1517,6 +1530,424 @@ export class PurchaseOrderService {
     return {
       message: 'Purchase order rejected',
       data: { id: rejected.id, orderNumber: rejected.orderNumber },
+    };
+  }
+
+  private sanitizePurchaseOrderImportText(value: unknown): string {
+    if (typeof value !== 'string') {
+      return String(value ?? '').trim();
+    }
+    return value.trim();
+  }
+
+  private normalizePurchaseOrderImportHeaderKey(key: string): string {
+    return key.trim().toLowerCase().replace(/\s+/g, '');
+  }
+
+  private getPurchaseOrderImportRowValue(
+    row: Record<string, unknown>,
+    ...keys: string[]
+  ): unknown {
+    const normalizedRow = new Map<string, unknown>();
+    for (const [key, value] of Object.entries(row)) {
+      normalizedRow.set(this.normalizePurchaseOrderImportHeaderKey(key), value);
+    }
+    for (const key of keys) {
+      const value = normalizedRow.get(
+        this.normalizePurchaseOrderImportHeaderKey(key),
+      );
+      if (value !== undefined) {
+        return value;
+      }
+    }
+    return undefined;
+  }
+
+  private parsePurchaseOrderRowsFromFile(
+    file: Express.Multer.File,
+  ): PurchaseOrderImportRow[] {
+    const extension = file.originalname.split('.').pop()?.toLowerCase();
+    if (!extension || !['csv', 'xls', 'xlsx'].includes(extension)) {
+      throw new BadRequestException('Only CSV, XLS, and XLSX files are supported');
+    }
+
+    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) {
+      return [];
+    }
+
+    const sheet = workbook.Sheets[firstSheetName];
+    const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      defval: '',
+      raw: false,
+    });
+
+    const rows: PurchaseOrderImportRow[] = [];
+
+    rawRows.forEach((row, index) => {
+      const orderNumber = this.sanitizePurchaseOrderImportText(
+        this.getPurchaseOrderImportRowValue(row, 'code', 'orderNumber', 'ordernumber'),
+      );
+      if (!orderNumber || orderNumber.toLowerCase() === 'code') {
+        return;
+      }
+
+      const vendorName = this.sanitizePurchaseOrderImportText(
+        this.getPurchaseOrderImportRowValue(row, 'vendorName', 'vendor', 'vendorname'),
+      );
+      const orderDate = this.sanitizePurchaseOrderImportText(
+        this.getPurchaseOrderImportRowValue(row, 'orderDate', 'orderdate'),
+      );
+      const warehouseId = this.sanitizePurchaseOrderImportText(
+        this.getPurchaseOrderImportRowValue(row, 'warehouseId', 'warehouseid'),
+      );
+
+      rows.push({
+        row: index + 2,
+        orderNumber,
+        vendorName,
+        orderDate,
+        warehouseId,
+      });
+    });
+
+    return rows;
+  }
+
+  private async findVendorByName(
+    tenantDb: DataSource,
+    businessId: string,
+    vendorName: string,
+  ): Promise<Party | null> {
+    return tenantDb.getRepository(Party).findOne({
+      where: {
+        businessId,
+        name: vendorName,
+        type: In([PartyType.VENDOR, PartyType.BOTH]),
+        deletedAt: IsNull(),
+      },
+      select: ['id', 'name'],
+    });
+  }
+
+  private async saveImportedPurchaseOrder(
+    tenantDb: DataSource,
+    params: {
+      businessId: string;
+      actorUserId: string;
+      orderNumber: string;
+      warehouseId: string;
+      vendorId: string;
+      orderDate: Date;
+    },
+  ): Promise<PurchaseOrder> {
+    const totals = this.computeOrderTotals([], {});
+    const orderRepo = tenantDb.getRepository(PurchaseOrder);
+
+    return orderRepo.save(
+      orderRepo.create({
+        orderNumber: params.orderNumber,
+        warehouseId: params.warehouseId,
+        vendorId: params.vendorId,
+        businessId: params.businessId,
+        orderStatus: OrderStatus.PENDING,
+        orderTotal: totals.orderTotal,
+        deliveryCost: totals.deliveryCost,
+        taxPercentage: totals.taxPercentage,
+        taxAmount: totals.taxAmount,
+        discountPercentage: totals.discountPercentage,
+        discountAmount: totals.discountAmount,
+        totalAmount: totals.totalAmount,
+        notes: null,
+        createdBy: params.actorUserId,
+        orderDate: params.orderDate,
+      }),
+    );
+  }
+
+  private async notifyPurchaseOrderImportCompletion(
+    tenantDb: DataSource,
+    job: TenantJob,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+    status: 'completed' | 'failed',
+  ) {
+    const title =
+      status === 'completed'
+        ? 'Purchase order import completed'
+        : 'Purchase order import failed';
+    const message =
+      status === 'completed'
+        ? `Import finished. Inserted: ${job.inserted}, Failed: ${job.failed}, Total: ${job.totalRows}`
+        : `Import failed for ${job.fileName}. Please review import logs.`;
+
+    await this.notificationService.createNotification(
+      tenantDb,
+      {
+        userId: user.userId,
+        title,
+        businessId: user.businessId,
+        message,
+        type: 'purchase_order_import',
+      },
+      tenantCode,
+      {
+        job: {
+          id: job.id,
+          jobType: job.jobType,
+          status,
+          fileName: job.fileName,
+          totalRows: job.totalRows,
+          inserted: job.inserted,
+          failed: job.failed,
+          completedAt: job.completedAt,
+          logs: job.logs,
+        },
+      },
+    );
+  }
+
+  private async processPurchaseOrderImportJob(
+    tenantDb: DataSource,
+    jobId: string,
+    rows: PurchaseOrderImportRow[],
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+  ) {
+    this.tenantJobService.startJob(jobId);
+    const orderRepo = tenantDb.getRepository(PurchaseOrder);
+    const warehouseRepo = tenantDb.getRepository(Warehouse);
+
+    for (const row of rows) {
+      try {
+        if (!row.vendorName) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: row.orderNumber,
+            status: 'error',
+            error: 'Vendor name is required',
+          });
+          continue;
+        }
+
+        if (!row.orderDate) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: row.orderNumber,
+            status: 'error',
+            error: 'Order date is required',
+          });
+          continue;
+        }
+
+        if (!row.warehouseId) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: row.orderNumber,
+            status: 'error',
+            error: 'Warehouse ID is required',
+          });
+          continue;
+        }
+
+        const parsedDate = new Date(row.orderDate);
+        if (Number.isNaN(parsedDate.getTime())) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: row.orderNumber,
+            status: 'error',
+            error: 'Invalid order date',
+          });
+          continue;
+        }
+
+        const existing = await orderRepo.findOne({
+          where: { orderNumber: row.orderNumber },
+          select: ['id'],
+        });
+        if (existing) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: row.orderNumber,
+            status: 'error',
+            error: 'Already exists',
+          });
+          continue;
+        }
+
+        const vendor = await this.findVendorByName(
+          tenantDb,
+          user.businessId,
+          row.vendorName,
+        );
+        if (!vendor) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: row.orderNumber,
+            status: 'error',
+            error: `Vendor not found: ${row.vendorName}`,
+          });
+          continue;
+        }
+
+        const warehouse = await warehouseRepo.findOne({
+          where: {
+            id: row.warehouseId,
+            businessId: user.businessId,
+            deletedAt: IsNull(),
+          },
+          select: ['id'],
+        });
+        if (!warehouse) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: row.orderNumber,
+            status: 'error',
+            error: 'Warehouse not found',
+          });
+          continue;
+        }
+
+        const created = await this.saveImportedPurchaseOrder(tenantDb, {
+          businessId: user.businessId,
+          actorUserId: user.userId,
+          orderNumber: row.orderNumber,
+          warehouseId: row.warehouseId,
+          vendorId: vendor.id,
+          orderDate: parsedDate,
+        });
+
+        this.tenantJobService.appendLog(jobId, {
+          row: row.row,
+          name: row.orderNumber,
+          status: 'success',
+          metadata: {
+            purchaseOrderId: created.id,
+            orderNumber: created.orderNumber,
+            vendorId: vendor.id,
+            vendorName: vendor.name,
+          },
+        });
+      } catch (error) {
+        this.tenantJobService.appendLog(jobId, {
+          row: row.row,
+          name: row.orderNumber,
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+
+    const completedJob = this.tenantJobService.completeJob(jobId);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: user.businessId,
+      action: 'TENANT_JOB_COMPLETED',
+      description: `Purchase order import completed for ${completedJob.fileName}`,
+      metadata: {
+        jobId: completedJob.id,
+        jobType: completedJob.jobType,
+        fileName: completedJob.fileName,
+        totalRows: completedJob.totalRows,
+        inserted: completedJob.inserted,
+        failed: completedJob.failed,
+      },
+    });
+
+    await this.notifyPurchaseOrderImportCompletion(
+      tenantDb,
+      completedJob,
+      user,
+      tenantCode,
+      'completed',
+    );
+  }
+
+  async importPurchaseOrders(
+    tenantDb: DataSource,
+    file: Express.Multer.File,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('File is required');
+    }
+
+    const rows = this.parsePurchaseOrderRowsFromFile(file);
+    if (!rows.length) {
+      throw new BadRequestException('No purchase order rows found in file');
+    }
+
+    const job = this.tenantJobService.createJob({
+      tenantCode,
+      businessId: user.businessId,
+      jobType: 'PURCHASE_ORDER_IMPORT',
+      fileName: file.originalname,
+      createdBy: user.userId,
+      totalRows: rows.length,
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: user.businessId,
+      action: 'TENANT_JOB_STARTED',
+      description: `Purchase order import started for ${file.originalname}`,
+      metadata: {
+        jobId: job.id,
+        jobType: job.jobType,
+        fileName: file.originalname,
+        totalRows: rows.length,
+      },
+    });
+
+    void this.processPurchaseOrderImportJob(
+      tenantDb,
+      job.id,
+      rows,
+      user,
+      tenantCode,
+    ).catch(async (error) => {
+      this.tenantJobService.failJob(job.id);
+      this.tenantJobService.appendLog(job.id, {
+        row: 0,
+        name: '',
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown processing failure',
+      });
+      const failedJob = this.tenantJobService.getJobById(
+        job.id,
+        tenantCode,
+        user.userId,
+      );
+
+      await this.activityLogService.recordActivityLog(tenantDb, {
+        actorId: user.userId,
+        businessId: user.businessId,
+        action: 'TENANT_JOB_FAILED',
+        description: `Purchase order import failed for ${file.originalname}`,
+        metadata: {
+          jobId: job.id,
+          jobType: job.jobType,
+          fileName: file.originalname,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+      await this.notifyPurchaseOrderImportCompletion(
+        tenantDb,
+        failedJob,
+        user,
+        tenantCode,
+        'failed',
+      );
+    });
+
+    return {
+      message: 'Purchase order import started',
+      jobId: job.id,
+      status: job.status,
+      totalRows: job.totalRows,
     };
   }
 }

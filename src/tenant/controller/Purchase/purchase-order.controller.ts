@@ -1,16 +1,21 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
+  MethodNotAllowedException,
   Param,
   ParseUUIDPipe,
   Post,
   Put,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
@@ -19,7 +24,10 @@ import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
-import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
+import {
+  TenantCode,
+  TenantConnection,
+} from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { OrderStatus } from 'src/tenant-db/entities/purchase-order.entity';
 import { PurchaseOrderService } from '../../service/purchase/purchase-order.service';
@@ -100,6 +108,34 @@ export class PurchaseOrderController {
       user.businessId,
       dto,
       user.userId,
+    );
+  }
+
+  @Get('import')
+  importPurchaseOrdersMethodNotAllowed() {
+    throw new MethodNotAllowedException(
+      'Use POST /tenant/purchase-orders/import with multipart form-data: file (CSV/XLS/XLSX).',
+    );
+  }
+
+  @Post('import')
+  @RequirePermissions('CREATE_PURCHASE_ORDER')
+  @UseInterceptors(FileInterceptor('file'))
+  importPurchaseOrders(
+    @TenantConnection() tenantDb: DataSource,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+    const user = req.user as TenantRequestUser;
+    return this.purchaseOrderService.importPurchaseOrders(
+      tenantDb,
+      file,
+      { userId: user.userId, businessId: user.businessId },
+      tenantCode,
     );
   }
 
