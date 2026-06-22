@@ -111,6 +111,34 @@ export class PurchaseOrderController {
     );
   }
 
+  @Post('import-items')
+  @RequirePermissions('CREATE_PURCHASE_ORDER')
+  @UseInterceptors(FileInterceptor('file'))
+  importPurchaseOrderItems(
+    @TenantConnection() tenantDb: DataSource,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+    const user = req.user as TenantRequestUser;
+    return this.purchaseOrderService.importPurchaseOrderItems(
+      tenantDb,
+      file,
+      { userId: user.userId, businessId: user.businessId },
+      tenantCode,
+    );
+  }
+
+  @Get('import-items')
+  importPurchaseOrderItemsMethodNotAllowed() {
+    throw new MethodNotAllowedException(
+      'Use POST /tenant/purchase-orders/import-items with multipart form-data: file (CSV/XLS/XLSX).',
+    );
+  }
+
   @Get('import')
   importPurchaseOrdersMethodNotAllowed() {
     throw new MethodNotAllowedException(

@@ -73,6 +73,19 @@ type PurchaseOrderImportRow = {
   warehouseId: string;
 };
 
+type PurchaseOrderItemImportRow = {
+  row: number;
+  orderNumber: string;
+  productTitle: string;
+  quantity: number;
+  measurementUnit: string;
+  unitPrice: number;
+  discount: number;
+  discountInPercentage: boolean;
+  tax: number;
+  totalPrice: number;
+};
+
 @Injectable()
 export class PurchaseOrderService {
   constructor(
@@ -1945,6 +1958,518 @@ export class PurchaseOrderService {
 
     return {
       message: 'Purchase order import started',
+      jobId: job.id,
+      status: job.status,
+      totalRows: job.totalRows,
+    };
+  }
+
+  private parsePurchaseOrderImportNumber(value: unknown): number | null {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+    const parsed = Number(String(value).replace(/,/g, '').trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private parsePurchaseOrderImportBoolean(value: unknown): boolean {
+    const text = this.sanitizePurchaseOrderImportText(value).toLowerCase();
+    return text === '1' || text === 'true' || text === 'yes';
+  }
+
+  private parsePurchaseOrderItemRowsFromFile(
+    file: Express.Multer.File,
+  ): PurchaseOrderItemImportRow[] {
+    const extension = file.originalname.split('.').pop()?.toLowerCase();
+    if (!extension || !['csv', 'xls', 'xlsx'].includes(extension)) {
+      throw new BadRequestException('Only CSV, XLS, and XLSX files are supported');
+    }
+
+    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) {
+      return [];
+    }
+
+    const sheet = workbook.Sheets[firstSheetName];
+    const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      defval: '',
+      raw: false,
+    });
+
+    const rows: PurchaseOrderItemImportRow[] = [];
+
+    rawRows.forEach((row, index) => {
+      const orderNumber = this.sanitizePurchaseOrderImportText(
+        this.getPurchaseOrderImportRowValue(row, 'code', 'orderNumber', 'ordernumber'),
+      );
+      if (!orderNumber || orderNumber.toLowerCase() === 'code') {
+        return;
+      }
+
+      const productTitle = this.sanitizePurchaseOrderImportText(
+        this.getPurchaseOrderImportRowValue(
+          row,
+          'productTitle',
+          'producttitle',
+          'title',
+          'productName',
+          'productname',
+        ),
+      );
+      const measurementUnit = this.sanitizePurchaseOrderImportText(
+        this.getPurchaseOrderImportRowValue(
+          row,
+          'measurementUnit',
+          'measurementunit',
+          'uom',
+        ),
+      );
+      const quantity =
+        this.parsePurchaseOrderImportNumber(
+          this.getPurchaseOrderImportRowValue(row, 'quantity', 'qty'),
+        ) ?? 0;
+      const unitPrice =
+        this.parsePurchaseOrderImportNumber(
+          this.getPurchaseOrderImportRowValue(row, 'unitPrice', 'unitprice'),
+        ) ?? 0;
+      const discount =
+        this.parsePurchaseOrderImportNumber(
+          this.getPurchaseOrderImportRowValue(row, 'discount'),
+        ) ?? 0;
+      const tax =
+        this.parsePurchaseOrderImportNumber(
+          this.getPurchaseOrderImportRowValue(row, 'tax'),
+        ) ?? 0;
+      const totalPrice =
+        this.parsePurchaseOrderImportNumber(
+          this.getPurchaseOrderImportRowValue(row, 'totalPrice', 'totalprice', 'total'),
+        ) ?? 0;
+
+      rows.push({
+        row: index + 2,
+        orderNumber,
+        productTitle,
+        quantity,
+        measurementUnit,
+        unitPrice,
+        discount,
+        discountInPercentage: this.parsePurchaseOrderImportBoolean(
+          this.getPurchaseOrderImportRowValue(
+            row,
+            'discountInPercentage',
+            'discountinpercentage',
+            'discountIsPercentage',
+          ),
+        ),
+        tax,
+        totalPrice,
+      });
+    });
+
+    return rows;
+  }
+
+  private async findOrderByNumberForBusiness(
+    tenantDb: DataSource,
+    businessId: string,
+    orderNumber: string,
+  ): Promise<PurchaseOrder | null> {
+    return tenantDb
+      .getRepository(PurchaseOrder)
+      .createQueryBuilder('po')
+      .innerJoin('po.warehouse', 'warehouse')
+      .where('po.orderNumber = :orderNumber', { orderNumber })
+      .andWhere('warehouse.businessId = :businessId', { businessId })
+      .getOne();
+  }
+
+  private async findProductByName(
+    tenantDb: DataSource,
+    businessId: string,
+    productTitle: string,
+  ): Promise<Product | null> {
+    return tenantDb.getRepository(Product).findOne({
+      where: { name: productTitle, businessId, isDelete: false },
+      select: ['id', 'name'],
+    });
+  }
+
+  private async findUomByName(
+    tenantDb: DataSource,
+    businessId: string,
+    measurementUnit: string,
+  ): Promise<Uom | null> {
+    return tenantDb.getRepository(Uom).findOne({
+      where: { name: measurementUnit, businessId },
+      select: ['id', 'name'],
+    });
+  }
+
+  private resolveImportedPurchaseOrderLine(
+    row: PurchaseOrderItemImportRow,
+    productId: string,
+    uomId: string,
+    pricing: ProductPricing,
+  ): ResolvedLineItem {
+    const itemDto: CreatePurchaseOrderItemDto = {
+      productId,
+      uomId,
+      quantity: row.quantity,
+      purchaseUnitPrice: row.unitPrice,
+      saleUnitPrice: row.unitPrice,
+      ...(row.discountInPercentage
+        ? { discountPercentage: row.discount }
+        : { discountAmount: row.discount }),
+    };
+
+    const resolved = this.resolveLineItem(itemDto, pricing);
+
+    if (row.totalPrice > 0) {
+      resolved.totalAmount = this.roundAmount(row.totalPrice);
+    }
+
+    return resolved;
+  }
+
+  private async recalculateOrderTotalsAfterItemImport(
+    tenantDb: DataSource,
+    orderId: string,
+    importedTaxAmount: number,
+  ) {
+    const items = await tenantDb.getRepository(PurchaseOrderItem).find({
+      where: { purchaseOrderId: orderId },
+    });
+
+    const orderTotal = this.roundAmount(
+      items.reduce((sum, item) => sum + Number(item.totalAmount), 0),
+    );
+    const taxAmount = this.roundAmount(importedTaxAmount);
+    const taxPercentage =
+      orderTotal > 0
+        ? this.roundAmount((taxAmount / orderTotal) * 100)
+        : 0;
+    const totalAmount = this.roundAmount(orderTotal + taxAmount);
+
+    await tenantDb.getRepository(PurchaseOrder).update(orderId, {
+      orderTotal,
+      taxAmount,
+      taxPercentage,
+      totalAmount,
+    });
+  }
+
+  private async notifyPurchaseOrderItemsImportCompletion(
+    tenantDb: DataSource,
+    job: TenantJob,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+    status: 'completed' | 'failed',
+  ) {
+    const title =
+      status === 'completed'
+        ? 'Purchase order items import completed'
+        : 'Purchase order items import failed';
+    const message =
+      status === 'completed'
+        ? `Import finished. Inserted: ${job.inserted}, Failed: ${job.failed}, Total: ${job.totalRows}`
+        : `Import failed for ${job.fileName}. Please review import logs.`;
+
+    await this.notificationService.createNotification(
+      tenantDb,
+      {
+        userId: user.userId,
+        title,
+        businessId: user.businessId,
+        message,
+        type: 'purchase_order_items_import',
+      },
+      tenantCode,
+      {
+        job: {
+          id: job.id,
+          jobType: job.jobType,
+          status,
+          fileName: job.fileName,
+          totalRows: job.totalRows,
+          inserted: job.inserted,
+          failed: job.failed,
+          completedAt: job.completedAt,
+          logs: job.logs,
+        },
+      },
+    );
+  }
+
+  private async processPurchaseOrderItemsImportJob(
+    tenantDb: DataSource,
+    jobId: string,
+    rows: PurchaseOrderItemImportRow[],
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+  ) {
+    this.tenantJobService.startJob(jobId);
+    const taxByOrder = new Map<string, number>();
+    const ordersToRecalculate = new Set<string>();
+
+    for (const row of rows) {
+      const rowLabel = `${row.orderNumber} / ${row.productTitle}`;
+
+      try {
+        if (!row.productTitle) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: rowLabel,
+            status: 'error',
+            error: 'Product title is required',
+          });
+          continue;
+        }
+
+        if (!row.measurementUnit) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: rowLabel,
+            status: 'error',
+            error: 'Measurement unit is required',
+          });
+          continue;
+        }
+
+        if (!row.quantity || row.quantity < 1) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: rowLabel,
+            status: 'error',
+            error: 'Quantity must be at least 1',
+          });
+          continue;
+        }
+
+        const order = await this.findOrderByNumberForBusiness(
+          tenantDb,
+          user.businessId,
+          row.orderNumber,
+        );
+        if (!order) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: rowLabel,
+            status: 'error',
+            error: `Purchase order not found: ${row.orderNumber}`,
+          });
+          continue;
+        }
+
+        if (order.orderStatus !== OrderStatus.PENDING) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: rowLabel,
+            status: 'error',
+            error: 'Only pending purchase orders can receive imported items',
+          });
+          continue;
+        }
+
+        const product = await this.findProductByName(
+          tenantDb,
+          user.businessId,
+          row.productTitle,
+        );
+        if (!product) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: rowLabel,
+            status: 'error',
+            error: `Product not found: ${row.productTitle}`,
+          });
+          continue;
+        }
+
+        const uom = await this.findUomByName(
+          tenantDb,
+          user.businessId,
+          row.measurementUnit,
+        );
+        if (!uom) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: rowLabel,
+            status: 'error',
+            error: `Measurement unit not found: ${row.measurementUnit}`,
+          });
+          continue;
+        }
+
+        const pricing = await tenantDb.getRepository(ProductPricing).findOne({
+          where: { productId: product.id, uomId: uom.id },
+        });
+        if (!pricing) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: rowLabel,
+            status: 'error',
+            error: `Product pricing not found for ${row.productTitle} (${row.measurementUnit})`,
+          });
+          continue;
+        }
+
+        const resolvedLine = this.resolveImportedPurchaseOrderLine(
+          row,
+          product.id,
+          uom.id,
+          pricing,
+        );
+
+        await tenantDb.transaction(async (manager) => {
+          await manager
+            .getRepository(PurchaseOrderItem)
+            .save(this.buildItemEntities(manager, order.id, [resolvedLine]));
+        });
+
+        taxByOrder.set(
+          order.id,
+          this.roundAmount((taxByOrder.get(order.id) ?? 0) + row.tax),
+        );
+        ordersToRecalculate.add(order.id);
+
+        this.tenantJobService.appendLog(jobId, {
+          row: row.row,
+          name: rowLabel,
+          status: 'success',
+          metadata: {
+            purchaseOrderId: order.id,
+            orderNumber: order.orderNumber,
+            productId: product.id,
+            productPricingId: pricing.id,
+            uomId: uom.id,
+            totalAmount: resolvedLine.totalAmount,
+          },
+        });
+      } catch (error) {
+        this.tenantJobService.appendLog(jobId, {
+          row: row.row,
+          name: rowLabel,
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+
+    for (const orderId of ordersToRecalculate) {
+      await this.recalculateOrderTotalsAfterItemImport(
+        tenantDb,
+        orderId,
+        taxByOrder.get(orderId) ?? 0,
+      );
+    }
+
+    const completedJob = this.tenantJobService.completeJob(jobId);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: user.businessId,
+      action: 'TENANT_JOB_COMPLETED',
+      description: `Purchase order items import completed for ${completedJob.fileName}`,
+      metadata: {
+        jobId: completedJob.id,
+        jobType: completedJob.jobType,
+        fileName: completedJob.fileName,
+        totalRows: completedJob.totalRows,
+        inserted: completedJob.inserted,
+        failed: completedJob.failed,
+      },
+    });
+
+    await this.notifyPurchaseOrderItemsImportCompletion(
+      tenantDb,
+      completedJob,
+      user,
+      tenantCode,
+      'completed',
+    );
+  }
+
+  async importPurchaseOrderItems(
+    tenantDb: DataSource,
+    file: Express.Multer.File,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('File is required');
+    }
+
+    const rows = this.parsePurchaseOrderItemRowsFromFile(file);
+    if (!rows.length) {
+      throw new BadRequestException('No purchase order item rows found in file');
+    }
+
+    const job = this.tenantJobService.createJob({
+      tenantCode,
+      businessId: user.businessId,
+      jobType: 'PURCHASE_ORDER_ITEMS_IMPORT',
+      fileName: file.originalname,
+      createdBy: user.userId,
+      totalRows: rows.length,
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: user.businessId,
+      action: 'TENANT_JOB_STARTED',
+      description: `Purchase order items import started for ${file.originalname}`,
+      metadata: {
+        jobId: job.id,
+        jobType: job.jobType,
+        fileName: file.originalname,
+        totalRows: rows.length,
+      },
+    });
+
+    void this.processPurchaseOrderItemsImportJob(
+      tenantDb,
+      job.id,
+      rows,
+      user,
+      tenantCode,
+    ).catch(async (error) => {
+      this.tenantJobService.failJob(job.id);
+      this.tenantJobService.appendLog(job.id, {
+        row: 0,
+        name: '',
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown processing failure',
+      });
+      const failedJob = this.tenantJobService.getJobById(
+        job.id,
+        tenantCode,
+        user.userId,
+      );
+
+      await this.activityLogService.recordActivityLog(tenantDb, {
+        actorId: user.userId,
+        businessId: user.businessId,
+        action: 'TENANT_JOB_FAILED',
+        description: `Purchase order items import failed for ${file.originalname}`,
+        metadata: {
+          jobId: job.id,
+          jobType: job.jobType,
+          fileName: file.originalname,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+      await this.notifyPurchaseOrderItemsImportCompletion(
+        tenantDb,
+        failedJob,
+        user,
+        tenantCode,
+        'failed',
+      );
+    });
+
+    return {
+      message: 'Purchase order items import started',
       jobId: job.id,
       status: job.status,
       totalRows: job.totalRows,
