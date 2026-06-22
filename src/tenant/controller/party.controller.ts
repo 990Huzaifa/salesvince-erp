@@ -1,8 +1,10 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
   Get,
+  MethodNotAllowedException,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -28,7 +30,6 @@ import { PartyType } from 'src/tenant-db/entities/party.entity';
 import { PartyService } from '../service/party.service';
 import { CreatePartyDto } from '../dto/party/create-party.dto';
 import { UpdatePartyDto } from '../dto/party/update-party.dto';
-import { ImportPartyDto } from '../dto/party/import-party.dto';
 
 @Controller('tenant/parties')
 @UseGuards(
@@ -57,6 +58,38 @@ export class PartyController {
       user.businessId,
       { page: Number(page), limit: Number(limit), search, type },
       user.userId,
+    );
+  }
+
+  @Get('import')
+  importPartiesMethodNotAllowed() {
+    throw new MethodNotAllowedException(
+      'Use POST /tenant/parties/import with multipart form-data: file (CSV/XLS/XLSX) and type (CUSTOMER or VENDOR).',
+    );
+  }
+
+  @Post('import')
+  @RequirePermissions('CREATE_PARTY')
+  @UseInterceptors(FileInterceptor('file'))
+  importParties(
+    @TenantConnection() tenantDb: DataSource,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('type') type: PartyType | undefined,
+    @Body('PartyType') partyType: PartyType | undefined,
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    const user = req.user as TenantRequestUser;
+    const resolvedType = type ?? partyType;
+    if (resolvedType !== PartyType.CUSTOMER && resolvedType !== PartyType.VENDOR) {
+      throw new BadRequestException('type must be CUSTOMER or VENDOR');
+    }
+    return this.partyService.importParties(
+      tenantDb,
+      file,
+      resolvedType,
+      { userId: user.userId, businessId: user.businessId },
+      tenantCode,
     );
   }
 
@@ -89,26 +122,6 @@ export class PartyController {
       user.businessId,
       dto,
       user.userId,
-    );
-  }
-
-  @Post('import')
-  @RequirePermissions('CREATE_PARTY')
-  @UseInterceptors(FileInterceptor('file'))
-  importParties(
-    @TenantConnection() tenantDb: DataSource,
-    @UploadedFile() file: Express.Multer.File,
-    @Body() dto: ImportPartyDto,
-    @Req() req: Request,
-    @TenantCode() tenantCode: string,
-  ) {
-    const user = req.user as TenantRequestUser;
-    return this.partyService.importParties(
-      tenantDb,
-      file,
-      dto.type,
-      { userId: user.userId, businessId: user.businessId },
-      tenantCode,
     );
   }
 
