@@ -26,18 +26,18 @@ export class CreatePartyDto {
   @IsEnum(PartyType)
   type: PartyType;
 
-  @ValidateIf(
-    (o: CreatePartyDto) =>
-      o.type === PartyType.CUSTOMER || o.type === PartyType.BOTH,
-  )
+  // @ValidateIf(
+  //   (o: CreatePartyDto) =>
+  //     o.type === PartyType.CUSTOMER || o.type === PartyType.BOTH,
+  // )
   @IsEnum(PartyClass)
   @IsOptional()
   partyClass?: PartyClass;
 
-  @ValidateIf(
-    (o: CreatePartyDto) =>
-      o.type === PartyType.CUSTOMER || o.type === PartyType.BOTH,
-  )
+  // @ValidateIf(
+  //   (o: CreatePartyDto) =>
+  //     o.type === PartyType.CUSTOMER || o.type === PartyType.BOTH,
+  // )
   @IsNumber()
   @Min(0)
   @IsOptional()
