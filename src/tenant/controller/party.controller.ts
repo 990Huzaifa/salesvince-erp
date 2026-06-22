@@ -107,7 +107,7 @@ export class PartyController {
       tenantDb,
       file,
       dto.type,
-      user,
+      { userId: user.userId, businessId: user.businessId },
       tenantCode,
     );
   }
