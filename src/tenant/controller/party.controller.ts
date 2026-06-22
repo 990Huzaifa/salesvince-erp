@@ -9,9 +9,12 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
 import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
@@ -19,12 +22,13 @@ import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
-import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
+import { TenantCode, TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { PartyType } from 'src/tenant-db/entities/party.entity';
 import { PartyService } from '../service/party.service';
 import { CreatePartyDto } from '../dto/party/create-party.dto';
 import { UpdatePartyDto } from '../dto/party/update-party.dto';
+import { ImportPartyDto } from '../dto/party/import-party.dto';
 
 @Controller('tenant/parties')
 @UseGuards(
@@ -85,6 +89,26 @@ export class PartyController {
       user.businessId,
       dto,
       user.userId,
+    );
+  }
+
+  @Post('import')
+  @RequirePermissions('CREATE_PARTY')
+  @UseInterceptors(FileInterceptor('file'))
+  importParties(
+    @TenantConnection() tenantDb: DataSource,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() dto: ImportPartyDto,
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.partyService.importParties(
+      tenantDb,
+      file,
+      dto.type,
+      user,
+      tenantCode,
     );
   }
 

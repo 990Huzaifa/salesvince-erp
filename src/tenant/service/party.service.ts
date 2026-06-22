@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { DataSource, IsNull } from 'typeorm';
+import { DataSource, In, IsNull } from 'typeorm';
 import { Party, PartyClass, PartyType } from 'src/tenant-db/entities/party.entity';
 import { seedDefaultChartOfAccountsForBusiness } from 'src/tenant-db/helpers/chart-of-account-bootstrap.helper';
 import {
@@ -16,6 +16,9 @@ import { UpdatePartyDto } from '../dto/party/update-party.dto';
 import { ActivityLogService } from './activity-log.service';
 import { TransactionService } from './transaction.service';
 import { MasterGeoHelperService } from './master-geo-helper.service';
+import * as XLSX from 'xlsx';
+import { NotificationService } from './notification.service';
+import { TenantJob, TenantJobService } from './tenant-job.service';
 
 @Injectable()
 export class PartyService {
@@ -23,6 +26,8 @@ export class PartyService {
     private readonly activityLogService: ActivityLogService,
     private readonly transactionService: TransactionService,
     private readonly masterGeoHelperService: MasterGeoHelperService,
+    private readonly notificationService: NotificationService,
+    private readonly tenantJobService: TenantJobService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -488,5 +493,399 @@ export class PartyService {
     });
 
     return { message: 'Party deleted successfully' };
+  }
+
+  private sanitizePartyImportText(value: unknown): string {
+    if (typeof value !== 'string') {
+      return String(value ?? '').trim();
+    }
+    return value.trim();
+  }
+
+  private parsePartyImportNumber(value: unknown): number | null {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+    const parsed = Number(String(value).replace(/,/g, '').trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private normalizePartyImportHeaderKey(key: string): string {
+    return key.trim().toLowerCase().replace(/\s+/g, '');
+  }
+
+  private getPartyImportRowValue(
+    row: Record<string, unknown>,
+    ...keys: string[]
+  ): unknown {
+    const normalizedRow = new Map<string, unknown>();
+    for (const [key, value] of Object.entries(row)) {
+      normalizedRow.set(this.normalizePartyImportHeaderKey(key), value);
+    }
+    for (const key of keys) {
+      const value = normalizedRow.get(this.normalizePartyImportHeaderKey(key));
+      if (value !== undefined) {
+        return value;
+      }
+    }
+    return undefined;
+  }
+
+  private parsePartyClassValue(value: unknown): PartyClass | undefined {
+    const normalized = this.sanitizePartyImportText(value).toUpperCase();
+    if (!normalized) {
+      return undefined;
+    }
+    if (Object.values(PartyClass).includes(normalized as PartyClass)) {
+      return normalized as PartyClass;
+    }
+    return undefined;
+  }
+
+  private toPartyGeoId(value: unknown): string | undefined {
+    const text = this.sanitizePartyImportText(value);
+    return text || undefined;
+  }
+
+  private parsePartyRowsFromFile(
+    file: Express.Multer.File,
+    type: PartyType,
+  ): Array<{
+    row: number;
+    name: string;
+    phone?: string;
+    address?: string;
+    countryId?: string;
+    stateId?: string;
+    cityId?: string;
+    partyClass?: PartyClass;
+    receivableOpeningBalance?: number;
+    payableOpeningBalance?: number;
+  }> {
+    const extension = file.originalname.split('.').pop()?.toLowerCase();
+    if (!extension || !['csv', 'xls', 'xlsx'].includes(extension)) {
+      throw new BadRequestException('Only CSV, XLS, and XLSX files are supported');
+    }
+
+    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) {
+      return [];
+    }
+
+    const sheet = workbook.Sheets[firstSheetName];
+    const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      defval: '',
+      raw: false,
+    });
+
+    const rows: Array<{
+      row: number;
+      name: string;
+      phone?: string;
+      address?: string;
+      countryId?: string;
+      stateId?: string;
+      cityId?: string;
+      partyClass?: PartyClass;
+      receivableOpeningBalance?: number;
+      payableOpeningBalance?: number;
+    }> = [];
+
+    rawRows.forEach((row, index) => {
+      const name = this.sanitizePartyImportText(this.getPartyImportRowValue(row, 'name'));
+      if (!name || name.toLowerCase() === 'name') {
+        return;
+      }
+
+      const phone = this.sanitizePartyImportText(this.getPartyImportRowValue(row, 'phone'));
+      const address = this.sanitizePartyImportText(this.getPartyImportRowValue(row, 'address'));
+      const countryId = this.toPartyGeoId(this.getPartyImportRowValue(row, 'countryId', 'countryid'));
+      const stateId = this.toPartyGeoId(this.getPartyImportRowValue(row, 'stateId', 'stateid'));
+      const cityId = this.toPartyGeoId(this.getPartyImportRowValue(row, 'cityId', 'cityid'));
+      const partyClass = this.parsePartyClassValue(
+        this.getPartyImportRowValue(row, 'class', 'partyClass', 'partyclass'),
+      );
+
+      const receivableOpeningBalance =
+        this.parsePartyImportNumber(
+          this.getPartyImportRowValue(
+            row,
+            'receivableOpeningBalance',
+            'receivableopeningbalance',
+          ),
+        ) ?? 0;
+      const payableOpeningBalance =
+        this.parsePartyImportNumber(
+          this.getPartyImportRowValue(row, 'payableOpeningBalance', 'payableopeningbalance'),
+        ) ?? 0;
+
+      rows.push({
+        row: index + 2,
+        name,
+        phone: phone || undefined,
+        address: address || undefined,
+        countryId,
+        stateId,
+        cityId,
+        partyClass: type === PartyType.CUSTOMER ? partyClass : undefined,
+        receivableOpeningBalance:
+          type === PartyType.CUSTOMER ? receivableOpeningBalance : undefined,
+        payableOpeningBalance:
+          type === PartyType.VENDOR ? payableOpeningBalance : undefined,
+      });
+    });
+
+    return rows;
+  }
+
+  private getPartyImportDuplicateTypes(type: PartyType): PartyType[] {
+    return type === PartyType.CUSTOMER
+      ? [PartyType.CUSTOMER, PartyType.BOTH]
+      : [PartyType.VENDOR, PartyType.BOTH];
+  }
+
+  private async notifyPartyImportCompletion(
+    tenantDb: DataSource,
+    job: TenantJob,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+    partyType: PartyType,
+    status: 'completed' | 'failed',
+  ) {
+    const label = partyType === PartyType.CUSTOMER ? 'Customer' : 'Vendor';
+    const title =
+      status === 'completed' ? `${label} import completed` : `${label} import failed`;
+    const message =
+      status === 'completed'
+        ? `Import finished. Inserted: ${job.inserted}, Failed: ${job.failed}, Total: ${job.totalRows}`
+        : `Import failed for ${job.fileName}. Please review import logs.`;
+
+    await this.notificationService.createNotification(
+      tenantDb,
+      {
+        userId: user.userId,
+        title,
+        businessId: user.businessId,
+        message,
+        type: partyType === PartyType.CUSTOMER ? 'party_customer_import' : 'party_vendor_import',
+      },
+      tenantCode,
+      {
+        job: {
+          id: job.id,
+          jobType: job.jobType,
+          status,
+          fileName: job.fileName,
+          totalRows: job.totalRows,
+          inserted: job.inserted,
+          failed: job.failed,
+          completedAt: job.completedAt,
+          logs: job.logs,
+        },
+      },
+    );
+  }
+
+  private async processPartyImportJob(
+    tenantDb: DataSource,
+    jobId: string,
+    rows: Array<{
+      row: number;
+      name: string;
+      phone?: string;
+      address?: string;
+      countryId?: string;
+      stateId?: string;
+      cityId?: string;
+      partyClass?: PartyClass;
+      receivableOpeningBalance?: number;
+      payableOpeningBalance?: number;
+    }>,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+    partyType: PartyType,
+  ) {
+    this.tenantJobService.startJob(jobId);
+    const partyRepo = tenantDb.getRepository(Party);
+    const duplicateTypes = this.getPartyImportDuplicateTypes(partyType);
+
+    for (const row of rows) {
+      try {
+        const existing = await partyRepo.findOne({
+          where: {
+            businessId: user.businessId,
+            name: row.name,
+            type: In(duplicateTypes),
+            deletedAt: IsNull(),
+          },
+          select: ['id'],
+        });
+        if (existing) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: row.name,
+            status: 'error',
+            error: 'Already exists',
+          });
+          continue;
+        }
+
+        const dto: CreatePartyDto = {
+          name: row.name,
+          type: partyType,
+          phone: row.phone,
+          address: row.address,
+          countryId: row.countryId,
+          stateId: row.stateId,
+          cityId: row.cityId,
+          partyClass: row.partyClass,
+          receivableOpeningBalance: row.receivableOpeningBalance,
+          payableOpeningBalance: row.payableOpeningBalance,
+        };
+
+        const created = await this.createParty(
+          tenantDb,
+          user.businessId,
+          dto,
+          user.userId,
+        );
+
+        this.tenantJobService.appendLog(jobId, {
+          row: row.row,
+          name: row.name,
+          status: 'success',
+          metadata: { partyId: created.data.id, code: created.data.code },
+        });
+      } catch (error) {
+        this.tenantJobService.appendLog(jobId, {
+          row: row.row,
+          name: row.name,
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+
+    const completedJob = this.tenantJobService.completeJob(jobId);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: user.businessId,
+      action: 'TENANT_JOB_COMPLETED',
+      description: `${partyType === PartyType.CUSTOMER ? 'Customer' : 'Vendor'} import completed for ${completedJob.fileName}`,
+      metadata: {
+        jobId: completedJob.id,
+        jobType: completedJob.jobType,
+        fileName: completedJob.fileName,
+        totalRows: completedJob.totalRows,
+        inserted: completedJob.inserted,
+        failed: completedJob.failed,
+        partyType,
+      },
+    });
+
+    await this.notifyPartyImportCompletion(
+      tenantDb,
+      completedJob,
+      user,
+      tenantCode,
+      partyType,
+      'completed',
+    );
+  }
+
+  async importParties(
+    tenantDb: DataSource,
+    file: Express.Multer.File,
+    type: PartyType,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('File is required');
+    }
+    if (type !== PartyType.CUSTOMER && type !== PartyType.VENDOR) {
+      throw new BadRequestException('type must be CUSTOMER or VENDOR');
+    }
+
+    const rows = this.parsePartyRowsFromFile(file, type);
+    if (!rows.length) {
+      throw new BadRequestException('No party rows found in file');
+    }
+
+    const jobType =
+      type === PartyType.CUSTOMER ? 'PARTY_CUSTOMER_IMPORT' : 'PARTY_VENDOR_IMPORT';
+
+    const job = this.tenantJobService.createJob({
+      tenantCode,
+      businessId: user.businessId,
+      jobType,
+      fileName: file.originalname,
+      createdBy: user.userId,
+      totalRows: rows.length,
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: user.businessId,
+      action: 'TENANT_JOB_STARTED',
+      description: `${type === PartyType.CUSTOMER ? 'Customer' : 'Vendor'} import started for ${file.originalname}`,
+      metadata: {
+        jobId: job.id,
+        jobType: job.jobType,
+        fileName: file.originalname,
+        totalRows: rows.length,
+        partyType: type,
+      },
+    });
+
+    void this.processPartyImportJob(
+      tenantDb,
+      job.id,
+      rows,
+      user,
+      tenantCode,
+      type,
+    ).catch(async (error) => {
+      this.tenantJobService.failJob(job.id);
+      this.tenantJobService.appendLog(job.id, {
+        row: 0,
+        name: '',
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown processing failure',
+      });
+      const failedJob = this.tenantJobService.getJobById(job.id, tenantCode, user.userId);
+
+      await this.activityLogService.recordActivityLog(tenantDb, {
+        actorId: user.userId,
+        businessId: user.businessId,
+        action: 'TENANT_JOB_FAILED',
+        description: `${type === PartyType.CUSTOMER ? 'Customer' : 'Vendor'} import failed for ${file.originalname}`,
+        metadata: {
+          jobId: job.id,
+          jobType: job.jobType,
+          fileName: file.originalname,
+          error: error instanceof Error ? error.message : String(error),
+          partyType: type,
+        },
+      });
+      await this.notifyPartyImportCompletion(
+        tenantDb,
+        failedJob,
+        user,
+        tenantCode,
+        type,
+        'failed',
+      );
+    });
+
+    return {
+      message: `${type === PartyType.CUSTOMER ? 'Customer' : 'Vendor'} import started`,
+      jobId: job.id,
+      status: job.status,
+      totalRows: job.totalRows,
+      type,
+    };
   }
 }
