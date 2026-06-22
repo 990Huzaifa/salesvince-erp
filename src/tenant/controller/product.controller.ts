@@ -7,6 +7,7 @@ import {
   Put,
   Query,
   Req,
+  UploadedFile,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
@@ -29,7 +30,7 @@ import { UpdateProductAsyncDto } from '../dto/product/update-product-async.dto';
 import { UpdateProductDto } from '../dto/product/update-product.dto';
 import { ProductCreateJobService } from '../service/product-create-job.service';
 import { ProductService } from '../service/product.service';
-import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
 import { productImageUploadOptions } from '../config/product-image-upload.config';
 import {
@@ -112,6 +113,18 @@ export class ProductController {
       categoryId,
       brandId,
     );
+  }
+
+  @Post('import')
+  @RequirePermissions('CREATE_PRODUCT')
+  @UseInterceptors(FileInterceptor('file'))
+  importProducts(
+    @TenantConnection() tenantDb: DataSource,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    return this.productService.importProducts(tenantDb, file, req.user, tenantCode);
   }
 
   @Post(':id/images')

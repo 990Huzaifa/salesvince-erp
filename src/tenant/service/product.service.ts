@@ -39,7 +39,14 @@ import {
   snapshotUploadedFile,
   type UploadedFileSnapshot,
 } from '../utils/snapshot-uploaded-file';
-import { createChartOfAccountForProduct } from 'src/tenant-db/helpers/product-chart-of-account.helper';
+import {
+  createChartOfAccountForProduct,
+  ensureChartOfAccountForCategory,
+  ensureChartOfAccountForSubCategory,
+} from 'src/tenant-db/helpers/product-chart-of-account.helper';
+import * as XLSX from 'xlsx';
+import { NotificationService } from './notification.service';
+import { TenantJob, TenantJobService } from './tenant-job.service';
 import { CreateProductAsyncDto } from '../dto/product/create-product-async.dto';
 import { CreateProductDto } from '../dto/product/create-product.dto';
 import { UpdateProductAsyncDto } from '../dto/product/update-product-async.dto';
@@ -48,6 +55,18 @@ import { BatchPickStrategy } from 'src/tenant-db/entities/product.entity';
 import { generateSequentialCode } from './hr/hr-common.util';
 
 const SKU_CODE_PREFIX = 'SKU';
+
+type ProductImportRow = {
+  row: number;
+  title: string;
+  brandName: string | null;
+  description: string | null;
+  category: string;
+  subCategory: string;
+  purchasePrice: number;
+  salePrice: number;
+  measurementUnit: string;
+};
 
 const PRODUCT_IMAGE_MIME_TO_EXTENSION: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -67,6 +86,8 @@ export class ProductService {
   constructor(
     private readonly activityLogService: ActivityLogService,
     private readonly s3Service: S3Service,
+    private readonly notificationService: NotificationService,
+    private readonly tenantJobService: TenantJobService,
   ) {}
 
   private dedupeAssetIdsPreserveOrder(ids: string[]): string[] {
@@ -1242,6 +1263,534 @@ export class ProductService {
         name: product.name,
         status: product.isActive,
       },
+    };
+  }
+
+  private sanitizeImportText(value: unknown): string {
+    if (typeof value !== 'string') {
+      return String(value ?? '').trim();
+    }
+    return value.trim();
+  }
+
+  private slugifyImportText(value: string): string {
+    return value
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-');
+  }
+
+  private roundImportAmount(value: number): number {
+    return Math.round(value * 100) / 100;
+  }
+
+  private parseImportNumber(value: unknown): number | null {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+    const parsed = Number(String(value).replace(/,/g, '').trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  private normalizeImportHeaderKey(key: string): string {
+    return key.trim().toLowerCase().replace(/\s+/g, '');
+  }
+
+  private getImportRowValue(
+    row: Record<string, unknown>,
+    ...keys: string[]
+  ): unknown {
+    const normalizedRow = new Map<string, unknown>();
+    for (const [key, value] of Object.entries(row)) {
+      normalizedRow.set(this.normalizeImportHeaderKey(key), value);
+    }
+    for (const key of keys) {
+      const value = normalizedRow.get(this.normalizeImportHeaderKey(key));
+      if (value !== undefined) {
+        return value;
+      }
+    }
+    return undefined;
+  }
+
+  private computePricingFromCsv(purchasePrice: number, salePrice: number) {
+    const marginAmount = this.roundImportAmount(salePrice - purchasePrice);
+    const marginPercentage =
+      purchasePrice > 0
+        ? this.roundImportAmount((marginAmount / purchasePrice) * 100)
+        : 0;
+    return {
+      purchaseUnitPrice: this.roundImportAmount(purchasePrice),
+      saleUnitMarginAmount: marginAmount,
+      saleUnitMarginPercentage: marginPercentage,
+    };
+  }
+
+  private parseProductRowsFromFile(file: Express.Multer.File): ProductImportRow[] {
+    const extension = file.originalname.split('.').pop()?.toLowerCase();
+    if (!extension || !['csv', 'xls', 'xlsx'].includes(extension)) {
+      throw new BadRequestException('Only CSV, XLS, and XLSX files are supported');
+    }
+
+    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) {
+      return [];
+    }
+
+    const sheet = workbook.Sheets[firstSheetName];
+    const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      defval: '',
+      raw: false,
+    });
+
+    const rows: ProductImportRow[] = [];
+    rawRows.forEach((row, index) => {
+      const title = this.sanitizeImportText(this.getImportRowValue(row, 'title', 'name'));
+      const category = this.sanitizeImportText(this.getImportRowValue(row, 'category'));
+      const subCategory = this.sanitizeImportText(
+        this.getImportRowValue(row, 'subCategory', 'subcategory'),
+      );
+      const measurementUnit = this.sanitizeImportText(
+        this.getImportRowValue(row, 'measurementUnit', 'uom'),
+      );
+      const purchasePrice = this.parseImportNumber(
+        this.getImportRowValue(row, 'purchasePrice', 'purchaseprice'),
+      );
+      const salePrice = this.parseImportNumber(
+        this.getImportRowValue(row, 'salePrice', 'saleprice'),
+      );
+
+      if (
+        !title ||
+        title.toLowerCase() === 'title' ||
+        !category ||
+        !subCategory ||
+        !measurementUnit ||
+        purchasePrice === null ||
+        salePrice === null
+      ) {
+        return;
+      }
+
+      const brandNameRaw = this.sanitizeImportText(
+        this.getImportRowValue(row, 'brandName', 'brand'),
+      );
+      const descriptionRaw = this.sanitizeImportText(
+        this.getImportRowValue(row, 'description'),
+      );
+
+      rows.push({
+        row: index + 2,
+        title,
+        brandName: brandNameRaw || null,
+        description: descriptionRaw || null,
+        category,
+        subCategory,
+        purchasePrice,
+        salePrice,
+        measurementUnit,
+      });
+    });
+
+    return rows;
+  }
+
+  private async findOrCreateCategory(
+    manager: EntityManager,
+    name: string,
+    user: { businessId: string; userId: string },
+    cache: Map<string, ProductCategory>,
+  ): Promise<ProductCategory> {
+    const cacheKey = name.toLowerCase();
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const categoryRepo = manager.getRepository(ProductCategory);
+    const slug = this.slugifyImportText(name);
+    let category = await categoryRepo.findOne({
+      where: { name, businessId: user.businessId },
+    });
+    if (!category && slug) {
+      category = await categoryRepo.findOne({
+        where: { slug, businessId: user.businessId },
+      });
+    }
+
+    if (!category) {
+      category = await categoryRepo.save(
+        categoryRepo.create({
+          name,
+          slug: slug || this.slugifyImportText(name),
+          businessId: user.businessId,
+          createdBy: user.userId,
+        }),
+      );
+      await ensureChartOfAccountForCategory(manager, category);
+    }
+
+    cache.set(cacheKey, category);
+    return category;
+  }
+
+  private async findOrCreateSubCategory(
+    manager: EntityManager,
+    category: ProductCategory,
+    name: string,
+    user: { businessId: string },
+    cache: Map<string, ProductSubCategory>,
+  ): Promise<ProductSubCategory> {
+    const cacheKey = `${category.id}:${name.toLowerCase()}`;
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const subCategoryRepo = manager.getRepository(ProductSubCategory);
+    const slug = this.slugifyImportText(name);
+    let subCategory = await subCategoryRepo.findOne({
+      where: {
+        categoryId: category.id,
+        name,
+        businessId: user.businessId,
+      },
+    });
+    if (!subCategory && slug) {
+      subCategory = await subCategoryRepo.findOne({
+        where: {
+          categoryId: category.id,
+          slug,
+          businessId: user.businessId,
+        },
+      });
+    }
+
+    if (!subCategory) {
+      subCategory = await subCategoryRepo.save(
+        subCategoryRepo.create({
+          name,
+          slug: slug || this.slugifyImportText(name),
+          categoryId: category.id,
+          businessId: user.businessId,
+        }),
+      );
+      await ensureChartOfAccountForSubCategory(manager, subCategory, category);
+    }
+
+    cache.set(cacheKey, subCategory);
+    return subCategory;
+  }
+
+  private async findOrCreateBrand(
+    manager: EntityManager,
+    name: string,
+    user: { businessId: string },
+    cache: Map<string, ProductBrand>,
+  ): Promise<ProductBrand> {
+    const cacheKey = name.toLowerCase();
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const brandRepo = manager.getRepository(ProductBrand);
+    let brand = await brandRepo.findOne({
+      where: { name, businessId: user.businessId },
+    });
+
+    if (!brand) {
+      brand = await brandRepo.save(
+        brandRepo.create({ name, businessId: user.businessId }),
+      );
+    }
+
+    cache.set(cacheKey, brand);
+    return brand;
+  }
+
+  private async findOrCreateUom(
+    manager: EntityManager,
+    name: string,
+    user: { businessId: string },
+    cache: Map<string, Uom>,
+  ): Promise<Uom> {
+    const cacheKey = name.toLowerCase();
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const uomRepo = manager.getRepository(Uom);
+    let uom = await uomRepo.findOne({
+      where: { name, businessId: user.businessId },
+    });
+
+    if (!uom) {
+      uom = await uomRepo.save(
+        uomRepo.create({ name, businessId: user.businessId, isBase: false }),
+      );
+    }
+
+    cache.set(cacheKey, uom);
+    return uom;
+  }
+
+  private async notifyProductImportCompletion(
+    tenantDb: DataSource,
+    job: TenantJob,
+    user: any,
+    tenantCode: string,
+    status: 'completed' | 'failed',
+  ) {
+    const title =
+      status === 'completed' ? 'Product import completed' : 'Product import failed';
+    const message =
+      status === 'completed'
+        ? `Import finished. Inserted: ${job.inserted}, Failed: ${job.failed}, Total: ${job.totalRows}`
+        : `Import failed for ${job.fileName}. Please review import logs.`;
+
+    await this.notificationService.createNotification(
+      tenantDb,
+      {
+        userId: user.userId,
+        title,
+        businessId: user.businessId,
+        message,
+        type: 'product_import',
+      },
+      tenantCode,
+      {
+        job: {
+          id: job.id,
+          jobType: job.jobType,
+          status,
+          fileName: job.fileName,
+          totalRows: job.totalRows,
+          inserted: job.inserted,
+          failed: job.failed,
+          completedAt: job.completedAt,
+          logs: job.logs,
+        },
+      },
+    );
+  }
+
+  private async processProductImportJob(
+    tenantDb: DataSource,
+    jobId: string,
+    rows: ProductImportRow[],
+    user: any,
+    tenantCode: string,
+  ) {
+    this.tenantJobService.startJob(jobId);
+
+    const categoryCache = new Map<string, ProductCategory>();
+    const subCategoryCache = new Map<string, ProductSubCategory>();
+    const brandCache = new Map<string, ProductBrand>();
+    const uomCache = new Map<string, Uom>();
+
+    for (const row of rows) {
+      try {
+        const existingProduct = await tenantDb.getRepository(Product).findOne({
+          where: { name: row.title, businessId: user.businessId, isDelete: false },
+          select: ['id'],
+        });
+        if (existingProduct) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: row.title,
+            status: 'error',
+            error: 'Already exists',
+          });
+          continue;
+        }
+
+        const resolved = await tenantDb.transaction(async (manager) => {
+          const category = await this.findOrCreateCategory(
+            manager,
+            row.category,
+            user,
+            categoryCache,
+          );
+          const subCategory = await this.findOrCreateSubCategory(
+            manager,
+            category,
+            row.subCategory,
+            user,
+            subCategoryCache,
+          );
+          const uom = await this.findOrCreateUom(
+            manager,
+            row.measurementUnit,
+            user,
+            uomCache,
+          );
+          let brandId: string | null = null;
+          if (row.brandName) {
+            const brand = await this.findOrCreateBrand(
+              manager,
+              row.brandName,
+              user,
+              brandCache,
+            );
+            brandId = brand.id;
+          }
+
+          const pricing = this.computePricingFromCsv(row.purchasePrice, row.salePrice);
+          const dto: CreateProductAsyncDto = {
+            categoryId: category.id,
+            subCategoryId: subCategory.id,
+            brandId: brandId ?? undefined,
+            name: row.title,
+            description: row.description ?? undefined,
+            isActive: true,
+            batchPickStrategy: BatchPickStrategy.LIFO,
+            pricing: [
+              {
+                uomId: uom.id,
+                purchaseUnitPrice: pricing.purchaseUnitPrice,
+                saleUnitMarginAmount: pricing.saleUnitMarginAmount,
+                saleUnitMarginPercentage: pricing.saleUnitMarginPercentage,
+                quantity: 1,
+              },
+            ],
+          };
+
+          return { dto };
+        });
+
+        const created = await this.createWithImageUrl(
+          tenantDb,
+          resolved.dto,
+          null,
+          user,
+        );
+
+        this.tenantJobService.appendLog(jobId, {
+          row: row.row,
+          name: row.title,
+          status: 'success',
+          metadata: { productId: created.id, skuCode: created.skuCode },
+        });
+      } catch (error) {
+        this.tenantJobService.appendLog(jobId, {
+          row: row.row,
+          name: row.title,
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+
+    const completedJob = this.tenantJobService.completeJob(jobId);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: user.businessId,
+      action: 'TENANT_JOB_COMPLETED',
+      description: `Product import completed for ${completedJob.fileName}`,
+      metadata: {
+        jobId: completedJob.id,
+        jobType: completedJob.jobType,
+        fileName: completedJob.fileName,
+        totalRows: completedJob.totalRows,
+        inserted: completedJob.inserted,
+        failed: completedJob.failed,
+      },
+    });
+
+    await this.notifyProductImportCompletion(
+      tenantDb,
+      completedJob,
+      user,
+      tenantCode,
+      'completed',
+    );
+  }
+
+  async importProducts(
+    tenantDb: DataSource,
+    file: Express.Multer.File,
+    user: any,
+    tenantCode: string,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('File is required');
+    }
+
+    const rows = this.parseProductRowsFromFile(file);
+    if (!rows.length) {
+      throw new BadRequestException('No product rows found in file');
+    }
+
+    const job = this.tenantJobService.createJob({
+      tenantCode,
+      businessId: user.businessId,
+      jobType: 'PRODUCT_IMPORT',
+      fileName: file.originalname,
+      createdBy: user.userId,
+      totalRows: rows.length,
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: user.businessId,
+      action: 'TENANT_JOB_STARTED',
+      description: `Product import started for ${file.originalname}`,
+      metadata: {
+        jobId: job.id,
+        jobType: job.jobType,
+        fileName: file.originalname,
+        totalRows: rows.length,
+      },
+    });
+
+    void this.processProductImportJob(tenantDb, job.id, rows, user, tenantCode).catch(
+      async (error) => {
+        this.tenantJobService.failJob(job.id);
+        this.tenantJobService.appendLog(job.id, {
+          row: 0,
+          name: '',
+          status: 'error',
+          error: error instanceof Error ? error.message : 'Unknown processing failure',
+        });
+        const failedJob = this.tenantJobService.getJobById(
+          job.id,
+          tenantCode,
+          user.userId,
+        );
+
+        await this.activityLogService.recordActivityLog(tenantDb, {
+          actorId: user.userId,
+          businessId: user.businessId,
+          action: 'TENANT_JOB_FAILED',
+          description: `Product import failed for ${file.originalname}`,
+          metadata: {
+            jobId: job.id,
+            jobType: job.jobType,
+            fileName: file.originalname,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        });
+        await this.notifyProductImportCompletion(
+          tenantDb,
+          failedJob,
+          user,
+          tenantCode,
+          'failed',
+        );
+      },
+    );
+
+    return {
+      message: 'Product import started',
+      jobId: job.id,
+      status: job.status,
+      totalRows: job.totalRows,
     };
   }
 }
