@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  MethodNotAllowedException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -63,6 +64,41 @@ export class SaleOrderController {
       file,
       { userId: user.userId, businessId: user.businessId },
       tenantCode,
+    );
+  }
+
+  @Post('import-items')
+  @RequirePermissions('CREATE_SALE_ORDER')
+  @UseInterceptors(FileInterceptor('file'))
+  importSaleOrderItems(
+    @TenantConnection() tenantDb: DataSource,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+    const user = req.user as TenantRequestUser;
+    return this.saleOrderService.importSaleOrderItems(
+      tenantDb,
+      file,
+      { userId: user.userId, businessId: user.businessId },
+      tenantCode,
+    );
+  }
+
+  @Get('import-items')
+  importSaleOrderItemsMethodNotAllowed() {
+    throw new MethodNotAllowedException(
+      'Use POST /tenant/sale-orders/import-items with multipart form-data: file (CSV/XLS/XLSX).',
+    );
+  }
+
+  @Get('import')
+  importSaleOrdersMethodNotAllowed() {
+    throw new MethodNotAllowedException(
+      'Use POST /tenant/sale-orders/import with multipart form-data: file (CSV/XLS/XLSX).',
     );
   }
 
