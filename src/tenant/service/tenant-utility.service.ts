@@ -12,7 +12,7 @@ import { PartyType } from 'src/tenant-db/entities/party.entity';
 import { Batch, StockBalance } from 'src/tenant-db/entities/stock.entity';
 import { selectStockPricing } from '../utils/stock-batch.util';
 import { SaleOrder, OrderStatus as SaleOrderStatus } from 'src/tenant-db/entities/sale-order.entity';
-import { PurchaseOrder } from 'src/tenant-db/entities/purchase-order.entity';
+import { PurchaseOrder, OrderStatus as PurchaseOrderStatus } from 'src/tenant-db/entities/purchase-order.entity';
 import { Grn } from 'src/tenant-db/entities/grn.entity';
 import { DeliveryNote } from 'src/tenant-db/entities/delivery-note.entity';
 import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
@@ -147,6 +147,9 @@ export class TenantUtilityService {
       .addSelect('customer.name', 'customerName')
       .addSelect('customer.code', 'customerCode')
       .where('saleOrder.businessId = :businessId', { businessId })
+      .andWhere('saleOrder.orderStatus = :orderStatus', {
+        orderStatus: SaleOrderStatus.APPROVED,
+      })
       .andWhere((qb) => {
         const usedInDeliveryNoteSubQuery = qb
           .subQuery()
@@ -183,6 +186,9 @@ export class TenantUtilityService {
       .addSelect('warehouse.name', 'warehouseName')
       .addSelect('warehouse.code', 'warehouseCode')
       .where('purchaseOrder.businessId = :businessId', { businessId })
+      .andWhere('purchaseOrder.orderStatus = :orderStatus', {
+        orderStatus: PurchaseOrderStatus.APPROVED,
+      })
       .andWhere((qb) => {
         const usedInGrnSubQuery = qb
           .subQuery()
