@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -9,8 +10,11 @@ import {
   Put,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
@@ -19,7 +23,10 @@ import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
-import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
+import {
+  TenantCode,
+  TenantConnection,
+} from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { OrderStatus } from 'src/tenant-db/entities/sale-order.entity';
 import { SaleOrderService } from '../../service/sale/sale-order.service';
@@ -37,6 +44,27 @@ import { EditApprovedSaleOrderDto } from '../../dto/sale-order/edit-approved-sal
 )
 export class SaleOrderController {
   constructor(private readonly saleOrderService: SaleOrderService) {}
+
+  @Post('import')
+  @RequirePermissions('CREATE_SALE_ORDER')
+  @UseInterceptors(FileInterceptor('file'))
+  importSaleOrders(
+    @TenantConnection() tenantDb: DataSource,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+    const user = req.user as TenantRequestUser;
+    return this.saleOrderService.importSaleOrders(
+      tenantDb,
+      file,
+      { userId: user.userId, businessId: user.businessId },
+      tenantCode,
+    );
+  }
 
   @Post('create')
   @RequirePermissions('CREATE_SALE_ORDER')
