@@ -59,8 +59,39 @@ export type VoucherCreatePayload =
 /** API / service input before voucher number is assigned. */
 export type VoucherCreateInput = Omit<VoucherCreatePayload, 'voucherNumber'>;
 
+export type PartyVoucherImportInput = Omit<PartyVoucherPayload, 'voucherNumber'> & {
+  voucherNumber: string;
+};
+
+export type ExpenseVoucherImportInput = Omit<ExpenseVoucherPayload, 'voucherNumber'> & {
+  voucherNumber: string;
+};
+
+export type ContraVoucherImportInput = Omit<ContraVoucherPayload, 'voucherNumber'> & {
+  voucherNumber: string;
+};
+
+export type LoanReceiptVoucherImportInput = Omit<
+  LoanReceiptVoucherPayload,
+  'voucherNumber'
+> & {
+  voucherNumber: string;
+};
+
+export type LoanPaymentVoucherImportInput = Omit<
+  LoanPaymentVoucherPayload,
+  'voucherNumber'
+> & {
+  voucherNumber: string;
+};
+
 /** Import input with an explicit voucher number from file. */
-export type VoucherImportInput = VoucherCreateInput & { voucherNumber: string };
+export type VoucherImportInput =
+  | PartyVoucherImportInput
+  | ExpenseVoucherImportInput
+  | ContraVoucherImportInput
+  | LoanReceiptVoucherImportInput
+  | LoanPaymentVoucherImportInput;
 
 /** Partial update — all variant-specific fields optional in one flat shape. */
 export type VoucherUpdatePayload = Partial<VoucherPaymentPayload> & {

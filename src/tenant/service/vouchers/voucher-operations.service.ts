@@ -610,6 +610,14 @@ export class VoucherOperationsService {
     return partyLedgerAccountId;
   }
 
+  private resolveVoucherJournalDescription(
+    voucher: VoucherEntity,
+    fallback: string,
+  ): string {
+    const remarks = voucher.remarks?.trim();
+    return remarks || fallback;
+  }
+
   private async postApprovalJournal<T extends VoucherEntity>(
     manager: EntityManager,
     businessId: string,
@@ -618,9 +626,14 @@ export class VoucherOperationsService {
     partyLedgerAccountId?: string,
   ): Promise<void> {
     const amount = this.roundAmount(Number(voucher.paymentAmount));
+    const journalDescription = this.resolveVoucherJournalDescription(
+      voucher,
+      `${config.activityKey} ${voucher.voucherNumber}`,
+    );
     const lines = config.buildJournalLines(voucher, partyLedgerAccountId).map(
       (line) => ({
         ...line,
+        description: journalDescription,
         debitAmount: line.debitAmount
           ? this.roundAmount(line.debitAmount)
           : undefined,
@@ -640,7 +653,7 @@ export class VoucherOperationsService {
       referenceId: voucher.id,
       partyId: voucher.partyId ?? null,
       transactionDate: voucher.paymentDate,
-      description: `${config.activityKey} ${voucher.voucherNumber}`,
+      description: journalDescription,
       lines,
     });
   }

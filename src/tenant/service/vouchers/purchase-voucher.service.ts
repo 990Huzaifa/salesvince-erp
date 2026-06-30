@@ -9,7 +9,7 @@ import { NotificationService } from '../notification.service';
 import { TenantJob, TenantJobService } from '../tenant-job.service';
 import { VoucherOperationsService } from './voucher-operations.service';
 import { PURCHASE_VOUCHER_CONFIG } from './voucher-configs';
-import { VoucherListOptions } from './voucher.types';
+import { VoucherListOptions, PartyVoucherImportInput } from './voucher.types';
 import {
   CreatePurchaseVoucherItemDto,
   UpdatePurchaseVoucherDto,
@@ -538,26 +538,28 @@ export class PurchaseVoucherService {
           }
         }
 
+        const importDto: PartyVoucherImportInput = {
+          voucherNumber: row.voucherNumber,
+          partyId: vendor.id,
+          accId: account.id,
+          paymentMethod,
+          paymentDate: parsedDate.toISOString(),
+          paymentAmount: this.roundAmount(row.paymentAmount),
+          remarks: row.remarks,
+          ...(paymentMethod === PaymentMethod.CHEQUE
+            ? {
+                chequeNumber: row.chequeNumber,
+                chequeDate: new Date(row.chequeDate).toISOString(),
+                bankName: row.accountName,
+              }
+            : {}),
+        };
+
         const created = await this.voucherOps.createImportedAndApprove(
           tenantDb,
           user.businessId,
           PURCHASE_VOUCHER_CONFIG,
-          {
-            voucherNumber: row.voucherNumber,
-            partyId: vendor.id,
-            accId: account.id,
-            paymentMethod,
-            paymentDate: parsedDate.toISOString(),
-            paymentAmount: this.roundAmount(row.paymentAmount),
-            remarks: row.remarks || undefined,
-            ...(paymentMethod === PaymentMethod.CHEQUE
-              ? {
-                  chequeNumber: row.chequeNumber,
-                  chequeDate: new Date(row.chequeDate).toISOString(),
-                  bankName: row.accountName,
-                }
-              : {}),
-          },
+          importDto,
           user.userId,
         );
 
