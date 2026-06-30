@@ -59,6 +59,9 @@ export type VoucherCreatePayload =
 /** API / service input before voucher number is assigned. */
 export type VoucherCreateInput = Omit<VoucherCreatePayload, 'voucherNumber'>;
 
+/** Import input with an explicit voucher number from file. */
+export type VoucherImportInput = VoucherCreateInput & { voucherNumber: string };
+
 /** Partial update — all variant-specific fields optional in one flat shape. */
 export type VoucherUpdatePayload = Partial<VoucherPaymentPayload> & {
   partyId?: string;

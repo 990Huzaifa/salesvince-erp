@@ -30,6 +30,7 @@ import {
   VoucherCreateInput,
   VoucherCreatePayload,
   VoucherEntity,
+  VoucherImportInput,
   VoucherListOptions,
   VoucherPaymentPayload,
   VoucherUpdatePayload,
@@ -728,6 +729,56 @@ export class VoucherOperationsService {
     });
 
     return { vouchers: saved };
+  }
+
+  async createImportedAndApprove<T extends VoucherEntity>(
+    tenantDb: DataSource,
+    businessId: string,
+    config: VoucherConfig<T>,
+    dto: VoucherImportInput,
+    userId: string,
+  ): Promise<T> {
+    return tenantDb.transaction(async (manager) => {
+      const voucherNumber = dto.voucherNumber?.trim();
+      if (!voucherNumber) {
+        throw new BadRequestException('Voucher number is required');
+      }
+
+      const payload = {
+        ...dto,
+        voucherNumber,
+      } as VoucherCreatePayload;
+
+      const validation = await this.validateCreatePayload(
+        manager,
+        businessId,
+        config,
+        payload,
+      );
+      const entity = this.buildEntityFromCreate(config, payload, userId);
+      const created = await this.getRepo(manager, config.entity).save(entity);
+      const partyLedgerAccountId =
+        validation.partyLedgerAccountId ??
+        (config.hasParty
+          ? await this.resolvePartyLedgerForVoucher(
+              manager,
+              businessId,
+              config,
+              created,
+            )
+          : undefined);
+
+      created.status = VoucherStatus.PAID;
+      const approved = await this.getRepo(manager, config.entity).save(created);
+      await this.postApprovalJournal(
+        manager,
+        businessId,
+        config,
+        approved,
+        partyLedgerAccountId,
+      );
+      return approved;
+    });
   }
 
   async list<T extends VoucherEntity>(
