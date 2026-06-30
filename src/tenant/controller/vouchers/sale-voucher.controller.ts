@@ -1,15 +1,20 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
+  MethodNotAllowedException,
   Param,
   ParseUUIDPipe,
   Post,
   Put,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
@@ -18,7 +23,10 @@ import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
-import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
+import {
+  TenantCode,
+  TenantConnection,
+} from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { VoucherStatus } from 'src/tenant-db/entities/voucher.entity';
 import { SaleVoucherService } from '../../service/vouchers/sale-voucher.service';
@@ -37,6 +45,34 @@ import {
 )
 export class SaleVoucherController {
   constructor(private readonly saleVoucherService: SaleVoucherService) {}
+
+  @Post('import')
+  @RequirePermissions('CREATE_SALE_VOUCHER')
+  @UseInterceptors(FileInterceptor('file'))
+  importSaleVouchers(
+    @TenantConnection() tenantDb: DataSource,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+    const user = req.user as TenantRequestUser;
+    return this.saleVoucherService.importSaleVouchers(
+      tenantDb,
+      file,
+      { userId: user.userId, businessId: user.businessId! },
+      tenantCode,
+    );
+  }
+
+  @Get('import')
+  importSaleVouchersMethodNotAllowed() {
+    throw new MethodNotAllowedException(
+      'Use POST /tenant/sale-vouchers/import with multipart form-data: file (CSV/XLS/XLSX).',
+    );
+  }
 
   @Post('create')
   @RequirePermissions('CREATE_SALE_VOUCHER')

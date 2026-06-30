@@ -794,6 +794,30 @@ export class VoucherOperationsService {
     });
   }
 
+  async createImported<T extends VoucherEntity>(
+    tenantDb: DataSource,
+    businessId: string,
+    config: VoucherConfig<T>,
+    dto: VoucherImportInput,
+    userId: string,
+  ): Promise<T> {
+    return tenantDb.transaction(async (manager) => {
+      const voucherNumber = dto.voucherNumber?.trim();
+      if (!voucherNumber) {
+        throw new BadRequestException('Voucher number is required');
+      }
+
+      const payload = {
+        ...dto,
+        voucherNumber,
+      } as VoucherCreatePayload;
+
+      await this.validateCreatePayload(manager, businessId, config, payload);
+      const entity = this.buildEntityFromCreate(config, payload, userId);
+      return this.getRepo(manager, config.entity).save(entity);
+    });
+  }
+
   async list<T extends VoucherEntity>(
     tenantDb: DataSource,
     businessId: string,
