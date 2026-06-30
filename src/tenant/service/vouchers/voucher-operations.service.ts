@@ -802,7 +802,7 @@ export class VoucherOperationsService {
     userId: string,
   ) {
     const page = Math.max(1, Number(options.page) || 1);
-    const limit = Math.min(100, Math.max(1, Number(options.limit) || 10));
+    const limit = Math.min(100, Math.max(1, Number(options.limit) || 30));
     const alias = 'voucher';
 
     const qb = tenantDb
