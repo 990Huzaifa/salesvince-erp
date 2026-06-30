@@ -71,6 +71,8 @@ export type TenantBusinessAccessResponse = {
   roleName: string;
   permissions: string[];
   businessLogo: string | null;
+  phone: string | null;
+  address: string | null;
 };
 
 @Injectable()
@@ -400,6 +402,8 @@ export class TenantAuthService {
         roleId: ub.roleId,
         userCode,
       }),
+      phone: ub.business?.phone,
+      address: ub.business?.address,
       businessLogo: ub.business?.logo,
       token_type: BUSINESS_ACCESS_TOKEN,
       isSuperAdmin,
