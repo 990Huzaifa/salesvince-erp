@@ -95,6 +95,7 @@ import { ReportStockService } from './service/report/report-stock.service';
 import { ReportFinancialService } from './service/report/report-financial.service';
 import { ReportTaxService } from './service/report/report-tax.service';
 import { ReportSaleChartService } from './service/report/report-sale-chart.service';
+import { ReportSaleOverviewService } from './service/report/report-sale-overview.service';
 import { DashboardController } from './controller/dashboard.controller';
 import { DashboardService } from './service/dashboard.service';
 import { Country } from 'src/master-db/entities/country.entity';
@@ -276,6 +277,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     ReportFinancialService,
     ReportTaxService,
     ReportSaleChartService,
+    ReportSaleOverviewService,
     DashboardService,
     SqlAgentChatService,
     LoanService,
