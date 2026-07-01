@@ -5,6 +5,7 @@ import {
   SaleInvoiceItem,
 } from 'src/tenant-db/entities/sale-invoice.entity';
 import { ActivityLogService } from '../activity-log.service';
+import { MasterGeoHelperService } from '../master-geo-helper.service';
 import { ReportSaleChartFilterType } from 'src/tenant/dto/report/report-sale-chart.query.dto';
 import {
   assertBusinessId,
@@ -37,9 +38,17 @@ type MonthChartRow = {
   totalSales: string;
 };
 
+type CityChartRow = {
+  cityName: string;
+  totalSales: string;
+};
+
 @Injectable()
 export class ReportSaleChartService {
-  constructor(private readonly activityLogService: ActivityLogService) {}
+  constructor(
+    private readonly activityLogService: ActivityLogService,
+    private readonly masterGeoHelperService: MasterGeoHelperService,
+  ) {}
 
   async getSaleChart(
     tenantDb: DataSource,
@@ -62,7 +71,11 @@ export class ReportSaleChartService {
     const cityId = options.cityId?.trim() || undefined;
     const filters: SaleChartFilters = { startDate, endDate, partyId, cityId };
 
-    let salesData: ProductChartRow[] | CustomerChartRow[] | MonthChartRow[];
+    let salesData:
+      | ProductChartRow[]
+      | CustomerChartRow[]
+      | MonthChartRow[]
+      | CityChartRow[];
 
     switch (options.filterType) {
       case ReportSaleChartFilterType.PRODUCT:
@@ -77,6 +90,9 @@ export class ReportSaleChartService {
         break;
       case ReportSaleChartFilterType.MONTH:
         salesData = await this.fetchByMonth(tenantDb, scopedBusinessId, filters);
+        break;
+      case ReportSaleChartFilterType.CITY:
+        salesData = await this.fetchByCity(tenantDb, scopedBusinessId, filters);
         break;
       default:
         throw new BadRequestException('Invalid filterType');
@@ -239,5 +255,72 @@ export class ReportSaleChartService {
       month: row.month,
       totalSales: this.formatAmount(Number(row.totalSales ?? 0)),
     }));
+  }
+
+  private async fetchByCity(
+    tenantDb: DataSource,
+    businessId: string,
+    filters: SaleChartFilters,
+  ): Promise<CityChartRow[]> {
+    const qb = this.applyInvoiceFilters(
+      tenantDb
+        .getRepository(SaleInvoice)
+        .createQueryBuilder('invoice')
+        .innerJoin('invoice.customer', 'party'),
+      'invoice',
+      'party',
+      businessId,
+      filters,
+    )
+      .select('party.cityId', 'cityId')
+      .addSelect('COALESCE(SUM(invoice.totalAmount), 0)', 'totalSales')
+      .groupBy('party.cityId')
+      .orderBy('COALESCE(SUM(invoice.totalAmount), 0)', 'DESC');
+
+    const rows = await qb.getRawMany<{
+      cityId: string | null;
+      totalSales: string;
+    }>();
+
+    const cityNames = await this.resolveCityNameMap(
+      rows.map((row) => row.cityId),
+    );
+
+    return rows.map((row) => ({
+      cityName: this.cityDisplayName(row.cityId, cityNames),
+      totalSales: this.formatAmount(Number(row.totalSales ?? 0)),
+    }));
+  }
+
+  private async resolveCityNameMap(
+    cityIds: Array<string | null | undefined>,
+  ): Promise<Map<string, string | null>> {
+    const uniqueCityIds = [
+      ...new Set(
+        cityIds.filter((cityId): cityId is string => Boolean(cityId?.trim())),
+      ),
+    ];
+    const cityNames = new Map<string, string | null>();
+
+    await Promise.all(
+      uniqueCityIds.map(async (cityId) => {
+        cityNames.set(
+          cityId,
+          await this.masterGeoHelperService.getCityNameById(cityId),
+        );
+      }),
+    );
+
+    return cityNames;
+  }
+
+  private cityDisplayName(
+    cityId: string | null | undefined,
+    cityNames: Map<string, string | null>,
+  ): string {
+    if (!cityId) {
+      return 'Unknown';
+    }
+    return cityNames.get(cityId) ?? 'Unknown';
   }
 }
