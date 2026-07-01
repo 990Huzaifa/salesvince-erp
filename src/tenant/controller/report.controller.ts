@@ -23,6 +23,7 @@ import { ReportRegisterService } from '../service/report/report-register.service
 import { ReportStockService } from '../service/report/report-stock.service';
 import { ReportFinancialService } from '../service/report/report-financial.service';
 import { ReportTaxService } from '../service/report/report-tax.service';
+import { ReportSaleChartService } from '../service/report/report-sale-chart.service';
 import { ReportGeneralLedgerQueryDto } from '../dto/report/report-ledger.query.dto';
 import { ReportTrialBalanceQueryDto } from '../dto/report/report-ledger.query.dto';
 import { ReportOutstandingDocumentsQueryDto } from '../dto/report/report-outstanding.query.dto';
@@ -40,6 +41,7 @@ import {
   ReportProfitAndLossQueryDto,
   ReportTaxSummaryQueryDto,
 } from '../dto/report/report-financial.query.dto';
+import { ReportSaleChartQueryDto } from '../dto/report/report-sale-chart.query.dto';
 
 @Controller('tenant/reports')
 @UseGuards(
@@ -58,6 +60,7 @@ export class ReportController {
     private readonly reportStockService: ReportStockService,
     private readonly reportFinancialService: ReportFinancialService,
     private readonly reportTaxService: ReportTaxService,
+    private readonly reportSaleChartService: ReportSaleChartService,
   ) {}
 
   @Get('cash-bank-balances')
@@ -124,6 +127,27 @@ export class ReportController {
       tenantDb,
       user.businessId,
       { startDate, endDate },
+      user.userId,
+    );
+  }
+
+  @Get('sales/chart')
+  getSaleChartReport(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportSaleChartQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportSaleChartService.getSaleChart(
+      tenantDb,
+      user.businessId,
+      {
+        filterType: query.filterType,
+        startDate: query.startDate,
+        endDate: query.endDate,
+        partyId: query.partyId,
+        cityId: query.cityId,
+      },
       user.userId,
     );
   }
