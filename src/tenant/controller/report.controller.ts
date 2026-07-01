@@ -22,6 +22,7 @@ import { ReportOutstandingService } from '../service/report/report-outstanding.s
 import { ReportRegisterService } from '../service/report/report-register.service';
 import { ReportStockService } from '../service/report/report-stock.service';
 import { ReportFinancialService } from '../service/report/report-financial.service';
+import { ReportFinancialTransactionService } from '../service/report/report-financial-transaction.service';
 import { ReportTaxService } from '../service/report/report-tax.service';
 import { ReportSaleChartService } from '../service/report/report-sale-chart.service';
 import { ReportSaleOverviewService } from '../service/report/report-sale-overview.service';
@@ -39,6 +40,7 @@ import {
 } from '../dto/report/report-stock.query.dto';
 import {
   ReportBalanceSheetQueryDto,
+  ReportFinancialReportQueryDto,
   ReportProfitAndLossQueryDto,
   ReportTaxSummaryQueryDto,
 } from '../dto/report/report-financial.query.dto';
@@ -61,6 +63,7 @@ export class ReportController {
     private readonly reportRegisterService: ReportRegisterService,
     private readonly reportStockService: ReportStockService,
     private readonly reportFinancialService: ReportFinancialService,
+    private readonly reportFinancialTransactionService: ReportFinancialTransactionService,
     private readonly reportTaxService: ReportTaxService,
     private readonly reportSaleChartService: ReportSaleChartService,
     private readonly reportSaleOverviewService: ReportSaleOverviewService,
@@ -381,6 +384,21 @@ export class ReportController {
         page: query.page,
         limit: query.limit,
       },
+      user.userId,
+    );
+  }
+
+  @Get('financial/report')
+  getFinancialReport(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportFinancialReportQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportFinancialTransactionService.getFinancialReport(
+      tenantDb,
+      user.businessId,
+      { startDate: query.startDate, endDate: query.endDate },
       user.userId,
     );
   }

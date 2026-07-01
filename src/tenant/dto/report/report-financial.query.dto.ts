@@ -3,6 +3,8 @@ import { ReportDateRangeQueryDto } from './report-date-range.query.dto';
 
 export class ReportProfitAndLossQueryDto extends ReportDateRangeQueryDto {}
 
+export class ReportFinancialReportQueryDto extends ReportDateRangeQueryDto {}
+
 export class ReportBalanceSheetQueryDto {
   @IsOptional()
   @IsString()

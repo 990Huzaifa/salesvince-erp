@@ -93,6 +93,7 @@ import { ReportOutstandingService } from './service/report/report-outstanding.se
 import { ReportRegisterService } from './service/report/report-register.service';
 import { ReportStockService } from './service/report/report-stock.service';
 import { ReportFinancialService } from './service/report/report-financial.service';
+import { ReportFinancialTransactionService } from './service/report/report-financial-transaction.service';
 import { ReportTaxService } from './service/report/report-tax.service';
 import { ReportSaleChartService } from './service/report/report-sale-chart.service';
 import { ReportSaleOverviewService } from './service/report/report-sale-overview.service';
@@ -275,6 +276,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     ReportRegisterService,
     ReportStockService,
     ReportFinancialService,
+    ReportFinancialTransactionService,
     ReportTaxService,
     ReportSaleChartService,
     ReportSaleOverviewService,
