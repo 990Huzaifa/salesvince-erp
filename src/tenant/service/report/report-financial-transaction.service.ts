@@ -21,6 +21,7 @@ type FinancialTransactionRow = {
   businessId: string;
   chartOfAccountId: string;
   transactionType: string;
+  transactionDate: Date;
   description: string | null;
   referenceId: string | null;
   debit: string;
@@ -152,6 +153,7 @@ export class ReportFinancialTransactionService {
         businessId: tx.businessId,
         chartOfAccountId: tx.chartOfAccountId,
         transactionType: TRANSACTION_TYPE_BY_CATEGORY[category],
+        transactionDate: tx.transactionDate,
         description: tx.description,
         referenceId: tx.referenceId,
         debit: this.formatAmount(debit),
