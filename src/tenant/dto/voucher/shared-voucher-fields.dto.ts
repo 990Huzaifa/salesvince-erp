@@ -27,12 +27,6 @@ export class VoucherPaymentFieldsDto {
   @IsDateString()
   chequeDate?: string;
 
-  @ValidateIf((o: VoucherPaymentFieldsDto) => o.paymentMethod === PaymentMethod.CHEQUE)
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(200)
-  bankName?: string;
-
   @IsDateString()
   paymentDate: string;
 

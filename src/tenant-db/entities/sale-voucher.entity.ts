@@ -29,15 +29,12 @@ export class SaleVoucher {
     @Column({ type: 'enum', enum: PaymentMethod })
     paymentMethod: PaymentMethod;
 
-    // if payment method is CHEQUE, then add cheque number, cheque date, and bank name
+    // if payment method is CHEQUE, then add cheque number and cheque date
     @Column({ nullable: true })
     chequeNumber: string;
 
     @Column({ nullable: true })
     chequeDate: Date;
-
-    @Column({ nullable: true })
-    bankName: string;
 
     @Column()
     paymentDate: Date;

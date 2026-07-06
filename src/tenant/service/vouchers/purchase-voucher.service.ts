@@ -550,7 +550,6 @@ export class PurchaseVoucherService {
             ? {
                 chequeNumber: row.chequeNumber,
                 chequeDate: new Date(row.chequeDate).toISOString(),
-                bankName: row.accountName,
               }
             : {}),
         };

@@ -55,9 +55,6 @@ export class LoanPaymentVoucher {
   @Column({ nullable: true })
   chequeDate: Date;
 
-  @Column({ nullable: true })
-  bankName: string;
-
   @Column()
   paymentDate: Date;
 

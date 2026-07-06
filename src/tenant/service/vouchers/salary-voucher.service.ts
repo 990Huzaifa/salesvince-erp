@@ -132,7 +132,6 @@ export class SalaryVoucherService {
       paymentMethod: voucher.paymentMethod,
       chequeNumber: voucher.chequeNumber,
       chequeDate: voucher.chequeDate,
-      bankName: voucher.bankName,
       paymentDate: voucher.paymentDate,
       paymentAmount: Number(voucher.paymentAmount),
       remarks: voucher.remarks,
@@ -247,7 +246,6 @@ export class SalaryVoucherService {
             paymentMethod: dto.paymentMethod,
             chequeNumber: dto.chequeNumber ?? null,
             chequeDate: dto.chequeDate ? new Date(dto.chequeDate) : null,
-            bankName: dto.bankName ?? null,
             paymentDate: new Date(dto.paymentDate),
             paymentAmount,
             remarks: dto.remarks?.trim() ?? null,
@@ -330,7 +328,6 @@ export class SalaryVoucherService {
             paymentMethod: dto.paymentMethod,
             chequeNumber: dto.chequeNumber ?? null,
             chequeDate: dto.chequeDate ? new Date(dto.chequeDate) : null,
-            bankName: dto.bankName ?? null,
             paymentDate: new Date(dto.paymentDate),
             paymentAmount,
             remarks: dto.remarks?.trim() ?? null,
@@ -575,9 +572,6 @@ export class SalaryVoucherService {
     }
     if (dto.chequeDate !== undefined) {
       voucher.chequeDate = dto.chequeDate ? new Date(dto.chequeDate) : null;
-    }
-    if (dto.bankName !== undefined) {
-      voucher.bankName = dto.bankName ?? null;
     }
     if (dto.paymentDate !== undefined) {
       voucher.paymentDate = new Date(dto.paymentDate);

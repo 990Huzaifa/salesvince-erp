@@ -565,7 +565,6 @@ export class SaleVoucherService {
             ? {
                 chequeNumber: row.chequeNumber,
                 chequeDate: new Date(row.chequeDate).toISOString(),
-                bankName: row.accountName,
               }
             : {}),
         };

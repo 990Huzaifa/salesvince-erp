@@ -15,7 +15,6 @@ export type VoucherPaymentPayload = {
   paymentAmount: number;
   chequeNumber?: string;
   chequeDate?: string;
-  bankName?: string;
   remarks?: string;
 };
 
@@ -114,7 +113,6 @@ export type VoucherEntity = ObjectLiteral & {
   paymentMethod: string;
   chequeNumber?: string | null;
   chequeDate?: Date | null;
-  bankName?: string | null;
   paymentDate: Date;
   paymentAmount: number;
   remarks?: string | null;

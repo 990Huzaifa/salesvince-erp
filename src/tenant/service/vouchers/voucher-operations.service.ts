@@ -105,7 +105,6 @@ export class VoucherOperationsService {
     target.chequeNumber = isCheque ? dto.chequeNumber?.trim() ?? null : null;
     target.chequeDate =
       isCheque && dto.chequeDate ? new Date(dto.chequeDate) : null;
-    target.bankName = isCheque ? dto.bankName?.trim() ?? null : null;
   }
 
   private async assertUniqueVoucherNumber<T extends VoucherEntity>(
@@ -233,7 +232,6 @@ export class VoucherOperationsService {
       chequeDate:
         dto.chequeDate ??
         (voucher.chequeDate ? voucher.chequeDate.toISOString() : undefined),
-      bankName: dto.bankName ?? voucher.bankName ?? undefined,
       remarks: dto.remarks ?? voucher.remarks ?? undefined,
     };
 
@@ -502,9 +500,6 @@ export class VoucherOperationsService {
       voucher.chequeDate = dto.chequeDate
         ? new Date(String(dto.chequeDate))
         : null;
-    }
-    if (dto.bankName !== undefined) {
-      voucher.bankName = dto.bankName ? String(dto.bankName).trim() : null;
     }
 
     if (config.hasParty) {

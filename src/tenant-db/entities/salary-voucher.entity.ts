@@ -61,9 +61,6 @@ export class SalaryVoucher {
   @Column({ nullable: true })
   chequeDate: Date | null;
 
-  @Column({ nullable: true })
-  bankName: string | null;
-
   @Column()
   paymentDate: Date;
 
