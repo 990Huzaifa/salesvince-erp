@@ -441,7 +441,7 @@ export class PurchaseInvoiceService {
     }
 
     const [invoices, total] = await qb
-      .orderBy('invoice.createdAt', 'DESC')
+      .orderBy('invoice.invoiceDate', 'DESC')
       .skip(skip)
       .take(limit)
       .getManyAndCount();

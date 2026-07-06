@@ -490,7 +490,7 @@ export class SalaryVoucherService {
     }
 
     const [rows, total] = await qb
-      .orderBy('v.createdAt', 'DESC')
+      .orderBy('v.paymentDate', 'DESC')
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();

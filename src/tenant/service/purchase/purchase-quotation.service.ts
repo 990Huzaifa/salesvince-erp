@@ -397,7 +397,7 @@ export class PurchaseQuotationService {
     }
 
     const [quotations, total] = await qb
-      .orderBy('pq.createdAt', 'DESC')
+      .orderBy('pq.quotationDate', 'DESC')
       .skip(skip)
       .take(limit)
       .getManyAndCount();

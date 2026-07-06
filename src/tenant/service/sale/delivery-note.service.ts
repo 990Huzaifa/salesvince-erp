@@ -901,7 +901,7 @@ export class DeliveryNoteService {
     }
 
     const [deliveryNotes, total] = await qb
-      .orderBy('deliveryNote.createdAt', 'DESC')
+      .orderBy('deliveryNote.deliveryNoteDate', 'DESC')
       .skip(skip)
       .take(limit)
       .getManyAndCount();

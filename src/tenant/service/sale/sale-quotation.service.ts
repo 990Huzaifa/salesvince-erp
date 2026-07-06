@@ -402,7 +402,7 @@ export class SaleQuotationService {
     }
 
     const [quotations, total] = await qb
-      .orderBy('sq.createdAt', 'DESC')
+      .orderBy('sq.quotationDate', 'DESC')
       .skip(skip)
       .take(limit)
       .getManyAndCount();

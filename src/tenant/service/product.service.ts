@@ -505,8 +505,13 @@ export class ProductService {
     }
   
     if (search) {
-      qb.andWhere('product.name LIKE :search', { search: `%${search}%` });
-      qb.orWhere('product.skuCode LIKE :search', { search: `%${search}%` });
+      qb.andWhere(
+        new Brackets((sub) => {
+          sub
+            .where('product.name ILIKE :search', { search: `%${search}%` })
+            .orWhere('product.skuCode ILIKE :search', { search: `%${search}%` });
+        }),
+      );
     }
   
     qb.orderBy('product.createdAt', 'DESC')

@@ -1129,7 +1129,7 @@ export class PurchaseOrderService {
     }
 
     const [orders, total] = await qb
-      .orderBy('po.createdAt', 'DESC')
+      .orderBy('po.orderDate', 'DESC')
       .skip(skip)
       .take(limit)
       .getManyAndCount();

@@ -1000,7 +1000,7 @@ export class SaleOrderService {
     }
 
     const [orders, total] = await qb
-      .orderBy('so.createdAt', 'DESC')
+      .orderBy('so.orderDate', 'DESC')
       .skip(skip)
       .take(limit)
       .getManyAndCount();

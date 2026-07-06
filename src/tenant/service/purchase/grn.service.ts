@@ -914,7 +914,7 @@ export class GrnService {
     }
 
     const [grns, total] = await qb
-      .orderBy('grn.createdAt', 'DESC')
+      .orderBy('grn.grnDate', 'DESC')
       .skip(skip)
       .take(limit)
       .getManyAndCount();

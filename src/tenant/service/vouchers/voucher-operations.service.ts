@@ -861,7 +861,7 @@ export class VoucherOperationsService {
       });
     }
 
-    qb.orderBy(`${alias}.createdAt`, 'DESC')
+    qb.orderBy(`${alias}.paymentDate`, 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
 
