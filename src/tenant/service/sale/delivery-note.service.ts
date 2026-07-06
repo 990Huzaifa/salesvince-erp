@@ -103,6 +103,29 @@ export class DeliveryNoteService {
     return resolved;
   }
 
+  private async resolveSaleOrderNumber(
+    manager: EntityManager,
+    deliveryNote: DeliveryNote,
+  ): Promise<string> {
+    if (deliveryNote.saleOrder?.orderNumber) {
+      return deliveryNote.saleOrder.orderNumber;
+    }
+
+    const order = await manager.getRepository(SaleOrder).findOne({
+      where: { id: deliveryNote.saleOrderId },
+      select: ['orderNumber'],
+    });
+    if (!order) {
+      throw new NotFoundException('Sale order not found for delivery note');
+    }
+
+    return order.orderNumber;
+  }
+
+  private deliveryNoteLedgerDescription(saleOrderNumber: string): string {
+    return `SO ${saleOrderNumber} - customer receivable`;
+  }
+
   private deliveryNoteRelations() {
     return {
       saleOrder: true,
@@ -689,7 +712,9 @@ export class DeliveryNoteService {
       referenceId: deliveryNote.id,
       partyId: customer.id,
       transactionDate: deliveryNote.deliveryNoteDate,
-      description: `Delivery note ${deliveryNote.deliveryNoteNumber} - customer receivable`,
+      description: this.deliveryNoteLedgerDescription(
+        await this.resolveSaleOrderNumber(manager, deliveryNote),
+      ),
       debitAmount: this.roundAmount(Number(deliveryNote.totalAmount)),
     });
 
@@ -1265,7 +1290,7 @@ export class DeliveryNoteService {
           referenceType: AccountTransactionReferenceType.DELIVERY_NOTE,
           referenceId: deliveryNote.id,
           transactionDate: order.orderDate,
-          description: `Delivery note ${deliveryNote.deliveryNoteNumber} - customer receivable`,
+          description: this.deliveryNoteLedgerDescription(order.orderNumber),
           debitAmount: headerTotals.totalAmount,
         },
       );

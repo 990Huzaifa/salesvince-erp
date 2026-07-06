@@ -64,6 +64,35 @@ export class TransactionService {
     return Math.abs(this.roundAmount(value)) < 0.005;
   }
 
+  private formatTitleCaseWord(word: string): string {
+    if (!word.length) {
+      return word;
+    }
+
+    const grnDnCodeMatch = /^((?:GRN|DN|PO|SO))(-.*)?$/i.exec(word);
+    if (grnDnCodeMatch) {
+      return grnDnCodeMatch[1].toUpperCase() + (grnDnCodeMatch[2] ?? '');
+    }
+
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  }
+
+  private toTitleCase(value: string | null | undefined): string | null {
+    if (value == null) {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    return trimmed
+      .split(/\s+/)
+      .map((word) => this.formatTitleCaseWord(word))
+      .join(' ');
+  }
+
   validateJournalLines(lines: JournalLineInput[]): void {
     if (!lines.length) {
       throw new BadRequestException('Journal must have at least one line');
@@ -204,7 +233,7 @@ export class TransactionService {
         referenceType: params.referenceType,
         referenceId: params.referenceId ?? null,
         transactionDate: params.transactionDate ?? new Date(),
-        description: params.description ?? null,
+        description: this.toTitleCase(params.description),
         debitAmount: params.debitAmount,
         creditAmount: params.creditAmount,
         currentBalance,
@@ -340,7 +369,10 @@ export class TransactionService {
 
     await txRepo.update(existing.id, {
       transactionDate: params.transactionDate ?? existing.transactionDate,
-      description: params.description ?? existing.description,
+      description:
+        params.description !== undefined
+          ? this.toTitleCase(params.description)
+          : existing.description,
       debitAmount: hasDebit ? this.roundAmount(debit) : null,
       creditAmount: hasCredit ? this.roundAmount(credit) : null,
     });

@@ -131,6 +131,29 @@ export class GrnService {
     return vendor;
   }
 
+  private async resolvePurchaseOrderNumber(
+    manager: EntityManager,
+    grn: Grn,
+  ): Promise<string> {
+    if (grn.purchaseOrder?.orderNumber) {
+      return grn.purchaseOrder.orderNumber;
+    }
+
+    const order = await manager.getRepository(PurchaseOrder).findOne({
+      where: { id: grn.purchaseOrderId },
+      select: ['orderNumber'],
+    });
+    if (!order) {
+      throw new NotFoundException('Purchase order not found for GRN');
+    }
+
+    return order.orderNumber;
+  }
+
+  private grnLedgerDescription(purchaseOrderNumber: string): string {
+    return `PO ${purchaseOrderNumber} - vendor payable`;
+  }
+
   /**
    * Posts stock IN, credits vendor payable, and sets status to APPROVED.
    * Idempotent when the GRN is already approved (e.g. safe approve retry).
@@ -189,7 +212,9 @@ export class GrnService {
       referenceId: grn.id,
       partyId: vendor.id,
       transactionDate: grn.grnDate,
-      description: `GRN ${grn.grnNumber} - vendor payable`,
+      description: this.grnLedgerDescription(
+        await this.resolvePurchaseOrderNumber(manager, grn),
+      ),
       creditAmount: this.roundAmount(Number(grn.totalAmount)),
     });
 
@@ -1295,7 +1320,7 @@ export class GrnService {
           referenceType: AccountTransactionReferenceType.GRN,
           referenceId: grn.id,
           transactionDate: order.orderDate,
-          description: `GRN ${grn.grnNumber} - vendor payable`,
+          description: this.grnLedgerDescription(order.orderNumber),
           creditAmount: headerTotals.totalAmount,
         },
       );
