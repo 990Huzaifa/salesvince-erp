@@ -28,6 +28,10 @@ import { CreateGrnItemDto } from '../../dto/grn/create-grn-item.dto';
 import { UpdateGrnDto } from '../../dto/grn/update-grn.dto';
 import { UpdateGrnItemDto } from '../../dto/grn/update-grn-item.dto';
 import { ActivityLogService } from '../activity-log.service';
+import {
+  ListAnalyticsModule,
+  ListAnalyticsService,
+} from '../list-analytics.service';
 import { StockService } from '../stock.service';
 import { TransactionService } from '../transaction.service';
 import { PurchaseInvoiceService } from './purchase-invoice.service';
@@ -76,6 +80,7 @@ export class GrnService {
     private readonly stockService: StockService,
     private readonly transactionService: TransactionService,
     private readonly purchaseInvoiceService: PurchaseInvoiceService,
+    private readonly listAnalyticsService: ListAnalyticsService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -913,11 +918,18 @@ export class GrnService {
       );
     }
 
-    const [grns, total] = await qb
-      .orderBy('grn.grnDate', 'DESC')
-      .skip(skip)
-      .take(limit)
-      .getManyAndCount();
+    const [[grns, total], analytics] = await Promise.all([
+      qb
+        .orderBy('grn.grnDate', 'DESC')
+        .skip(skip)
+        .take(limit)
+        .getManyAndCount(),
+      this.listAnalyticsService.getDocumentAnalytics(
+        tenantDb,
+        scopedBusinessId,
+        ListAnalyticsModule.GRN,
+      ),
+    ]);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
@@ -930,6 +942,7 @@ export class GrnService {
     return {
       data: grns.map((grn) => this.mapGrn(grn)),
       meta: { total, page, limit },
+      analytics,
     };
   }
 

@@ -21,6 +21,10 @@ import { AccountTransactionReferenceType } from 'src/tenant-db/entities/transact
 import { CreateSaleReturnDto } from '../../dto/sale-return/create-sale-return.dto';
 import { UpdateSaleReturnDto } from '../../dto/sale-return/update-sale-return.dto';
 import { ActivityLogService } from '../activity-log.service';
+import {
+  ListAnalyticsModule,
+  ListAnalyticsService,
+} from '../list-analytics.service';
 import { StockService } from '../stock.service';
 import { TransactionService } from '../transaction.service';
 
@@ -43,6 +47,7 @@ export class SaleReturnService {
     private readonly activityLogService: ActivityLogService,
     private readonly stockService: StockService,
     private readonly transactionService: TransactionService,
+    private readonly listAnalyticsService: ListAnalyticsService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -845,11 +850,18 @@ export class SaleReturnService {
       );
     }
 
-    const [returns, total] = await qb
-      .orderBy('saleReturn.createdAt', 'DESC')
-      .skip(skip)
-      .take(limit)
-      .getManyAndCount();
+    const [[returns, total], analytics] = await Promise.all([
+      qb
+        .orderBy('saleReturn.createdAt', 'DESC')
+        .skip(skip)
+        .take(limit)
+        .getManyAndCount(),
+      this.listAnalyticsService.getDocumentAnalytics(
+        tenantDb,
+        scopedBusinessId,
+        ListAnalyticsModule.SALE_RETURN,
+      ),
+    ]);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
@@ -862,6 +874,7 @@ export class SaleReturnService {
     return {
       data: returns.map((row) => this.mapSaleReturn(row)),
       meta: { total, page, limit },
+      analytics,
     };
   }
 

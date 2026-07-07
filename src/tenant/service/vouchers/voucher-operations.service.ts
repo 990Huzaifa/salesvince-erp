@@ -19,6 +19,9 @@ import {
   VoucherStatus,
 } from 'src/tenant-db/entities/voucher.entity';
 import { ActivityLogService } from '../activity-log.service';
+import {
+  ListAnalyticsService,
+} from '../list-analytics.service';
 import { TransactionService } from '../transaction.service';
 import {
   ContraVoucherPayload,
@@ -41,6 +44,7 @@ export class VoucherOperationsService {
   constructor(
     private readonly transactionService: TransactionService,
     private readonly activityLogService: ActivityLogService,
+    private readonly listAnalyticsService: ListAnalyticsService,
   ) {}
 
   private roundAmount(value: number): number {
@@ -865,7 +869,16 @@ export class VoucherOperationsService {
       .skip((page - 1) * limit)
       .take(limit);
 
-    const [vouchers, total] = await qb.getManyAndCount();
+    const [[vouchers, total], analytics] = await Promise.all([
+      qb.getManyAndCount(),
+      config.hasParty
+        ? this.listAnalyticsService.getVoucherAnalyticsByActivityKey(
+            tenantDb,
+            businessId,
+            config.activityKey,
+          )
+        : Promise.resolve(null),
+    ]);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: userId,
@@ -875,7 +888,11 @@ export class VoucherOperationsService {
       metadata: { total, page, limit },
     });
 
-    return { result: vouchers, meta: { total, page, limit } };
+    return {
+      result: vouchers,
+      meta: { total, page, limit },
+      ...(analytics ? { analytics } : {}),
+    };
   }
 
   async getById<T extends VoucherEntity>(

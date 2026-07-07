@@ -26,12 +26,19 @@ import { CreatePurchaseQuotationItemDto } from '../../dto/purchase-quotation/cre
 import { UpdatePurchaseQuotationDto } from '../../dto/purchase-quotation/update-purchase-quotation.dto';
 import { UpdatePurchaseQuotationItemDto } from '../../dto/purchase-quotation/update-purchase-quotation-item.dto';
 import { ActivityLogService } from '../activity-log.service';
+import {
+  ListAnalyticsModule,
+  ListAnalyticsService,
+} from '../list-analytics.service';
 
 const QUOTATION_NUMBER_PREFIX = 'PQ';
 
 @Injectable()
 export class PurchaseQuotationService {
-  constructor(private readonly activityLogService: ActivityLogService) {}
+  constructor(
+    private readonly activityLogService: ActivityLogService,
+    private readonly listAnalyticsService: ListAnalyticsService,
+  ) {}
 
   private assertBusinessId(businessId?: string): string {
     if (!businessId) {
@@ -396,11 +403,18 @@ export class PurchaseQuotationService {
       );
     }
 
-    const [quotations, total] = await qb
-      .orderBy('pq.quotationDate', 'DESC')
-      .skip(skip)
-      .take(limit)
-      .getManyAndCount();
+    const [[quotations, total], analytics] = await Promise.all([
+      qb
+        .orderBy('pq.quotationDate', 'DESC')
+        .skip(skip)
+        .take(limit)
+        .getManyAndCount(),
+      this.listAnalyticsService.getDocumentAnalytics(
+        tenantDb,
+        scopedBusinessId,
+        ListAnalyticsModule.PURCHASE_QUOTATION,
+      ),
+    ]);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
@@ -413,6 +427,7 @@ export class PurchaseQuotationService {
     return {
       data: quotations.map((quotation) => this.mapQuotation(quotation)),
       meta: { total, page, limit },
+      analytics,
     };
   }
 

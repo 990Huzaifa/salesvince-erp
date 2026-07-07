@@ -27,6 +27,10 @@ import { EditApprovedSaleOrderDto } from '../../dto/sale-order/edit-approved-sal
 import { EditApprovedSaleOrderItemDto } from '../../dto/sale-order/edit-approved-sale-order-item.dto';
 import * as XLSX from 'xlsx';
 import { ActivityLogService } from '../activity-log.service';
+import {
+  ListAnalyticsModule,
+  ListAnalyticsService,
+} from '../list-analytics.service';
 import { NotificationService } from '../notification.service';
 import { TenantJob, TenantJobService } from '../tenant-job.service';
 import { StockService } from '../stock.service';
@@ -84,6 +88,7 @@ export class SaleOrderService {
     private readonly deliveryNoteService: DeliveryNoteService,
     private readonly notificationService: NotificationService,
     private readonly tenantJobService: TenantJobService,
+    private readonly listAnalyticsService: ListAnalyticsService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -999,11 +1004,18 @@ export class SaleOrderService {
       );
     }
 
-    const [orders, total] = await qb
-      .orderBy('so.orderDate', 'DESC')
-      .skip(skip)
-      .take(limit)
-      .getManyAndCount();
+    const [[orders, total], analytics] = await Promise.all([
+      qb
+        .orderBy('so.orderDate', 'DESC')
+        .skip(skip)
+        .take(limit)
+        .getManyAndCount(),
+      this.listAnalyticsService.getDocumentAnalytics(
+        tenantDb,
+        scopedBusinessId,
+        ListAnalyticsModule.SALE_ORDER,
+      ),
+    ]);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
@@ -1016,6 +1028,7 @@ export class SaleOrderService {
     return {
       data: orders.map((order) => this.mapSaleOrder(order)),
       meta: { total, page, limit },
+      analytics,
     };
   }
 

@@ -37,6 +37,10 @@ import { EditApprovedPurchaseOrderDto } from '../../dto/purchase-order/edit-appr
 import { EditApprovedPurchaseOrderItemDto } from '../../dto/purchase-order/edit-approved-purchase-order-item.dto';
 import * as XLSX from 'xlsx';
 import { ActivityLogService } from '../activity-log.service';
+import {
+  ListAnalyticsModule,
+  ListAnalyticsService,
+} from '../list-analytics.service';
 import { NotificationService } from '../notification.service';
 import { TenantJob, TenantJobService } from '../tenant-job.service';
 import { GrnService } from './grn.service';
@@ -93,6 +97,7 @@ export class PurchaseOrderService {
     private readonly grnService: GrnService,
     private readonly notificationService: NotificationService,
     private readonly tenantJobService: TenantJobService,
+    private readonly listAnalyticsService: ListAnalyticsService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -1128,11 +1133,18 @@ export class PurchaseOrderService {
       );
     }
 
-    const [orders, total] = await qb
-      .orderBy('po.orderDate', 'DESC')
-      .skip(skip)
-      .take(limit)
-      .getManyAndCount();
+    const [[orders, total], analytics] = await Promise.all([
+      qb
+        .orderBy('po.orderDate', 'DESC')
+        .skip(skip)
+        .take(limit)
+        .getManyAndCount(),
+      this.listAnalyticsService.getDocumentAnalytics(
+        tenantDb,
+        scopedBusinessId,
+        ListAnalyticsModule.PURCHASE_ORDER,
+      ),
+    ]);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
@@ -1145,6 +1157,7 @@ export class PurchaseOrderService {
     return {
       data: orders.map((order) => this.mapPurchaseOrder(order)),
       meta: { total, page, limit },
+      analytics,
     };
   }
 

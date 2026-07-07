@@ -18,6 +18,10 @@ import {
   Transaction,
 } from 'src/tenant-db/entities/transaction.entity';
 import { ActivityLogService } from '../activity-log.service';
+import {
+  ListAnalyticsModule,
+  ListAnalyticsService,
+} from '../list-analytics.service';
 import { MasterGeoHelperService } from '../master-geo-helper.service';
 
 const INVOICE_NUMBER_PREFIX = 'SI';
@@ -38,6 +42,7 @@ export class SaleInvoiceService {
   constructor(
     private readonly activityLogService: ActivityLogService,
     private readonly masterGeoHelperService: MasterGeoHelperService,
+    private readonly listAnalyticsService: ListAnalyticsService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -462,11 +467,18 @@ export class SaleInvoiceService {
       );
     }
 
-    const [invoices, total] = await qb
-      .orderBy('invoice.invoiceDate', 'DESC')
-      .skip(skip)
-      .take(limit)
-      .getManyAndCount();
+    const [[invoices, total], analytics] = await Promise.all([
+      qb
+        .orderBy('invoice.invoiceDate', 'DESC')
+        .skip(skip)
+        .take(limit)
+        .getManyAndCount(),
+      this.listAnalyticsService.getDocumentAnalytics(
+        tenantDb,
+        scopedBusinessId,
+        ListAnalyticsModule.SALE_INVOICE,
+      ),
+    ]);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
@@ -479,6 +491,7 @@ export class SaleInvoiceService {
     return {
       data: invoices.map((invoice) => this.mapSaleInvoice(invoice)),
       meta: { total, page, limit },
+      analytics,
     };
   }
 

@@ -99,6 +99,7 @@ import { ReportSaleChartService } from './service/report/report-sale-chart.servi
 import { ReportSaleOverviewService } from './service/report/report-sale-overview.service';
 import { DashboardController } from './controller/dashboard.controller';
 import { DashboardService } from './service/dashboard.service';
+import { ListAnalyticsService } from './service/list-analytics.service';
 import { Country } from 'src/master-db/entities/country.entity';
 import { State } from 'src/master-db/entities/state.entity';
 import { City } from 'src/master-db/entities/city.entity';
@@ -281,6 +282,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     ReportSaleChartService,
     ReportSaleOverviewService,
     DashboardService,
+    ListAnalyticsService,
     SqlAgentChatService,
     LoanService,
     InventoryBalanceService,

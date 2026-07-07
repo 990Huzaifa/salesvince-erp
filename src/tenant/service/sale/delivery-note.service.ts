@@ -23,6 +23,10 @@ import { CreateDeliveryNoteItemDto } from '../../dto/delivery-note/create-delive
 import { UpdateDeliveryNoteDto } from '../../dto/delivery-note/update-delivery-note.dto';
 import { UpdateDeliveryNoteItemDto } from '../../dto/delivery-note/update-delivery-note-item.dto';
 import { ActivityLogService } from '../activity-log.service';
+import {
+  ListAnalyticsModule,
+  ListAnalyticsService,
+} from '../list-analytics.service';
 import { StockService } from '../stock.service';
 import { TransactionService } from '../transaction.service';
 import { SaleInvoiceService } from './sale-invoice.service';
@@ -69,6 +73,7 @@ export class DeliveryNoteService {
     private readonly stockService: StockService,
     private readonly transactionService: TransactionService,
     private readonly saleInvoiceService: SaleInvoiceService,
+    private readonly listAnalyticsService: ListAnalyticsService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -900,11 +905,18 @@ export class DeliveryNoteService {
       );
     }
 
-    const [deliveryNotes, total] = await qb
-      .orderBy('deliveryNote.deliveryNoteDate', 'DESC')
-      .skip(skip)
-      .take(limit)
-      .getManyAndCount();
+    const [[deliveryNotes, total], analytics] = await Promise.all([
+      qb
+        .orderBy('deliveryNote.deliveryNoteDate', 'DESC')
+        .skip(skip)
+        .take(limit)
+        .getManyAndCount(),
+      this.listAnalyticsService.getDocumentAnalytics(
+        tenantDb,
+        scopedBusinessId,
+        ListAnalyticsModule.DELIVERY_NOTE,
+      ),
+    ]);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
@@ -919,6 +931,7 @@ export class DeliveryNoteService {
         this.mapDeliveryNote(deliveryNote),
       ),
       meta: { total, page, limit },
+      analytics,
     };
   }
 

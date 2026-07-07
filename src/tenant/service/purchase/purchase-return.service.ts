@@ -21,6 +21,10 @@ import { AccountTransactionReferenceType } from 'src/tenant-db/entities/transact
 import { CreatePurchaseReturnDto } from '../../dto/purchase-return/create-purchase-return.dto';
 import { UpdatePurchaseReturnDto } from '../../dto/purchase-return/update-purchase-return.dto';
 import { ActivityLogService } from '../activity-log.service';
+import {
+  ListAnalyticsModule,
+  ListAnalyticsService,
+} from '../list-analytics.service';
 import { StockService } from '../stock.service';
 import { TransactionService } from '../transaction.service';
 
@@ -42,6 +46,7 @@ export class PurchaseReturnService {
     private readonly activityLogService: ActivityLogService,
     private readonly stockService: StockService,
     private readonly transactionService: TransactionService,
+    private readonly listAnalyticsService: ListAnalyticsService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -813,11 +818,18 @@ export class PurchaseReturnService {
       );
     }
 
-    const [returns, total] = await qb
-      .orderBy('purchaseReturn.createdAt', 'DESC')
-      .skip(skip)
-      .take(limit)
-      .getManyAndCount();
+    const [[returns, total], analytics] = await Promise.all([
+      qb
+        .orderBy('purchaseReturn.createdAt', 'DESC')
+        .skip(skip)
+        .take(limit)
+        .getManyAndCount(),
+      this.listAnalyticsService.getDocumentAnalytics(
+        tenantDb,
+        scopedBusinessId,
+        ListAnalyticsModule.PURCHASE_RETURN,
+      ),
+    ]);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
@@ -830,6 +842,7 @@ export class PurchaseReturnService {
     return {
       data: returns.map((row) => this.mapPurchaseReturn(row)),
       meta: { total, page, limit },
+      analytics,
     };
   }
 
