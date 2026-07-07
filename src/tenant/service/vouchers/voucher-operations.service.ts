@@ -1165,6 +1165,50 @@ export class VoucherOperationsService {
     return cancelled;
   }
 
+  async delete<T extends VoucherEntity>(
+    tenantDb: DataSource,
+    businessId: string,
+    config: VoucherConfig<T>,
+    id: string,
+    userId: string,
+  ) {
+    const deleted = await tenantDb.transaction(async (manager) => {
+      const voucher = await this.findVoucherOrThrow(
+        manager.connection,
+        businessId,
+        config,
+        id,
+      );
+
+      if (voucher.status === VoucherStatus.PAID) {
+        await this.transactionService.deleteLedgerEntriesByReference(manager, {
+          businessId,
+          referenceType: config.referenceType,
+          referenceId: voucher.id,
+        });
+      }
+
+      await this.getRepo(manager, config.entity).delete(voucher.id);
+      return voucher;
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: userId,
+      businessId,
+      action: `${config.activityKey}_DELETED`,
+      description: `${config.activityKey} ${deleted.voucherNumber} deleted`,
+      metadata: {
+        voucherId: deleted.id,
+        wasApproved: deleted.status === VoucherStatus.PAID,
+      },
+    });
+
+    return {
+      message: `${config.activityKey} deleted`,
+      data: { id: deleted.id, voucherNumber: deleted.voucherNumber },
+    };
+  }
+
   async reject<T extends VoucherEntity>(
     tenantDb: DataSource,
     businessId: string,

@@ -140,6 +140,16 @@ export class SaleVoucherService {
     );
   }
 
+  delete(tenantDb: DataSource, businessId: string, id: string, userId: string) {
+    return this.voucherOps.delete(
+      tenantDb,
+      businessId,
+      SALE_VOUCHER_CONFIG,
+      id,
+      userId,
+    );
+  }
+
   private roundAmount(value: number): number {
     return Math.round(Number(value) * 100) / 100;
   }

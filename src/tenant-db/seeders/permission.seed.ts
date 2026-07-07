@@ -219,6 +219,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'DELETE_UOM', name: 'Delete UOM' },
   { key: 'DELETE_SALE_ORDER', name: 'Delete Sale Order' },
   { key: 'DELETE_SALE_RETURN', name: 'Delete Sale Return' },
+  { key: 'DELETE_SALE_VOUCHER', name: 'Delete Sale Voucher' },
   { key: 'DELETE_PURCHASE_RETURN', name: 'Delete Purchase Return' },
   { key: 'DELETE_OPENING_STOCK', name: 'Delete Opening Stock' },
   { key: 'DELETE_PURCHASE_STOCK', name: 'Delete Purchase Stock' },

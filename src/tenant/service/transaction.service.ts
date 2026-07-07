@@ -606,6 +606,60 @@ export class TransactionService {
     };
   }
 
+  /**
+   * Removes all ledger rows for a reference and recomputes running balances
+   * on every chart of account that had entries for that reference.
+   */
+  async deleteLedgerEntriesByReference(
+    manager: EntityManager,
+    params: {
+      businessId: string;
+      referenceType: AccountTransactionReferenceType;
+      referenceId: string;
+    },
+  ): Promise<{ deletedCount: number; affectedAccountIds: string[] }> {
+    const txRepo = manager.getRepository(Transaction);
+    const entries = await txRepo.find({
+      where: {
+        businessId: params.businessId,
+        referenceType: params.referenceType,
+        referenceId: params.referenceId,
+      },
+      select: ['id', 'chartOfAccountId'],
+    });
+
+    if (!entries.length) {
+      return { deletedCount: 0, affectedAccountIds: [] };
+    }
+
+    const affectedAccountIds = [
+      ...new Set(entries.map((entry) => entry.chartOfAccountId)),
+    ];
+
+    await txRepo.delete({ id: In(entries.map((entry) => entry.id)) });
+
+    for (const chartOfAccountId of affectedAccountIds) {
+      const account = await manager.getRepository(ChartOfAccount).findOne({
+        where: {
+          id: chartOfAccountId,
+          businessId: params.businessId,
+          deletedAt: IsNull(),
+        },
+      });
+      if (!account) {
+        continue;
+      }
+
+      await recalculateAccountLedgerBalances(manager, {
+        businessId: params.businessId,
+        account,
+        chartOfAccountId,
+      });
+    }
+
+    return { deletedCount: entries.length, affectedAccountIds };
+  }
+
   async recalculateBusinessLedgers(
     tenantDb: DataSource,
     businessId: string | undefined,
