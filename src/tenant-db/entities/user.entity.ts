@@ -72,6 +72,12 @@ export class User {
     @Column({ type: 'timestamp', nullable: true })
     lastLoginAt: Date | null;
 
+    @Column({ type: 'varchar', length: 255, nullable: true })
+    passwordResetOtp: string | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    passwordResetOtpExpiresAt: Date | null;
+
     @OneToMany(() => UserBusiness, (userBusiness) => userBusiness.user)
     userBusinesses: UserBusiness[];
 

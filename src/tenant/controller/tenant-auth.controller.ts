@@ -12,6 +12,8 @@ import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
 import { TenantLoginOnlyGuard } from 'src/auth/tenant-login-only.guard';
 import { TenantLoginDto } from '../dto/tenant-login.dto';
+import { TenantForgotPasswordDto } from '../dto/tenant-forgot-password.dto';
+import { TenantVerifyForgotPasswordOtpDto } from '../dto/tenant-verify-forgot-password-otp.dto';
 import { SetupTenantUserPasswordDto } from '../dto/user/setup-tenant-user-password.dto';
 import { SelectBusinessDto } from '../dto/select-business.dto';
 import { PusherService } from 'src/common/pusher/pusher.service';
@@ -98,6 +100,57 @@ export class TenantAuthController {
       'host',
     ]);
     return this.tenantAuthService.setupInvitedUserPassword(
+      dto,
+      resolveTenantHost(origin, referer, host),
+    );
+  }
+
+  @Post('forgot-password')
+  forgotPassword(@Body() dto: TenantForgotPasswordDto, @Req() req: Request) {
+    const origin = getRequestHeader(req, ['origin', 'x-forwarded-origin']);
+    const referer = getRequestHeader(req, ['referer']);
+    const host = getRequestHeader(req, [
+      'x-original-host',
+      'x-forwarded-host',
+      'host',
+    ]);
+    return this.tenantAuthService.forgotPassword(
+      dto,
+      resolveTenantHost(origin, referer, host),
+    );
+  }
+
+  @Post('resend-forgot-password-otp')
+  resendForgotPasswordOtp(
+    @Body() dto: TenantForgotPasswordDto,
+    @Req() req: Request,
+  ) {
+    const origin = getRequestHeader(req, ['origin', 'x-forwarded-origin']);
+    const referer = getRequestHeader(req, ['referer']);
+    const host = getRequestHeader(req, [
+      'x-original-host',
+      'x-forwarded-host',
+      'host',
+    ]);
+    return this.tenantAuthService.resendForgotPasswordOtp(
+      dto,
+      resolveTenantHost(origin, referer, host),
+    );
+  }
+
+  @Post('verify-forgot-password-otp')
+  verifyForgotPasswordOtp(
+    @Body() dto: TenantVerifyForgotPasswordOtpDto,
+    @Req() req: Request,
+  ) {
+    const origin = getRequestHeader(req, ['origin', 'x-forwarded-origin']);
+    const referer = getRequestHeader(req, ['referer']);
+    const host = getRequestHeader(req, [
+      'x-original-host',
+      'x-forwarded-host',
+      'host',
+    ]);
+    return this.tenantAuthService.verifyForgotPasswordOtp(
       dto,
       resolveTenantHost(origin, referer, host),
     );
