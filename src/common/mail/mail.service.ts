@@ -64,4 +64,13 @@ export class MailService {
     }) {
         return this.renderTemplate('tenant-user-invite', data);
     }
+
+    renderResetPinTemplate(data: {
+        logoUrl: string;
+        name: string;
+        resetUrl: string;
+        year: number;
+    }) {
+        return this.renderTemplate('reset-pin-email', data);
+    }
 }
