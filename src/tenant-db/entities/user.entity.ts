@@ -78,6 +78,9 @@ export class User {
     @Column({ type: 'timestamp', nullable: true })
     passwordResetOtpExpiresAt: Date | null;
 
+    @Column({nullable: true, type: 'integer'})
+    pin: number;
+
     @OneToMany(() => UserBusiness, (userBusiness) => userBusiness.user)
     userBusinesses: UserBusiness[];
 
