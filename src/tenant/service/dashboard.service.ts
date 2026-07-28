@@ -23,6 +23,7 @@ import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity'
 import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
 import { Product } from 'src/tenant-db/entities/product.entity';
 import { ReportService } from './report.service';
+import { ReportCustomerLowPaymentService } from './report/report-customer-low-payment.service';
 import { MasterGeoHelperService } from './master-geo-helper.service';
 import { ActivityLogService } from './activity-log.service';
 
@@ -57,6 +58,7 @@ type PieSegment = {
 export class DashboardService {
   constructor(
     private readonly reportService: ReportService,
+    private readonly reportCustomerLowPaymentService: ReportCustomerLowPaymentService,
     private readonly masterGeoHelperService: MasterGeoHelperService,
     private readonly activityLogService: ActivityLogService,
   ) {}
@@ -725,12 +727,13 @@ export class DashboardService {
       amountReceivedPrevious,
     );
 
-    const lowPaymentCustomers = await this.buildLowPaymentCustomers(
-      tenantDb,
-      scopedBusinessId,
-      customerBalances.data,
-      10,
-    );
+    const lowPaymentCustomers =
+      await this.reportCustomerLowPaymentService.buildLowPaymentCustomers(
+        tenantDb,
+        scopedBusinessId,
+        customerBalances.data,
+        { limit: 10 },
+      );
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
@@ -836,76 +839,14 @@ export class DashboardService {
     tenantDb: DataSource,
     businessId: string | undefined,
     actorUserId: string,
-    limit = 10,
+    limit?: number,
   ) {
-    const scopedBusinessId = this.assertBusinessId(businessId);
-    const customerBalances = await this.reportService.getCustomerBalances(
+    return this.reportCustomerLowPaymentService.getLowPaymentCustomers(
       tenantDb,
-      scopedBusinessId,
+      businessId,
       actorUserId,
+      { limit },
     );
-
-    const data = await this.buildLowPaymentCustomers(
-      tenantDb,
-      scopedBusinessId,
-      customerBalances.data,
-      limit,
-    );
-
-    return { data };
-  }
-
-  private async buildLowPaymentCustomers(
-    tenantDb: DataSource,
-    businessId: string,
-    balanceRows: Array<{ id: string; name: string; currentBalance: number }>,
-    limit: number,
-  ) {
-    const candidates = balanceRows
-      .filter((row) => row.currentBalance > 0)
-      .sort((a, b) => b.currentBalance - a.currentBalance)
-      .slice(0, limit);
-
-    if (candidates.length === 0) {
-      return [];
-    }
-
-    const parties = await tenantDb.getRepository(Party).find({
-      where: {
-        businessId,
-        id: In(candidates.map((row) => row.id)),
-      },
-      select: { id: true, cityId: true },
-    });
-    const cityByPartyId = new Map(
-      parties.map((party) => [party.id, party.cityId]),
-    );
-
-    const cityIds = [
-      ...new Set(
-        parties
-          .map((party) => party.cityId)
-          .filter((id): id is string => Boolean(id)),
-      ),
-    ];
-    const cityNames = new Map<string, string | null>();
-    await Promise.all(
-      cityIds.map(async (cityId) => {
-        cityNames.set(
-          cityId,
-          await this.masterGeoHelperService.getCityNameById(cityId),
-        );
-      }),
-    );
-
-    return candidates.map((row) => {
-      const cityId = cityByPartyId.get(row.id) ?? null;
-      return {
-        name: row.name,
-        cityName: cityId ? cityNames.get(cityId) ?? null : null,
-        balance: this.formatAmount(row.currentBalance),
-      };
-    });
   }
 
   async getCharts(

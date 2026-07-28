@@ -97,6 +97,7 @@ import { ReportFinancialTransactionService } from './service/report/report-finan
 import { ReportTaxService } from './service/report/report-tax.service';
 import { ReportSaleChartService } from './service/report/report-sale-chart.service';
 import { ReportSaleOverviewService } from './service/report/report-sale-overview.service';
+import { ReportCustomerLowPaymentService } from './service/report/report-customer-low-payment.service';
 import { DashboardController } from './controller/dashboard.controller';
 import { DashboardService } from './service/dashboard.service';
 import { ListAnalyticsService } from './service/list-analytics.service';
@@ -281,6 +282,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     ReportTaxService,
     ReportSaleChartService,
     ReportSaleOverviewService,
+    ReportCustomerLowPaymentService,
     DashboardService,
     ListAnalyticsService,
     SqlAgentChatService,

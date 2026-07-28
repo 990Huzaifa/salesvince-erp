@@ -104,7 +104,7 @@ export class DashboardController {
       tenantDb,
       user.businessId,
       user.userId,
-      query.limit ?? 10,
+      query.limit,
     );
   }
 
