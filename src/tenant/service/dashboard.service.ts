@@ -22,6 +22,12 @@ import { SaleInvoiceItem } from 'src/tenant-db/entities/sale-invoice.entity';
 import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity';
 import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
 import { Product } from 'src/tenant-db/entities/product.entity';
+import { Employee } from 'src/tenant-db/entities/hr/employee.entity';
+import { EmployeeSalaryStructure } from 'src/tenant-db/entities/hr/employee-salary-structure.entity';
+import {
+  EmployeeStatusEnum,
+  SalaryStructureStatusEnum,
+} from 'src/tenant-db/entities/hr/hr.enums';
 import { ReportService } from './report.service';
 import { ReportCustomerLowPaymentService } from './report/report-customer-low-payment.service';
 import { MasterGeoHelperService } from './master-geo-helper.service';
@@ -1018,6 +1024,45 @@ export class DashboardService {
     return {
       total: this.roundAmount(grandTotal),
       segments,
+    };
+  }
+
+  async getHrOverview(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+
+    const [totalActiveEmployees, payrollRow] = await Promise.all([
+      tenantDb.getRepository(Employee).count({
+        where: {
+          businessId: scopedBusinessId,
+          employeeStatus: EmployeeStatusEnum.ACTIVE,
+          deletedAt: IsNull(),
+        },
+      }),
+      tenantDb
+        .getRepository(EmployeeSalaryStructure)
+        .createQueryBuilder('structure')
+        .innerJoin('structure.employee', 'employee')
+        .select('COALESCE(SUM(structure.grossSalary), 0)', 'total')
+        .where('structure.businessId = :businessId', {
+          businessId: scopedBusinessId,
+        })
+        .andWhere('structure.status = :structureStatus', {
+          structureStatus: SalaryStructureStatusEnum.ACTIVE,
+        })
+        .andWhere('structure.deletedAt IS NULL')
+        .andWhere('employee.employeeStatus = :employeeStatus', {
+          employeeStatus: EmployeeStatusEnum.ACTIVE,
+        })
+        .andWhere('employee.deletedAt IS NULL')
+        .getRawOne<{ total: string }>(),
+    ]);
+
+    return {
+      totalActiveEmployees,
+      totalPayroll: this.formatAmount(Number(payrollRow?.total ?? 0)),
     };
   }
 

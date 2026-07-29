@@ -119,4 +119,13 @@ export class DashboardController {
       user.businessId,
     );
   }
+
+  @Get('hr-overview')
+  getHrOverview(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.dashboardService.getHrOverview(tenantDb, user.businessId);
+  }
 }
