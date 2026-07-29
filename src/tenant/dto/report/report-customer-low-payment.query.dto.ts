@@ -15,7 +15,7 @@ export class ReportCustomerLowPaymentQueryDto {
   search?: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
   cityId?: string;
 
   @IsOptional()
