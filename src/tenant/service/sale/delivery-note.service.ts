@@ -128,7 +128,7 @@ export class DeliveryNoteService {
   }
 
   private deliveryNoteLedgerDescription(saleOrderNumber: string): string {
-    return `SO ${saleOrderNumber} - customer receivable`;
+    return `Sale Order - ${saleOrderNumber}`;
   }
 
   private deliveryNoteRelations() {

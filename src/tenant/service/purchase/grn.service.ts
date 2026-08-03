@@ -156,7 +156,7 @@ export class GrnService {
   }
 
   private grnLedgerDescription(purchaseOrderNumber: string): string {
-    return `PO ${purchaseOrderNumber} - vendor payable`;
+    return `Purchase Order - ${purchaseOrderNumber}`;
   }
 
   /**
