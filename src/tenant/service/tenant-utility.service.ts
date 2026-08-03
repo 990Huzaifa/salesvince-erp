@@ -396,6 +396,14 @@ export class TenantUtilityService {
     return { result: accountTypes };
   }
 
+  private stripReceivablePayableFromName(name: string): string {
+    return name
+      .replace(/\s*-\s*(Receivable|Payable)\b/gi, '')
+      .replace(/\b(Receivable|Payable)\b/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
   async getAccountList(tenantDb: DataSource, parentCode: string, businessId: string) {
     const accountList = await tenantDb.getRepository(ChartOfAccount).find({
       select: ['id', 'name', 'code', 'parentCode', 'isPostable'],
@@ -432,6 +440,7 @@ export class TenantUtilityService {
     return {
       result: accountList.map((account) => ({
         ...account,
+        name: this.stripReceivablePayableFromName(account.name),
         currentBalance: balanceByAccountId.get(account.id) ?? 0,
       })),
     };
