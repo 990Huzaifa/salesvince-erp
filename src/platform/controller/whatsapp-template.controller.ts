@@ -65,4 +65,10 @@ export class WhatsappTemplateController {
     ) {
         return this.whatsappTemplateService.updateTemplateStatus(id, data, req.user);
     }
+
+    @RequirePermissions('WHATSAPP_TEMPLATE_MANAGE')
+    @Post('/:id/sync')
+    async syncTemplateToMeta(@Param('id') id: string, @Req() req: any) {
+        return this.whatsappTemplateService.syncTemplateToMeta(id, req.user);
+    }
 }

@@ -22,6 +22,7 @@ import { CreateWhatsappAccountDto } from '../dto/whatsapp-account/create-whatsap
 import { UpdateWhatsappAccountDto } from '../dto/whatsapp-account/update-whatsapp-account.dto';
 import { ActivityLogService } from './activity-log.service';
 import { MetaWhatsappApiService } from './meta-whatsapp-api.service';
+import { WhatsappTemplateService } from './whatsapp-template.service';
 
 @Injectable()
 export class WhatsappAccountService {
@@ -38,6 +39,7 @@ export class WhatsappAccountService {
         private readonly tenantRepo: Repository<Tenant>,
         private readonly activityLogService: ActivityLogService,
         private readonly metaApi: MetaWhatsappApiService,
+        private readonly whatsappTemplateService: WhatsappTemplateService,
     ) {}
 
     private async recordAction(
@@ -388,6 +390,9 @@ export class WhatsappAccountService {
                 const value = change.value;
 
                 if (field === 'message_template_status_update') {
+                    await this.whatsappTemplateService.handleMetaTemplateStatusUpdate(
+                        value,
+                    );
                     await this.handleTemplateStatusUpdate(value);
                 } else if (field === 'account_update') {
                     await this.handleAccountUpdate(value);

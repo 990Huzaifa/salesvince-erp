@@ -26,6 +26,28 @@ export interface MetaConnectAssets {
     tokenExpiresAt: Date | null;
 }
 
+export interface MetaCreateMessageTemplatePayload {
+    name: string;
+    language: string;
+    category: string;
+    components: Record<string, unknown>[];
+    allow_category_change?: boolean;
+}
+
+export interface MetaCreateMessageTemplateResult {
+    id: string;
+    status: string;
+    category?: string;
+}
+
+export interface MetaMessageTemplateListItem {
+    id: string;
+    name: string;
+    status: string;
+    language: string;
+    category?: string;
+}
+
 @Injectable()
 export class MetaWhatsappApiService {
     private readonly logger = new Logger(MetaWhatsappApiService.name);
@@ -52,6 +74,16 @@ export class MetaWhatsappApiService {
         return process.env.META_WEBHOOK_VERIFY_TOKEN ?? '';
     }
 
+    /** Shared WABA used for platform-level template sync. */
+    get wabaId(): string {
+        return process.env.META_WABA_ID ?? '';
+    }
+
+    /** System-user / permanent token for shared WABA Graph calls. */
+    get accessToken(): string {
+        return process.env.META_ACCESS_TOKEN ?? '';
+    }
+
     getConnectConfig() {
         return {
             appId: this.appId,
@@ -66,8 +98,27 @@ export class MetaWhatsappApiService {
         }
     }
 
+    assertWabaConfigured() {
+        if (!this.wabaId || !this.accessToken) {
+            throw new Error('META_WABA_ID and META_ACCESS_TOKEN must be configured');
+        }
+    }
+
     private graphUrl(path: string): string {
         return `https://graph.facebook.com/${this.apiVersion}/${path}`;
+    }
+
+    private extractGraphError(error: unknown): string {
+        const axiosError = error as {
+            response?: { data?: { error?: { message?: string; error_user_msg?: string } } };
+            message?: string;
+        };
+        return (
+            axiosError?.response?.data?.error?.error_user_msg ||
+            axiosError?.response?.data?.error?.message ||
+            axiosError?.message ||
+            String(error)
+        );
     }
 
     async exchangeCodeForToken(code: string, redirectUri?: string): Promise<MetaTokenExchangeResult> {
@@ -175,6 +226,57 @@ export class MetaWhatsappApiService {
         }
     }
 
+    async createMessageTemplate(
+        payload: MetaCreateMessageTemplatePayload,
+        wabaId = this.wabaId,
+        accessToken = this.accessToken,
+    ): Promise<MetaCreateMessageTemplateResult> {
+        this.assertWabaConfigured();
+        try {
+            return await this.graphPost<MetaCreateMessageTemplateResult>(
+                `${wabaId}/message_templates`,
+                accessToken,
+                payload,
+            );
+        } catch (error) {
+            throw new Error(this.extractGraphError(error));
+        }
+    }
+
+    async findMessageTemplateByName(
+        name: string,
+        language?: string,
+        wabaId = this.wabaId,
+        accessToken = this.accessToken,
+    ): Promise<MetaMessageTemplateListItem | null> {
+        this.assertWabaConfigured();
+        try {
+            const response = await this.graphGet<{ data?: MetaMessageTemplateListItem[] }>(
+                `${wabaId}/message_templates`,
+                accessToken,
+                {
+                    fields: 'id,name,status,language,category',
+                    name,
+                    limit: '100',
+                },
+            );
+
+            const templates = response.data ?? [];
+            if (language) {
+                return (
+                    templates.find(
+                        (item) =>
+                            item.name === name &&
+                            item.language?.toLowerCase() === language.toLowerCase(),
+                    ) ?? null
+                );
+            }
+            return templates.find((item) => item.name === name) ?? null;
+        } catch (error) {
+            throw new Error(this.extractGraphError(error));
+        }
+    }
+
     private async graphGet<T>(
         path: string,
         accessToken: string,
@@ -183,6 +285,19 @@ export class MetaWhatsappApiService {
         const { data } = await firstValueFrom(
             this.httpService.get<T>(this.graphUrl(path), {
                 params: { ...params, access_token: accessToken },
+            }),
+        );
+        return data;
+    }
+
+    private async graphPost<T>(
+        path: string,
+        accessToken: string,
+        body: Record<string, unknown>,
+    ): Promise<T> {
+        const { data } = await firstValueFrom(
+            this.httpService.post<T>(this.graphUrl(path), body, {
+                params: { access_token: accessToken },
             }),
         );
         return data;

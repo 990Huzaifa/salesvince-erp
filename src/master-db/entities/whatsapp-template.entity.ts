@@ -19,6 +19,17 @@ export enum WhatsappTemplateStatus {
     INACTIVE = 'INACTIVE',
 }
 
+export enum WhatsappTemplateMetaSyncStatus {
+    NOT_SUBMITTED = 'NOT_SUBMITTED',
+    SUBMITTED = 'SUBMITTED',
+    PENDING = 'PENDING',
+    APPROVED = 'APPROVED',
+    REJECTED = 'REJECTED',
+    PAUSED = 'PAUSED',
+    DISABLED = 'DISABLED',
+    FAILED = 'FAILED',
+}
+
 export enum WhatsappTemplateModuleType {
     PURCHASE_ORDER = 'PURCHASE_ORDER',
     SALE_ORDER = 'SALE_ORDER',
@@ -114,6 +125,37 @@ export class WhatsappTemplate {
         default: WhatsappTemplateStatus.ACTIVE,
     })
     status: WhatsappTemplateStatus;
+
+    @Column({ nullable: true })
+    metaTemplateId: string | null;
+
+    @Column({
+        type: 'enum',
+        enum: WhatsappTemplateMetaSyncStatus,
+        default: WhatsappTemplateMetaSyncStatus.NOT_SUBMITTED,
+    })
+    metaSyncStatus: WhatsappTemplateMetaSyncStatus;
+
+    @Column({ type: 'jsonb', nullable: true })
+    submittedPayload: Record<string, unknown> | null;
+
+    @Column({ type: 'jsonb', nullable: true })
+    metaResponse: Record<string, unknown> | null;
+
+    @Column({ type: 'text', nullable: true })
+    rejectionReason: string | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    submittedAt: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    approvedAt: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    rejectedAt: Date | null;
+
+    @Column({ type: 'timestamp', nullable: true })
+    lastSyncedAt: Date | null;
 
     @CreateDateColumn()
     createdAt: Date;
