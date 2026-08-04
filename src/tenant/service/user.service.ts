@@ -5,8 +5,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { DataSource, IsNull, Repository } from 'typeorm';
+import { DataSource, In, IsNull, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import { linkUserToBusiness } from 'src/tenant-db/helpers/tenant-business-bootstrap.helper';
 import { MailService } from 'src/common/mail/mail.service';
 import { User, UserStatus } from 'src/tenant-db/entities/user.entity';
 import { Role } from 'src/tenant-db/entities/role.entity';
@@ -16,6 +17,8 @@ import {
   UserBusinessStatus,
 } from 'src/tenant-db/entities/user-business.entity';
 import { CreateTenantUserDto } from '../dto/user/create-tenant-user.dto';
+import { UpdateTenantUserDto } from '../dto/user/update-tenant-user.dto';
+import { AssignUserBusinessesDto } from '../dto/user/assign-user-businesses.dto';
 import { InviteTenantUserDto } from '../dto/user/invite-tenant-user.dto';
 import { ResendInviteTenantUserDto } from '../dto/user/resend-invite-tenant-user.dto';
 import { SetupTenantUserDto } from '../dto/user/setup-tenant-user.dto';
@@ -267,6 +270,233 @@ export class UserService {
 
     delete (createdUser as { password?: string }).password;
     return createdUser;
+  }
+
+  async updateUser(
+    tenantDb: DataSource,
+    id: string,
+    dto: UpdateTenantUserDto,
+    authUser: { userId: string; businessId: string },
+  ) {
+    const userRepo = tenantDb.getRepository(User);
+    const user = await userRepo.findOne({
+      where: { id, deletedAt: IsNull() },
+      relations: [
+        'userBusinesses',
+        'userBusinesses.business',
+        'userBusinesses.role',
+      ],
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (dto.email !== undefined) {
+      const email = dto.email.trim().toLowerCase();
+      if (email !== user.email) {
+        const existing = await userRepo.findOne({
+          where: { email, deletedAt: IsNull() },
+          select: ['id'],
+        });
+        if (existing && existing.id !== user.id) {
+          throw new ConflictException('Email is already in use');
+        }
+        user.email = email;
+      }
+    }
+
+    if (dto.name !== undefined) user.name = dto.name.trim();
+    if (dto.phone !== undefined) user.phone = dto.phone?.trim() ?? null;
+    if (dto.cnic !== undefined) user.cnic = dto.cnic?.trim() ?? null;
+    if (dto.address !== undefined) user.address = dto.address?.trim() ?? null;
+    if (dto.avatar !== undefined) user.avatar = dto.avatar?.trim() ?? null;
+    if (dto.deviceId !== undefined) user.deviceId = dto.deviceId?.trim() ?? null;
+    if (dto.fcmToken !== undefined) user.fcmToken = dto.fcmToken?.trim() ?? null;
+
+    const saved = await userRepo.save(user);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: authUser.userId,
+      businessId: authUser.businessId,
+      action: 'USER_UPDATED',
+      description: `User ${saved.email} updated`,
+      metadata: { userId: saved.id, fields: Object.keys(dto) },
+    });
+
+    delete (saved as { password?: string }).password;
+    if (saved.userBusinesses) {
+      saved.userBusinesses = saved.userBusinesses.filter(
+        (ub) => ub.deletedAt == null,
+      );
+    }
+
+    return {
+      message: 'User updated successfully',
+      user: saved,
+    };
+  }
+
+  async syncUserBusinesses(
+    tenantDb: DataSource,
+    userId: string,
+    dto: AssignUserBusinessesDto,
+    authUser: { userId: string; businessId: string },
+  ) {
+    const userRepo = tenantDb.getRepository(User);
+    const user = await userRepo.findOne({
+      where: { id: userId, deletedAt: IsNull() },
+      select: ['id', 'email'],
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const businessIds = dto.businesses.map((b) => b.businessId);
+    const uniqueBusinessIds = new Set(businessIds);
+    if (uniqueBusinessIds.size !== businessIds.length) {
+      throw new BadRequestException('Duplicate businessId in businesses array');
+    }
+
+    const roleIds = [...new Set(dto.businesses.map((b) => b.roleId))];
+    const desiredByBusinessId = new Map(
+      dto.businesses.map((b) => [b.businessId, b.roleId]),
+    );
+
+    const businesses = await tenantDb.getRepository(Business).find({
+      where: { id: In(businessIds), deletedAt: IsNull() },
+      select: ['id'],
+    });
+    if (businesses.length !== uniqueBusinessIds.size) {
+      throw new NotFoundException('One or more businesses not found');
+    }
+
+    const roles = await tenantDb.getRepository(Role).find({
+      where: { id: In(roleIds), deletedAt: IsNull() },
+      select: ['id'],
+    });
+    if (roles.length !== roleIds.length) {
+      throw new NotFoundException('One or more roles not found');
+    }
+
+    const syncResult = await tenantDb.transaction(async (manager) => {
+      const ubRepo = manager.getRepository(UserBusiness);
+      const current = await ubRepo.find({
+        where: { userId, deletedAt: IsNull() },
+      });
+
+      const desiredIds = new Set(businessIds);
+      let added = 0;
+      let updated = 0;
+      let removed = 0;
+
+      for (const membership of current) {
+        if (!desiredIds.has(membership.businessId)) {
+          await ubRepo.softRemove(membership);
+          removed++;
+        }
+      }
+
+      for (const [businessId, roleId] of desiredByBusinessId) {
+        const existing = current.find((m) => m.businessId === businessId);
+        if (!existing) {
+          await linkUserToBusiness(manager, userId, businessId, roleId);
+          added++;
+        } else if (existing.roleId !== roleId) {
+          await linkUserToBusiness(manager, userId, businessId, roleId);
+          updated++;
+        }
+      }
+
+      return { added, updated, removed };
+    });
+
+    const saved = await userRepo.findOne({
+      where: { id: userId, deletedAt: IsNull() },
+      relations: [
+        'userBusinesses',
+        'userBusinesses.business',
+        'userBusinesses.role',
+      ],
+    });
+
+    if (!saved) {
+      throw new NotFoundException('User not found');
+    }
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: authUser.userId,
+      businessId: authUser.businessId,
+      action: 'USER_BUSINESSES_SYNCED',
+      description: `User ${user.email} business memberships synced`,
+      metadata: {
+        userId,
+        ...syncResult,
+        businessIds,
+      },
+    });
+
+    delete (saved as { password?: string }).password;
+    if (saved.userBusinesses) {
+      saved.userBusinesses = saved.userBusinesses.filter(
+        (ub) => ub.deletedAt == null,
+      );
+    }
+
+    return {
+      message: 'User businesses updated successfully',
+      added: syncResult.added,
+      updated: syncResult.updated,
+      removed: syncResult.removed,
+      user: saved,
+    };
+  }
+
+  async removeUserFromBusiness(
+    tenantDb: DataSource,
+    userId: string,
+    businessId: string,
+    authUser: { userId: string; businessId: string },
+  ) {
+    const userRepo = tenantDb.getRepository(User);
+    const user = await userRepo.findOne({
+      where: { id: userId, deletedAt: IsNull() },
+      select: ['id', 'email'],
+    });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const ubRepo = tenantDb.getRepository(UserBusiness);
+    const membership = await ubRepo.findOne({
+      where: { userId, businessId, deletedAt: IsNull() },
+    });
+    if (!membership) {
+      throw new NotFoundException('User is not assigned to this business');
+    }
+
+    const activeCount = await ubRepo.count({
+      where: { userId, deletedAt: IsNull() },
+    });
+    if (activeCount <= 1) {
+      throw new BadRequestException(
+        'Cannot remove the user from their last business',
+      );
+    }
+
+    await ubRepo.softRemove(membership);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: authUser.userId,
+      businessId: authUser.businessId,
+      action: 'USER_BUSINESS_REMOVED',
+      description: `User ${user.email} removed from business ${businessId}`,
+      metadata: { userId, businessId, userBusinessId: membership.id },
+    });
+
+    return {
+      message: 'User removed from business successfully',
+    };
   }
 
   async updateUserStatus(

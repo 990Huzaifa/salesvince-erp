@@ -42,7 +42,7 @@ type PinResetTokenPayload = {
 @Injectable()
 export class ProfileService {
   private readonly logger = new Logger(ProfileService.name);
-  private readonly pinResetDeeplink = 'salesvince://pin-reset';
+  private readonly pinResetDeeplink = 'salesvince://oauth/callback';
 
   constructor(
     private readonly activityLogService: ActivityLogService,

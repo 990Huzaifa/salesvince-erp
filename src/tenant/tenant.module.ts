@@ -231,10 +231,11 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
   providers: [
     TenantAuthService,
     NotificationService,
-    UserService,
-    TenantJobService,
     TenantBusinessService,
+    TenantJobService,
     TenantRoleService,
+    UserService,
+    ProfileService,
     ChartOfAccountService,
     PartyService,
     TransactionService,
@@ -308,7 +309,6 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     MasterTenantDataService,
     TenantDatabaseBackupService,
     PgDumpService,
-    ProfileService,
   ],
 })
 export class TenantModule {}

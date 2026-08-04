@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
 import { TenantLoginOnlyGuard } from 'src/auth/tenant-login-only.guard';
@@ -10,6 +10,8 @@ import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantCode, TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import { DataSource } from 'typeorm';
 import { CreateTenantUserDto } from '../dto/user/create-tenant-user.dto';
+import { UpdateTenantUserDto } from '../dto/user/update-tenant-user.dto';
+import { AssignUserBusinessesDto } from '../dto/user/assign-user-businesses.dto';
 import { InviteTenantUserDto } from '../dto/user/invite-tenant-user.dto';
 import { ResendInviteTenantUserDto } from '../dto/user/resend-invite-tenant-user.dto';
 import { UserService } from '../service/user.service';
@@ -94,6 +96,54 @@ export class TenantUserController {
     @Req() req: Request,
   ) {
     return this.userService.createUser(tenantDb, tenantCode, dto, req.user as { userId: string, businessId: string });
+  }
+
+  @Patch(':id')
+  @RequirePermissions('UPDATE_USER')
+  update(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTenantUserDto,
+    @Req() req: Request,
+  ) {
+    return this.userService.updateUser(
+      tenantDb,
+      id,
+      dto,
+      req.user as { userId: string; businessId: string },
+    );
+  }
+
+  @Post(':id/assign-businesses')
+  @RequirePermissions('UPDATE_USER')
+  assignBusinesses(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AssignUserBusinessesDto,
+    @Req() req: Request,
+  ) {
+    return this.userService.syncUserBusinesses(
+      tenantDb,
+      id,
+      dto,
+      req.user as { userId: string; businessId: string },
+    );
+  }
+
+  @Delete(':id/businesses/:businessId')
+  @RequirePermissions('UPDATE_USER')
+  removeFromBusiness(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('businessId', ParseUUIDPipe) businessId: string,
+    @Req() req: Request,
+  ) {
+    return this.userService.removeUserFromBusiness(
+      tenantDb,
+      id,
+      businessId,
+      req.user as { userId: string; businessId: string },
+    );
   }
 
   @Patch(':id/avatar')

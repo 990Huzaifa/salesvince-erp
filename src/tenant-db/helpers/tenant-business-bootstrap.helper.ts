@@ -83,15 +83,14 @@ export async function linkUserToBusiness(
   const ubRepo = tenantDb.getRepository(UserBusiness);
 
   let ub = await ubRepo.findOne({
-    where: { userId, businessId, deletedAt: IsNull() },
+    where: { userId, businessId },
+    withDeleted: true,
   });
 
   if (ub) {
     ub.roleId = roleId;
     ub.status = UserBusinessStatus.ACTIVE;
-    if (ub.deletedAt != null) {
-      ub.deletedAt = null;
-    }
+    ub.deletedAt = null;
   } else {
     ub = ubRepo.create({
       userId,
