@@ -35,10 +35,11 @@ const getRequestHeader = (req: Request, names: string[]): string | undefined => 
   return undefined;
 };
 
-const resolveRequestBaseUrl = (req: Request): string | undefined => {
-  const origin = getRequestHeader(req, ['origin', 'x-forwarded-origin']);
-  if (origin) {
-    return origin.replace(/\/+$/, '');
+/** API base URL for email links (must hit Nest, not the SPA Origin). */
+const resolveApiBaseUrl = (req: Request): string | undefined => {
+  const fromEnv = process.env.API_BASE_URL?.trim();
+  if (fromEnv) {
+    return fromEnv.replace(/\/+$/, '');
   }
 
   const proto =
@@ -125,7 +126,7 @@ export class ProfileController {
     return this.profileService.resetPin(
       tenantDb,
       req.user as TenantRequestUser,
-      resolveRequestBaseUrl(req),
+      resolveApiBaseUrl(req),
     );
   }
 }

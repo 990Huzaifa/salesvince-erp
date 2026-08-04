@@ -245,11 +245,9 @@ export class ProfileService {
       { expiresIn: '15m' },
     );
 
-    const apiBase = (
-      process.env.API_BASE_URL ||
-      requestBaseUrl ||
-      ''
-    ).replace(/\/+$/, '');
+    const apiBase = (requestBaseUrl || process.env.API_BASE_URL || '')
+      .trim()
+      .replace(/\/+$/, '');
 
     if (!apiBase) {
       throw new BadRequestException(
@@ -318,12 +316,37 @@ export class ProfileService {
     return payload;
   }
 
+  private pinResetResultHtml(ok: boolean): string {
+    const title = ok ? 'PIN cleared' : 'PIN reset failed';
+    const body = ok
+      ? 'Your PIN has been cleared. You can close this page and set a new PIN in the app.'
+      : 'This reset link is invalid or has expired. Please request a new PIN reset from the app.';
+    const deeplink = ok
+      ? `${this.pinResetDeeplink}?status=cleared`
+      : `${this.pinResetDeeplink}?status=failed`;
+
+    return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>${title}</title>
+<meta http-equiv="refresh" content="0;url=${deeplink}"/>
+</head>
+<body style="font-family:Arial,Helvetica,sans-serif;background:#f4f6f9;margin:0;padding:40px;text-align:center;color:#2c3e50;">
+  <h2>${title}</h2>
+  <p style="color:#555;">${body}</p>
+  <p style="font-size:13px;color:#888;"><a href="${deeplink}">Open app</a></p>
+</body></html>`;
+  }
+
   async confirmResetPin(
     token: string,
     tenantCodeFromQuery: string | undefined,
     res: Response,
   ) {
     try {
+      if (!token?.trim()) {
+        throw new BadRequestException('Token is required');
+      }
+
       const payload = this.verifyPinResetToken(token);
 
       if (
@@ -358,8 +381,8 @@ export class ProfileService {
         throw new NotFoundException('User not found');
       }
 
-      user.pin = null;
-      await userRepo.save(user);
+      // Only clear pin — avoid TypeORM save() on a partial entity.
+      await userRepo.update({ id: user.id }, { pin: null });
 
       const channel = buildTenantUserPusherChannel(
         payload.tenantCode!,
@@ -387,17 +410,14 @@ export class ProfileService {
         metadata: { userId: user.id },
       });
 
-      return res.redirect(
-        302,
-        `${this.pinResetDeeplink}?status=cleared`,
-      );
+      return res.status(200).type('html').send(this.pinResetResultHtml(true));
     } catch (err) {
       this.logger.warn(
         `PIN reset confirm failed: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
-      return res.redirect(302, `${this.pinResetDeeplink}?status=failed`);
+      return res.status(400).type('html').send(this.pinResetResultHtml(false));
     }
   }
 }
