@@ -293,7 +293,7 @@ export class MetaWhatsappApiService {
     private async graphPost<T>(
         path: string,
         accessToken: string,
-        body: Record<string, unknown>,
+        body: object,
     ): Promise<T> {
         const { data } = await firstValueFrom(
             this.httpService.post<T>(this.graphUrl(path), body, {
