@@ -81,6 +81,30 @@ export class WarehouseService {
     }
   }
 
+  private async generateWarehouseCode(
+    tenantDb: DataSource,
+    businessId: string,
+  ): Promise<string> {
+    const prefix = 'WH';
+
+    const last = await tenantDb
+      .getRepository(Warehouse)
+      .createQueryBuilder('w')
+      .where('w.businessId = :businessId', { businessId })
+      .andWhere('w.code LIKE :prefix', { prefix: `${prefix}-%` })
+      .andWhere('w.deletedAt IS NULL')
+      .orderBy('w.code', 'DESC')
+      .getOne();
+
+    let next = 1;
+    if (last) {
+      const suffix = last.code.replace(`${prefix}-`, '');
+      next = (parseInt(suffix, 10) || 0) + 1;
+    }
+
+    return `${prefix}-${String(next).padStart(5, '0')}`;
+  }
+
   async create(
     tenantDb: DataSource,
     businessId: string | undefined,
@@ -88,7 +112,7 @@ export class WarehouseService {
     actorUserId: string,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
-    const code = dto.code.trim();
+    const code = await this.generateWarehouseCode(tenantDb, scopedBusinessId);
 
     await this.assertCodeAvailable(tenantDb, scopedBusinessId, code);
 

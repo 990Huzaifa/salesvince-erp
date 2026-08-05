@@ -14,11 +14,6 @@ export class CreateWarehouseDto {
 
   @IsString()
   @IsNotEmpty()
-  @MaxLength(50)
-  code: string;
-
-  @IsString()
-  @IsNotEmpty()
   @MaxLength(500)
   address: string;
 
