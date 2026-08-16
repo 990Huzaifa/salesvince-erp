@@ -159,9 +159,21 @@ export class TenantAuthController {
   @UseGuards(TenantJwtAuthGuard, TenantJwtGuard, TenantConnectionGuard, TenantBusinessAccessGuard)
   @Post('pusher')
   async pusherAuth(@Req() req: Request, @Res() res: Response) {
-    const socketId = (req.body as { socket_id?: string }).socket_id;
-    const channel = (req.body as { channel_name?: string }).channel_name;
+    const body = (req.body ?? {}) as {
+      socket_id?: string;
+      socketId?: string;
+      channel_name?: string;
+      channelName?: string;
+    };
+    const socketId = body.socket_id ?? body.socketId;
+    const channel = body.channel_name ?? body.channelName;
     const user = req.user as TenantRequestUser;
+
+    if (!socketId?.trim() || !channel?.trim()) {
+      return res.status(400).json({
+        message: 'socket_id and channel_name are required',
+      });
+    }
 
     let userCode = user.userCode;
     let businessCode = user.businessCode;
@@ -193,14 +205,17 @@ export class TenantAuthController {
       channel === baseChannel ||
       (withBusiness != null && channel === withBusiness);
 
-    if (notificationChannelAllowed) {
-      const auth = this.pusherService.authorizeChannel(
-        socketId as string,
-        channel as string,
-      );
-      return res.status(200).json(auth);
+    if (!notificationChannelAllowed) {
+      return res.status(403).json({ message: 'Unauthorized' });
     }
 
-    return res.status(403).json({ message: 'Unauthorized' });
+    try {
+      const auth = this.pusherService.authorizeChannel(socketId, channel);
+      return res.status(200).json(auth);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Pusher authorization failed';
+      return res.status(500).json({ message });
+    }
   }
 }

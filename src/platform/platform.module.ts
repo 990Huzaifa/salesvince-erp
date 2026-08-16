@@ -55,6 +55,7 @@ import { Invoice, InvoiceItem, InvoicePayment } from 'src/master-db/entities/inv
 import { InvoiceController } from './controller/invoice.controller';
 import { InvoiceService } from './services/invoice.service';
 import { TenantMigrationService } from './services/tenant-migration.service';
+import { TenantSeederService } from './services/tenant-seeder.service';
 import { TenantWhatsappAccounts } from 'src/master-db/entities/tenant-whatsapp-accounts.entity';
 import { WhatsappTemplate } from 'src/master-db/entities/whatsapp-template.entity';
 import { TenantWhatsappAccountTemplates } from 'src/master-db/entities/tenant_whatsapp_account_templates.entity';
@@ -107,7 +108,7 @@ import { MetaWhatsappWebhookController } from './controller/meta-whatsapp-webhoo
     ]),
   ],
   controllers: [PlatformController, PlatformUserController, CustomerController, PlanController, AddonController, ModuleController, SubscriptionController, AnnouncementController, UtilityController, NotificationController, ActivityLogController, InvoiceController, WhatsappTemplateController, WhatsappAccountController, MetaWhatsappWebhookController],
-  providers: [PlatformService, ProvisioningAdminService, TenantDatabaseService, TenantMigrationService, CustomerService, PlatformUserService, PlanService, AddonService, SubscriptionService, AnnouncementService, UtilityService, MailService, JwtService, ModuleService, NotificationService, PusherService, ActivityLogService, InvoiceService, WhatsappTemplateService, WhatsappAccountService, MetaWhatsappApiService],
+  providers: [PlatformService, ProvisioningAdminService, TenantDatabaseService, TenantMigrationService, TenantSeederService, CustomerService, PlatformUserService, PlanService, AddonService, SubscriptionService, AnnouncementService, UtilityService, MailService, JwtService, ModuleService, NotificationService, PusherService, ActivityLogService, InvoiceService, WhatsappTemplateService, WhatsappAccountService, MetaWhatsappApiService],
   exports: [WhatsappAccountService],
 })
 export class PlatformModule {}

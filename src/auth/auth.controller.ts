@@ -71,18 +71,28 @@ export class AuthController {
   // for pusher authentication
   @UseGuards(JwtAuthGuard)
   @Post('pusher/auth')
-  async auth(@Req() req: any, @Res() res: any,@CurrentPlatformUser() user: any) {
-    const socketId = (req.body as any).socket_id;
-    const channel = (req.body as any).channel_name;
+  async auth(@Req() req: any, @Res() res: any, @CurrentPlatformUser() user: any) {
+    const body = req.body ?? {};
+    const socketId = body.socket_id ?? body.socketId;
+    const channel = body.channel_name ?? body.channelName;
 
-    // Platform user from JWT
-
-    // Optional: restrict channels
-    if (!channel.includes(`private-platform-user-${user.id}`)) {
-      return res.status(403).json({ message: 'Unauthorized'});
+    if (!socketId?.trim() || !channel?.trim()) {
+      return res.status(400).json({
+        message: 'socket_id and channel_name are required',
+      });
     }
 
-    const auth = this.pusherService.authorizeChannel(socketId, channel);
-    return res.status(200).json(auth);
+    if (!channel.includes(`private-platform-user-${user.id}`)) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    try {
+      const auth = this.pusherService.authorizeChannel(socketId, channel);
+      return res.status(200).json(auth);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Pusher authorization failed';
+      return res.status(500).json({ message });
+    }
   }
 }

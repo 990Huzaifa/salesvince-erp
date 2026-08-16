@@ -14,12 +14,14 @@ import { CurrentPlatformUser } from 'src/auth/current-platform-user.decorator';
 import { Req } from '@nestjs/common';
 import { UpdateTenantGeoPolicyDto } from './dto/update-tenant-geo-policy.dto';
 import { TenantMigrationService } from './services/tenant-migration.service';
+import { TenantSeederService } from './services/tenant-seeder.service';
 
 @Controller('platform/tenant')
 export class PlatformController {
   constructor(
     private readonly platformService: PlatformService,
     private readonly tenantMigrationService: TenantMigrationService,
+    private readonly tenantSeederService: TenantSeederService,
   ) {}
 
   @Post('resolve')
@@ -72,6 +74,16 @@ export class PlatformController {
     @CurrentPlatformUser() user: any,
   ) {
     return this.tenantMigrationService.runTenantMigrations(tenantId, user);
+  }
+
+  @RequirePermissions('TENANT_SEED')
+  @UseGuards(JwtAuthGuard, PermissionGuard)
+  @Post('seeders')
+  async runTenantSeeders(
+    @Query('tenantId') tenantId: string | undefined,
+    @CurrentPlatformUser() user: any,
+  ) {
+    return this.tenantSeederService.runTenantSeeders(tenantId, user);
   }
 
   @RequirePermissions('TENANT_VIEW')
