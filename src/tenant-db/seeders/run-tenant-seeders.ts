@@ -13,8 +13,8 @@ export async function runTenantSeeders(dataSource: DataSource) {
   console.log('\n🚀 Running Tenant Seeders...\n');
 
   await seedTenantPermissions(dataSource);
-  await seedTenantSuperAdminRole(dataSource);
-  await seedTenantSuperAdminUser(dataSource);
+  // await seedTenantSuperAdminRole(dataSource);
+  // await seedTenantSuperAdminUser(dataSource);
 
   console.log('🎉 Tenant seeders completed successfully.\n');
 }
