@@ -236,6 +236,36 @@ export const TENANT_PERMISSIONS = [
   { key: 'DOWNLOAD_DATABASE_BACKUP', name: 'Download Database Backup' },
   { key: 'TRIGGER_DATABASE_BACKUP', name: 'Trigger Database Backup' },
 
+  // Finance / ledger / transactions
+  { key: 'VIEW_LEDGER', name: 'View Ledger' },
+  { key: 'VIEW_ADVANCE_LEDGER', name: 'View Advance Ledger' },
+  { key: 'LIST_TRANSACTION', name: 'List Transactions' },
+  { key: 'RECALCULATE_LEDGER', name: 'Recalculate Ledger' },
+
+  // Reports
+  { key: 'VIEW_CASH_BANK_BALANCE_REPORT', name: 'View Cash & Bank Balance Report' },
+  { key: 'VIEW_CUSTOMER_BALANCE_REPORT', name: 'View Customer Balance Report' },
+  { key: 'VIEW_VENDOR_BALANCE_REPORT', name: 'View Vendor Balance Report' },
+  { key: 'VIEW_EMPLOYEE_BALANCE_REPORT', name: 'View Employee Balance Report' },
+  { key: 'VIEW_CUSTOMER_LOW_PAYMENT_REPORT', name: 'View Customer Low Payment Report' },
+  { key: 'VIEW_PROFIT_REPORT', name: 'View Profit Report' },
+  { key: 'VIEW_SALE_OVERVIEW_REPORT', name: 'View Sale Overview Report' },
+  { key: 'VIEW_SALE_CHART_REPORT', name: 'View Sale Chart Report' },
+  { key: 'VIEW_SALES_SUMMARY_REPORT', name: 'View Sales Summary Report' },
+  { key: 'VIEW_PURCHASE_SUMMARY_REPORT', name: 'View Purchase Summary Report' },
+  { key: 'VIEW_GENERAL_LEDGER_REPORT', name: 'View General Ledger Report' },
+  { key: 'VIEW_TRIAL_BALANCE_REPORT', name: 'View Trial Balance Report' },
+  { key: 'VIEW_CUSTOMER_DOCUMENT_OUTSTANDING_REPORT', name: 'View Customer Document Outstanding Report' },
+  { key: 'VIEW_VENDOR_DOCUMENT_OUTSTANDING_REPORT', name: 'View Vendor Document Outstanding Report' },
+  { key: 'VIEW_DOCUMENT_REGISTER_REPORT', name: 'View Document Register Report' },
+  { key: 'VIEW_STOCK_SUMMARY_REPORT', name: 'View Stock Summary Report' },
+  { key: 'VIEW_STOCK_MOVEMENT_REPORT', name: 'View Stock Movement Report' },
+  { key: 'VIEW_STOCK_VALUATION_REPORT', name: 'View Stock Valuation Report' },
+  { key: 'VIEW_FINANCIAL_REPORT', name: 'View Financial Transaction Report' },
+  { key: 'VIEW_PROFIT_AND_LOSS_REPORT', name: 'View Profit & Loss Report' },
+  { key: 'VIEW_BALANCE_SHEET_REPORT', name: 'View Balance Sheet Report' },
+  { key: 'VIEW_TAX_SUMMARY_REPORT', name: 'View Tax Summary Report' },
+
 ];
 
 export async function seedTenantPermissions(dataSource: DataSource) {
