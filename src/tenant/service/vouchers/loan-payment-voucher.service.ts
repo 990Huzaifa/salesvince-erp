@@ -84,6 +84,23 @@ export class LoanPaymentVoucherService {
     );
   }
 
+  editApproved(
+    tenantDb: DataSource,
+    businessId: string,
+    id: string,
+    dto: UpdateLoanPaymentVoucherDto,
+    userId: string,
+  ) {
+    return this.voucherOps.editApproved(
+      tenantDb,
+      businessId,
+      LOAN_PAYMENT_VOUCHER_CONFIG,
+      id,
+      dto,
+      userId,
+    );
+  }
+
   approve(tenantDb: DataSource, businessId: string, id: string, userId: string) {
     return this.voucherOps.approve(
       tenantDb,

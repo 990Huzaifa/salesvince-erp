@@ -1009,6 +1009,79 @@ export class VoucherOperationsService {
     return updated;
   }
 
+  async editApproved<T extends VoucherEntity>(
+    tenantDb: DataSource,
+    businessId: string,
+    config: VoucherConfig<T>,
+    id: string,
+    dto: VoucherUpdatePayload,
+    userId: string,
+  ) {
+    const updated = await tenantDb.transaction(async (manager) => {
+      const voucher = await this.findVoucherOrThrow(
+        manager.connection,
+        businessId,
+        config,
+        id,
+      );
+
+      if (voucher.status !== VoucherStatus.PAID) {
+        throw new BadRequestException(
+          'Only approved vouchers can be modified with this operation',
+        );
+      }
+
+      this.applyUpdateFields(voucher, config, dto);
+      const validationPayload = this.buildFullCreatePayload(
+        voucher,
+        config,
+        dto,
+      );
+      const validation = await this.validateCreatePayload(
+        manager,
+        businessId,
+        config,
+        validationPayload,
+        { excludeVoucherId: voucher.id },
+      );
+      const partyLedgerAccountId =
+        validation.partyLedgerAccountId ??
+        (await this.resolvePartyLedgerForVoucher(
+          manager,
+          businessId,
+          config,
+          voucher,
+        ));
+
+      await this.transactionService.deleteLedgerEntriesByReference(manager, {
+        businessId,
+        referenceType: config.referenceType,
+        referenceId: voucher.id,
+      });
+
+      const saved = await this.getRepo(manager, config.entity).save(voucher);
+      await this.postApprovalJournal(
+        manager,
+        businessId,
+        config,
+        saved,
+        partyLedgerAccountId,
+      );
+
+      return saved;
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: userId,
+      businessId,
+      action: `${config.activityKey}_APPROVED_UPDATED`,
+      description: `${config.activityKey} ${updated.voucherNumber} approved voucher updated`,
+      metadata: { voucherId: updated.id },
+    });
+
+    return updated;
+  }
+
   async approve<T extends VoucherEntity>(
     tenantDb: DataSource,
     businessId: string,

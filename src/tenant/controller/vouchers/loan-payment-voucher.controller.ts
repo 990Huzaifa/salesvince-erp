@@ -125,6 +125,24 @@ export class LoanPaymentVoucherController {
     );
   }
 
+  @Put('update-approved/:id')
+  @RequirePermissions('EDIT_APPROVED_LOAN_PAYMENT_VOUCHER')
+  editApproved(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateLoanPaymentVoucherDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.loanPaymentVoucherService.editApproved(
+      tenantDb,
+      user.businessId!,
+      id,
+      dto,
+      user.userId,
+    );
+  }
+
   @Post('approve/:id')
   @RequirePermissions('APPROVE_LOAN_PAYMENT_VOUCHER')
   approve(

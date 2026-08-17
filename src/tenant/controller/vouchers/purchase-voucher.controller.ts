@@ -159,6 +159,24 @@ export class PurchaseVoucherController {
     );
   }
 
+  @Put('update-approved/:id')
+  @RequirePermissions('EDIT_APPROVED_PURCHASE_VOUCHER')
+  editApproved(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdatePurchaseVoucherDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.purchaseVoucherService.editApproved(
+      tenantDb,
+      user.businessId!,
+      id,
+      dto,
+      user.userId,
+    );
+  }
+
   @Post('approve/:id')
   @RequirePermissions('APPROVE_PURCHASE_VOUCHER')
   approve(

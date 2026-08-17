@@ -8,6 +8,7 @@ import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
+import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { FinanceService } from '../service/finance.service';
 
 @Controller('tenant/finance')
@@ -22,6 +23,7 @@ export class FinanceController {
   constructor(private readonly financeService: FinanceService) {}
 
   @Get('ledger')
+  @RequirePermissions('VIEW_LEDGER')
   getLedger(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -39,6 +41,7 @@ export class FinanceController {
   }
 
   @Get('advance-ledger')
+  @RequirePermissions('VIEW_ADVANCE_LEDGER')
   getAdvanceLedger(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,

@@ -123,6 +123,24 @@ export class ContraVoucherController {
     );
   }
 
+  @Put('update-approved/:id')
+  @RequirePermissions('EDIT_APPROVED_CONTRA_VOUCHER')
+  editApproved(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateContraVoucherDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.contraVoucherService.editApproved(
+      tenantDb,
+      user.businessId!,
+      id,
+      dto,
+      user.userId,
+    );
+  }
+
   @Post('approve/:id')
   @RequirePermissions('APPROVE_CONTRA_VOUCHER')
   approve(

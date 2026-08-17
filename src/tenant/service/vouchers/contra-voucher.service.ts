@@ -84,6 +84,23 @@ export class ContraVoucherService {
     );
   }
 
+  editApproved(
+    tenantDb: DataSource,
+    businessId: string,
+    id: string,
+    dto: UpdateContraVoucherDto,
+    userId: string,
+  ) {
+    return this.voucherOps.editApproved(
+      tenantDb,
+      businessId,
+      CONTRA_VOUCHER_CONFIG,
+      id,
+      dto,
+      userId,
+    );
+  }
+
   approve(tenantDb: DataSource, businessId: string, id: string, userId: string) {
     return this.voucherOps.approve(
       tenantDb,

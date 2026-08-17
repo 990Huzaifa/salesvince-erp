@@ -8,6 +8,7 @@ import { TenantRequestUser } from "src/auth/tenant-jwt.strategy";
 import { TenantConnectionGuard } from "src/common/guards/tenant-connection.guard";
 import { TenantJwtAuthGuard } from "src/auth/tenant-jwt-auth.guard";
 import { TenantJwtGuard } from "src/common/guards/tenant-jwt.guard";
+import { RequirePermissions } from "src/auth/require-permission.decorator";
 import { TransactionService } from "../service/transaction.service";
 
 @Controller('tenant/transactions')
@@ -22,6 +23,7 @@ export class TransactionController {
     constructor(private readonly transactionService: TransactionService) { }
 
     @Get('')
+    @RequirePermissions('LIST_TRANSACTION')
     async listTransactions(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Query('page') page: number = 1, @Query('limit') limit: number = 10, @Query('search') search: string = '') {
         const user = req.user as TenantRequestUser;
         return this.transactionService.listTransactions(tenantDb, user.businessId, {
@@ -32,6 +34,7 @@ export class TransactionController {
     }
 
     @Post('recalculate')
+    @RequirePermissions('RECALCULATE_LEDGER')
     recalculateLedgers(
         @TenantConnection() tenantDb: DataSource,
         @Req() req: Request,

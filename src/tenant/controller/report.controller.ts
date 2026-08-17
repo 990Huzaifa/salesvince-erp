@@ -48,6 +48,7 @@ import {
 import { ReportSaleChartQueryDto } from '../dto/report/report-sale-chart.query.dto';
 import { ReportSaleOverviewQueryDto } from '../dto/report/report-sale-overview.query.dto';
 import { ReportCustomerLowPaymentQueryDto } from '../dto/report/report-customer-low-payment.query.dto';
+import { RequirePermissions } from 'src/auth/require-permission.decorator';
 
 @Controller('tenant/reports')
 @UseGuards(
@@ -73,6 +74,7 @@ export class ReportController {
   ) {}
 
   @Get('cash-bank-balances')
+  @RequirePermissions('VIEW_CASH_BANK_BALANCE_REPORT')
   getCashAndBankBalances(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -86,6 +88,7 @@ export class ReportController {
   }
 
   @Get('customer-balances')
+  @RequirePermissions('VIEW_CUSTOMER_BALANCE_REPORT')
   getCustomerBalances(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -99,6 +102,7 @@ export class ReportController {
   }
 
   @Get('customers/low-payment')
+  @RequirePermissions('VIEW_CUSTOMER_LOW_PAYMENT_REPORT')
   getCustomerLowPaymentReport(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -122,6 +126,7 @@ export class ReportController {
   }
 
   @Get('vendor-balances')
+  @RequirePermissions('VIEW_VENDOR_BALANCE_REPORT')
   getVendorBalances(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -135,6 +140,7 @@ export class ReportController {
   }
 
   @Get('employee-balances')
+  @RequirePermissions('VIEW_EMPLOYEE_BALANCE_REPORT')
   getEmployeeBalances(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -148,6 +154,7 @@ export class ReportController {
   }
 
   @Get('profit')
+  @RequirePermissions('VIEW_PROFIT_REPORT')
   getProfitReport(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -164,6 +171,7 @@ export class ReportController {
   }
 
   @Get('sales/overview')
+  @RequirePermissions('VIEW_SALE_OVERVIEW_REPORT')
   getSaleOverviewReport(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -183,6 +191,7 @@ export class ReportController {
   }
 
   @Get('sales/chart')
+  @RequirePermissions('VIEW_SALE_CHART_REPORT')
   getSaleChartReport(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -204,6 +213,7 @@ export class ReportController {
   }
 
   @Get('sales-summary')
+  @RequirePermissions('VIEW_SALES_SUMMARY_REPORT')
   getSalesSummaryReport(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -222,6 +232,7 @@ export class ReportController {
   }
 
   @Get('purchase-summary')
+  @RequirePermissions('VIEW_PURCHASE_SUMMARY_REPORT')
   getPurchaseSummaryReport(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -240,6 +251,7 @@ export class ReportController {
   }
 
   @Get('ledger/general')
+  @RequirePermissions('VIEW_GENERAL_LEDGER_REPORT')
   getGeneralLedger(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -259,6 +271,7 @@ export class ReportController {
   }
 
   @Get('ledger/trial-balance')
+  @RequirePermissions('VIEW_TRIAL_BALANCE_REPORT')
   getTrialBalance(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -278,6 +291,7 @@ export class ReportController {
   }
 
   @Get('outstanding/customer-documents')
+  @RequirePermissions('VIEW_CUSTOMER_DOCUMENT_OUTSTANDING_REPORT')
   getCustomerDocumentOutstanding(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -297,6 +311,7 @@ export class ReportController {
   }
 
   @Get('outstanding/vendor-documents')
+  @RequirePermissions('VIEW_VENDOR_DOCUMENT_OUTSTANDING_REPORT')
   getVendorDocumentOutstanding(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -316,6 +331,7 @@ export class ReportController {
   }
 
   @Get('registers/:documentType')
+  @RequirePermissions('VIEW_DOCUMENT_REGISTER_REPORT')
   getDocumentRegister(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -343,6 +359,7 @@ export class ReportController {
   }
 
   @Get('stock/summary')
+  @RequirePermissions('VIEW_STOCK_SUMMARY_REPORT')
   getStockSummary(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -366,6 +383,7 @@ export class ReportController {
   }
 
   @Get('stock/movements')
+  @RequirePermissions('VIEW_STOCK_MOVEMENT_REPORT')
   getStockMovements(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -393,6 +411,7 @@ export class ReportController {
   }
 
   @Get('stock/valuation')
+  @RequirePermissions('VIEW_STOCK_VALUATION_REPORT')
   getStockValuation(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -415,6 +434,7 @@ export class ReportController {
   }
 
   @Get('financial/report')
+  @RequirePermissions('VIEW_FINANCIAL_REPORT')
   getFinancialReport(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -430,6 +450,7 @@ export class ReportController {
   }
 
   @Get('financial/profit-and-loss')
+  @RequirePermissions('VIEW_PROFIT_AND_LOSS_REPORT')
   getProfitAndLoss(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -445,6 +466,7 @@ export class ReportController {
   }
 
   @Get('financial/balance-sheet')
+  @RequirePermissions('VIEW_BALANCE_SHEET_REPORT')
   getBalanceSheet(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
@@ -463,6 +485,7 @@ export class ReportController {
   }
 
   @Get('tax/summary')
+  @RequirePermissions('VIEW_TAX_SUMMARY_REPORT')
   getTaxSummary(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,

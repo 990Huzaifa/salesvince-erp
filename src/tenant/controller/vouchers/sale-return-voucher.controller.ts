@@ -125,6 +125,24 @@ export class SaleReturnVoucherController {
     );
   }
 
+  @Put('update-approved/:id')
+  @RequirePermissions('EDIT_APPROVED_SALE_RETURN_VOUCHER')
+  editApproved(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateSaleReturnVoucherDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.saleReturnVoucherService.editApproved(
+      tenantDb,
+      user.businessId!,
+      id,
+      dto,
+      user.userId,
+    );
+  }
+
   @Post('approve/:id')
   @RequirePermissions('APPROVE_SALE_RETURN_VOUCHER')
   approve(

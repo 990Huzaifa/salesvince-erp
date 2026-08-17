@@ -123,6 +123,24 @@ export class SalaryVoucherController {
     );
   }
 
+  @Put('update-approved/:id')
+  @RequirePermissions('EDIT_APPROVED_SALARY_VOUCHER')
+  editApproved(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateSalaryVoucherDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.salaryVoucherService.editApproved(
+      tenantDb,
+      user.businessId!,
+      id,
+      dto,
+      user.userId,
+    );
+  }
+
   @Post('approve/:id')
   @RequirePermissions('APPROVE_SALARY_VOUCHER')
   approve(

@@ -535,6 +535,112 @@ export class SalaryVoucherService {
     return { data: this.mapVoucher(voucher) };
   }
 
+  async editApproved(
+    tenantDb: DataSource,
+    businessId: string,
+    id: string,
+    dto: UpdateSalaryVoucherDto,
+    userId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+
+    const updated = await tenantDb.transaction(async (manager) => {
+      const voucher = await manager.getRepository(SalaryVoucher).findOne({
+        where: { id, businessId: scopedBusinessId },
+      });
+      if (!voucher) {
+        throw new NotFoundException('Salary voucher not found');
+      }
+      if (voucher.status !== VoucherStatus.PAID) {
+        throw new BadRequestException(
+          'Only approved salary vouchers can be modified with this operation',
+        );
+      }
+
+      const payslip = await this.resolvePayslipForPayment(
+        manager,
+        scopedBusinessId,
+        dto.payslipId ?? voucher.payslipId,
+      );
+      await this.assertNoPaidVoucherForPayslip(
+        manager,
+        scopedBusinessId,
+        payslip.id,
+        voucher.id,
+      );
+
+      const paymentAmount = this.roundAmount(
+        Number(dto.paymentAmount ?? voucher.paymentAmount),
+      );
+      const netSalary = this.roundAmount(Number(payslip.netSalary));
+      if (paymentAmount !== netSalary) {
+        throw new BadRequestException(
+          `Payment amount must equal payslip net salary (${netSalary})`,
+        );
+      }
+
+      const accId = dto.accId ?? voucher.accId;
+      await this.assertPostableAccount(
+        manager,
+        scopedBusinessId,
+        accId,
+        'Payment',
+      );
+      const salaryPayableAccountId = payslip.employee!.salaryAccountId!;
+      await this.assertPostableAccount(
+        manager,
+        scopedBusinessId,
+        salaryPayableAccountId,
+        'Salary payable',
+      );
+
+      await this.transactionService.deleteLedgerEntriesByReference(manager, {
+        businessId: scopedBusinessId,
+        referenceType: AccountTransactionReferenceType.SALARY_VOUCHER,
+        referenceId: voucher.id,
+      });
+
+      voucher.employeeId = payslip.employeeId;
+      voucher.payslipId = payslip.id;
+      voucher.accId = accId;
+      voucher.paymentAmount = paymentAmount;
+      if (dto.paymentMethod !== undefined) {
+        voucher.paymentMethod = dto.paymentMethod;
+      }
+      if (dto.chequeNumber !== undefined) {
+        voucher.chequeNumber = dto.chequeNumber ?? null;
+      }
+      if (dto.chequeDate !== undefined) {
+        voucher.chequeDate = dto.chequeDate ? new Date(dto.chequeDate) : null;
+      }
+      if (dto.paymentDate !== undefined) {
+        voucher.paymentDate = new Date(dto.paymentDate);
+      }
+      if (dto.remarks !== undefined) {
+        voucher.remarks = dto.remarks?.trim() ?? null;
+      }
+
+      const saved = await manager.getRepository(SalaryVoucher).save(voucher);
+      await this.postApprovalJournal(
+        manager,
+        scopedBusinessId,
+        saved,
+        salaryPayableAccountId,
+      );
+      return saved;
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: userId,
+      businessId: scopedBusinessId,
+      action: 'SALARY_VOUCHER_APPROVED_UPDATED',
+      description: `Salary voucher ${updated.voucherNumber} approved voucher updated`,
+      metadata: { voucherId: updated.id },
+    });
+
+    return { data: this.mapVoucher(updated) };
+  }
+
   async edit(
     tenantDb: DataSource,
     businessId: string,

@@ -84,6 +84,23 @@ export class PurchaseReturnVoucherService {
     );
   }
 
+  editApproved(
+    tenantDb: DataSource,
+    businessId: string,
+    id: string,
+    dto: UpdatePurchaseReturnVoucherDto,
+    userId: string,
+  ) {
+    return this.voucherOps.editApproved(
+      tenantDb,
+      businessId,
+      PURCHASE_RETURN_VOUCHER_CONFIG,
+      id,
+      dto,
+      userId,
+    );
+  }
+
   approve(tenantDb: DataSource, businessId: string, id: string, userId: string) {
     return this.voucherOps.approve(
       tenantDb,

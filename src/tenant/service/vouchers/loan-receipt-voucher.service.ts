@@ -84,6 +84,23 @@ export class LoanReceiptVoucherService {
     );
   }
 
+  editApproved(
+    tenantDb: DataSource,
+    businessId: string,
+    id: string,
+    dto: UpdateLoanReceiptVoucherDto,
+    userId: string,
+  ) {
+    return this.voucherOps.editApproved(
+      tenantDb,
+      businessId,
+      LOAN_RECEIPT_VOUCHER_CONFIG,
+      id,
+      dto,
+      userId,
+    );
+  }
+
   approve(tenantDb: DataSource, businessId: string, id: string, userId: string) {
     return this.voucherOps.approve(
       tenantDb,
