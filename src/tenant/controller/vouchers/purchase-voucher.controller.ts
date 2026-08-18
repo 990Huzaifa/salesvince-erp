@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   MethodNotAllowedException,
   Param,
@@ -202,6 +203,22 @@ export class PurchaseVoucherController {
   ) {
     const user = req.user as TenantRequestUser;
     return this.purchaseVoucherService.cancel(
+      tenantDb,
+      user.businessId!,
+      id,
+      user.userId,
+    );
+  }
+
+  @Delete(':id')
+  @RequirePermissions('DELETE_PURCHASE_VOUCHER')
+  delete(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.purchaseVoucherService.delete(
       tenantDb,
       user.businessId!,
       id,
