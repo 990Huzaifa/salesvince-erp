@@ -246,7 +246,7 @@ export class TenantRoleService {
     actorUserId: string,
   ) {
     const role = await this.findRole(tenantDb, roleId);
-    this.assertNotSystemRole(role);
+    // this.assertNotSystemRole(role);
 
     if (dto.name !== undefined) {
       const name = dto.name.trim();
