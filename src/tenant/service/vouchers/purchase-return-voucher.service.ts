@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { VoucherOperationsService } from './voucher-operations.service';
 import { PURCHASE_RETURN_VOUCHER_CONFIG } from './voucher-configs';
 import { VoucherListOptions } from './voucher.types';
@@ -128,6 +128,29 @@ export class PurchaseReturnVoucherService {
       PURCHASE_RETURN_VOUCHER_CONFIG,
       id,
       userId,
+    );
+  }
+
+  delete(tenantDb: DataSource, businessId: string, id: string, userId: string) {
+    return this.voucherOps.delete(
+      tenantDb,
+      businessId,
+      PURCHASE_RETURN_VOUCHER_CONFIG,
+      id,
+      userId,
+    );
+  }
+
+  deleteInManager(
+    manager: EntityManager,
+    businessId: string,
+    id: string,
+  ) {
+    return this.voucherOps.deleteInManager(
+      manager,
+      businessId,
+      PURCHASE_RETURN_VOUCHER_CONFIG,
+      id,
     );
   }
 }

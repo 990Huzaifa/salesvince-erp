@@ -234,6 +234,38 @@ export class GrnService {
     });
   }
 
+  async reverseApprovedEffects(
+    manager: EntityManager,
+    businessId: string,
+    grn: Grn,
+  ): Promise<void> {
+    if (grn.status !== GrnStatus.APPROVED) {
+      return;
+    }
+
+    const items = (grn.items ?? []).filter(
+      (item) => Number(item.receivedQuantity) > 0,
+    );
+    if (items.length) {
+      await this.stockService.consumeStockOut(manager, {
+        businessId,
+        warehouseId: grn.warehouseId,
+        referenceType: ReferenceType.PURCHASE,
+        lines: items.map((item) => ({
+          productId: item.productId,
+          uomId: item.uomId,
+          quantity: Number(item.receivedQuantity),
+        })),
+      });
+    }
+
+    await this.transactionService.deleteLedgerEntriesByReference(manager, {
+      businessId,
+      referenceType: AccountTransactionReferenceType.GRN,
+      referenceId: grn.id,
+    });
+  }
+
   private grnRelations() {
     return {
       purchaseOrder: true,

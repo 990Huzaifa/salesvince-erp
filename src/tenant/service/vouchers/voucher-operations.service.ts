@@ -921,7 +921,7 @@ export class VoucherOperationsService {
   }
 
   private async findVoucherOrThrow<T extends VoucherEntity>(
-    tenantDb: DataSource,
+    tenantDb: DataSource | EntityManager,
     businessId: string,
     config: VoucherConfig<T>,
     id: string,
@@ -1245,25 +1245,9 @@ export class VoucherOperationsService {
     id: string,
     userId: string,
   ) {
-    const deleted = await tenantDb.transaction(async (manager) => {
-      const voucher = await this.findVoucherOrThrow(
-        manager.connection,
-        businessId,
-        config,
-        id,
-      );
-
-      if (voucher.status === VoucherStatus.PAID) {
-        await this.transactionService.deleteLedgerEntriesByReference(manager, {
-          businessId,
-          referenceType: config.referenceType,
-          referenceId: voucher.id,
-        });
-      }
-
-      await this.getRepo(manager, config.entity).delete(voucher.id);
-      return voucher;
-    });
+    const deleted = await tenantDb.transaction(async (manager) =>
+      this.deleteInManager(manager, businessId, config, id),
+    );
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: userId,
@@ -1280,6 +1264,31 @@ export class VoucherOperationsService {
       message: `${config.activityKey} deleted`,
       data: { id: deleted.id, voucherNumber: deleted.voucherNumber },
     };
+  }
+
+  async deleteInManager<T extends VoucherEntity>(
+    manager: EntityManager,
+    businessId: string,
+    config: VoucherConfig<T>,
+    id: string,
+  ): Promise<T> {
+    const voucher = await this.findVoucherOrThrow(
+      manager,
+      businessId,
+      config,
+      id,
+    );
+
+    if (voucher.status === VoucherStatus.PAID) {
+      await this.transactionService.deleteLedgerEntriesByReference(manager, {
+        businessId,
+        referenceType: config.referenceType,
+        referenceId: voucher.id,
+      });
+    }
+
+    await this.getRepo(manager, config.entity).delete(voucher.id);
+    return voucher;
   }
 
   async reject<T extends VoucherEntity>(

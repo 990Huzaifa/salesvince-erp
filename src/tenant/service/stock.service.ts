@@ -654,6 +654,41 @@ export class StockService {
   }
 
   /**
+   * Releases previously reserved inventory back to available without
+   * changing on-hand quantity or batch quantities.
+   */
+  async releaseReservedStock(
+    manager: EntityManager,
+    input: ReserveStockInput,
+  ): Promise<void> {
+    if (!input.lines.length) {
+      return;
+    }
+
+    for (const line of input.lines) {
+      const quantity = this.roundQuantity(line.quantity);
+      if (quantity <= 0) {
+        continue;
+      }
+      if (!line.warehouseId) {
+        throw new BadRequestException(
+          'Warehouse is required to release reserved stock',
+        );
+      }
+
+      await this.updateReservedStockBalance(manager, {
+        businessId: input.businessId,
+        warehouseId: line.warehouseId,
+        productId: line.productId,
+        uomId: line.uomId,
+        availableDelta: quantity,
+        onHandDelta: 0,
+        reservedDelta: -quantity,
+      });
+    }
+  }
+
+  /**
    * Issues previously reserved sale inventory out of stock using the product
    * batch pick strategy across all warehouses with reserved stock.
    */

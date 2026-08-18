@@ -13,6 +13,7 @@ import {
 } from 'src/tenant-db/entities/delivery-note.entity';
 import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
 import { SaleReturn } from 'src/tenant-db/entities/sale-return.entity';
+import { SaleReturnVoucher } from 'src/tenant-db/entities/sale-return-voucher.entity';
 import {
   Product,
   ProductFlavour,
@@ -36,6 +37,8 @@ import { TenantJob, TenantJobService } from '../tenant-job.service';
 import { StockService } from '../stock.service';
 import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import { DeliveryNoteService } from './delivery-note.service';
+import { SaleReturnService } from './sale-return.service';
+import { SaleReturnVoucherService } from '../vouchers/sale-return-voucher.service';
 
 const ORDER_NUMBER_PREFIX = 'SO';
 
@@ -86,6 +89,8 @@ export class SaleOrderService {
     private readonly activityLogService: ActivityLogService,
     private readonly stockService: StockService,
     private readonly deliveryNoteService: DeliveryNoteService,
+    private readonly saleReturnService: SaleReturnService,
+    private readonly saleReturnVoucherService: SaleReturnVoucherService,
     private readonly notificationService: NotificationService,
     private readonly tenantJobService: TenantJobService,
     private readonly listAnalyticsService: ListAnalyticsService,
@@ -1309,20 +1314,126 @@ export class SaleOrderService {
       scopedBusinessId,
       orderId,
     );
-    if (order.orderStatus !== OrderStatus.PENDING && order.orderStatus !== OrderStatus.REJECTED) {
-      throw new BadRequestException(
-        'Only pending or rejected sale orders can be deleted',
-      );
-    }
 
-    await tenantDb.getRepository(SaleOrder).remove(order);
+    const cascaded: {
+      deliveryNoteIds: string[];
+      invoiceIds: string[];
+      saleReturnIds: string[];
+      saleReturnVoucherIds: string[];
+    } = {
+      deliveryNoteIds: [],
+      invoiceIds: [],
+      saleReturnIds: [],
+      saleReturnVoucherIds: [],
+    };
+
+    if (
+      order.orderStatus === OrderStatus.PENDING ||
+      order.orderStatus === OrderStatus.REJECTED
+    ) {
+      await tenantDb.getRepository(SaleOrder).remove(order);
+    } else {
+      await tenantDb.transaction(async (manager) => {
+        const deliveryNotes = await manager.getRepository(DeliveryNote).find({
+          where: { saleOrderId: order.id },
+          relations: { items: { saleOrderItem: true }, customer: true },
+        });
+        const invoices = await manager.getRepository(SaleInvoice).find({
+          where: { saleOrderId: order.id },
+        });
+        const invoiceIds = invoices.map((invoice) => invoice.id);
+        const saleReturns = invoiceIds.length
+          ? await manager.getRepository(SaleReturn).find({
+              where: { saleInvoiceId: In(invoiceIds) },
+              relations: { saleReturnItems: true },
+            })
+          : [];
+        const returnVouchers = invoiceIds.length
+          ? await manager.getRepository(SaleReturnVoucher).find({
+              where: { invoiceId: In(invoiceIds) },
+            })
+          : [];
+
+        cascaded.deliveryNoteIds = deliveryNotes.map((row) => row.id);
+        cascaded.invoiceIds = invoiceIds;
+        cascaded.saleReturnIds = saleReturns.map((row) => row.id);
+        cascaded.saleReturnVoucherIds = returnVouchers.map((row) => row.id);
+
+        const deliveredByItem = new Map<string, number>();
+        for (const deliveryNote of deliveryNotes) {
+          if (deliveryNote.status !== DeliveryNoteStatus.APPROVED) {
+            continue;
+          }
+          for (const item of deliveryNote.items ?? []) {
+            deliveredByItem.set(
+              item.saleOrderItemId,
+              (deliveredByItem.get(item.saleOrderItemId) ?? 0) +
+                Number(item.deliveredQuantity),
+            );
+          }
+        }
+
+        for (const voucher of returnVouchers) {
+          await this.saleReturnVoucherService.deleteInManager(
+            manager,
+            scopedBusinessId,
+            voucher.id,
+          );
+        }
+
+        for (const saleReturn of saleReturns) {
+          await this.saleReturnService.removeForOrderCascade(
+            manager,
+            scopedBusinessId,
+            saleReturn,
+          );
+        }
+
+        for (const deliveryNote of deliveryNotes) {
+          await this.deliveryNoteService.reverseApprovedEffects(
+            manager,
+            scopedBusinessId,
+            deliveryNote,
+          );
+        }
+
+        if (invoiceIds.length) {
+          await manager.getRepository(SaleInvoice).delete(invoiceIds);
+        }
+        if (deliveryNotes.length) {
+          await manager.getRepository(DeliveryNote).delete(
+            deliveryNotes.map((row) => row.id),
+          );
+        }
+
+        const leftoverLines = (order.items ?? [])
+          .map((item) => ({
+            warehouseId: item.warehouseId,
+            productId: item.productId,
+            uomId: item.uomId,
+            quantity:
+              Number(item.quantity) -
+              (deliveredByItem.get(item.id) ?? 0),
+          }))
+          .filter((line) => line.quantity > 0);
+
+        if (leftoverLines.length) {
+          await this.stockService.releaseReservedStock(manager, {
+            businessId: scopedBusinessId,
+            lines: leftoverLines,
+          });
+        }
+
+        await manager.getRepository(SaleOrder).delete(order.id);
+      });
+    }
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
       businessId: scopedBusinessId,
       action: 'SALE_ORDER_DELETED',
       description: `Sale order ${order.orderNumber} deleted`,
-      metadata: { saleOrderId: order.id },
+      metadata: { saleOrderId: order.id, ...cascaded },
     });
 
     return {

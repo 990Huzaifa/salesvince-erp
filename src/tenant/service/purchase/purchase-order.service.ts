@@ -19,6 +19,7 @@ import {
 import { Grn, GrnStatus } from 'src/tenant-db/entities/grn.entity';
 import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity';
 import { PurchaseReturn } from 'src/tenant-db/entities/purchase-return.entity';
+import { PurchaseReturnVoucher } from 'src/tenant-db/entities/purchase-return-voucher.entity';
 import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
 import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import {
@@ -44,6 +45,8 @@ import {
 import { NotificationService } from '../notification.service';
 import { TenantJob, TenantJobService } from '../tenant-job.service';
 import { GrnService } from './grn.service';
+import { PurchaseReturnService } from './purchase-return.service';
+import { PurchaseReturnVoucherService } from '../vouchers/purchase-return-voucher.service';
 
 const ORDER_NUMBER_PREFIX = 'PO';
 
@@ -95,6 +98,8 @@ export class PurchaseOrderService {
   constructor(
     private readonly activityLogService: ActivityLogService,
     private readonly grnService: GrnService,
+    private readonly purchaseReturnService: PurchaseReturnService,
+    private readonly purchaseReturnVoucherService: PurchaseReturnVoucherService,
     private readonly notificationService: NotificationService,
     private readonly tenantJobService: TenantJobService,
     private readonly listAnalyticsService: ListAnalyticsService,
@@ -1462,18 +1467,91 @@ export class PurchaseOrderService {
       orderId,
     );
 
-    if (order.orderStatus !== OrderStatus.PENDING && order.orderStatus !== OrderStatus.REJECTED) {
-      throw new BadRequestException('Only pending or rejected purchase orders can be deleted');
-    }
+    const cascaded: {
+      grnIds: string[];
+      invoiceIds: string[];
+      purchaseReturnIds: string[];
+      purchaseReturnVoucherIds: string[];
+    } = {
+      grnIds: [],
+      invoiceIds: [],
+      purchaseReturnIds: [],
+      purchaseReturnVoucherIds: [],
+    };
 
-    await tenantDb.getRepository(PurchaseOrder).remove(order);
+    if (
+      order.orderStatus === OrderStatus.PENDING ||
+      order.orderStatus === OrderStatus.REJECTED
+    ) {
+      await tenantDb.getRepository(PurchaseOrder).remove(order);
+    } else {
+      await tenantDb.transaction(async (manager) => {
+        const grns = await manager.getRepository(Grn).find({
+          where: { purchaseOrderId: order.id },
+          relations: { items: true, vendor: true },
+        });
+        const invoices = await manager.getRepository(PurchaseInvoice).find({
+          where: { purchaseOrderId: order.id },
+        });
+        const invoiceIds = invoices.map((invoice) => invoice.id);
+        const purchaseReturns = invoiceIds.length
+          ? await manager.getRepository(PurchaseReturn).find({
+              where: { purchaseInvoiceId: In(invoiceIds) },
+              relations: { purchaseReturnItems: true },
+            })
+          : [];
+        const returnVouchers = invoiceIds.length
+          ? await manager.getRepository(PurchaseReturnVoucher).find({
+              where: { invoiceId: In(invoiceIds) },
+            })
+          : [];
+
+        cascaded.grnIds = grns.map((row) => row.id);
+        cascaded.invoiceIds = invoiceIds;
+        cascaded.purchaseReturnIds = purchaseReturns.map((row) => row.id);
+        cascaded.purchaseReturnVoucherIds = returnVouchers.map((row) => row.id);
+
+        for (const voucher of returnVouchers) {
+          await this.purchaseReturnVoucherService.deleteInManager(
+            manager,
+            scopedBusinessId,
+            voucher.id,
+          );
+        }
+
+        for (const purchaseReturn of purchaseReturns) {
+          await this.purchaseReturnService.removeForOrderCascade(
+            manager,
+            scopedBusinessId,
+            purchaseReturn,
+          );
+        }
+
+        for (const grn of grns) {
+          await this.grnService.reverseApprovedEffects(
+            manager,
+            scopedBusinessId,
+            grn,
+          );
+        }
+
+        if (invoiceIds.length) {
+          await manager.getRepository(PurchaseInvoice).delete(invoiceIds);
+        }
+        if (grns.length) {
+          await manager.getRepository(Grn).delete(grns.map((row) => row.id));
+        }
+
+        await manager.getRepository(PurchaseOrder).delete(order.id);
+      });
+    }
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
       businessId: scopedBusinessId,
       action: 'PURCHASE_ORDER_DELETED',
       description: `Purchase order ${order.orderNumber} deleted`,
-      metadata: { purchaseOrderId: order.id },
+      metadata: { purchaseOrderId: order.id, ...cascaded },
     });
 
     return {

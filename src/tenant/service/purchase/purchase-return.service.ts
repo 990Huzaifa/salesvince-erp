@@ -553,6 +553,54 @@ export class PurchaseReturnService {
     }
   }
 
+  async removeForOrderCascade(
+    manager: EntityManager,
+    businessId: string,
+    purchaseReturn: PurchaseReturn,
+  ): Promise<void> {
+    if (purchaseReturn.status === PurchaseReturnStatus.APPROVED) {
+      const invoice = await this.findPurchaseInvoiceForReturn(
+        manager,
+        businessId,
+        purchaseReturn.purchaseInvoiceId,
+      );
+      const resolvedLines = this.resolvedLinesFromReturn(
+        purchaseReturn,
+        invoice,
+      );
+      const grn = invoice.grn as Grn;
+
+      if (resolvedLines.length) {
+        await this.stockService.receiveStockIn(manager, {
+          businessId,
+          warehouseId: grn.warehouseId,
+          vendorId: invoice.vendorId,
+          referenceType: ReferenceType.PURCHASE_RETURN,
+          batchDate: purchaseReturn.returnDate,
+          batchNumberPrefix: `${purchaseReturn.returnNumber}-REV`,
+          lines: resolvedLines.map((line) => ({
+            productId: line.productId,
+            uomId: line.uomId,
+            quantity: line.quantity,
+            purchaseUnitPrice: line.purchaseUnitPrice,
+            saleUnitPrice: line.saleUnitPrice,
+          })),
+        });
+      }
+
+      await this.transactionService.deleteLedgerEntriesByReference(manager, {
+        businessId,
+        referenceType: AccountTransactionReferenceType.PURCHASE_RETURN,
+        referenceId: purchaseReturn.id,
+      });
+    }
+
+    await manager
+      .getRepository(PurchaseReturnItem)
+      .delete({ purchaseReturnId: purchaseReturn.id });
+    await manager.getRepository(PurchaseReturn).delete(purchaseReturn.id);
+  }
+
   private resolvedLinesFromReturn(
     purchaseReturn: PurchaseReturn,
     invoice: PurchaseInvoice,

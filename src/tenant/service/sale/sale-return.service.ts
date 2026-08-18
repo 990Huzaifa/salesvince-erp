@@ -590,6 +590,39 @@ export class SaleReturnService {
     }
   }
 
+  async removeForOrderCascade(
+    manager: EntityManager,
+    businessId: string,
+    saleReturn: SaleReturn,
+  ): Promise<void> {
+    if (saleReturn.status === SaleReturnStatus.APPROVED) {
+      const invoice = await this.findSaleInvoiceForReturn(
+        manager,
+        businessId,
+        saleReturn.saleInvoiceId,
+      );
+      const resolvedLines = this.resolvedLinesFromReturn(saleReturn, invoice);
+      const stockLines = resolvedLines.filter((line) => line.quantity > 0);
+      if (stockLines.length) {
+        await this.consumeStockForReturnReversal(
+          manager,
+          businessId,
+          stockLines,
+        );
+      }
+      await this.transactionService.deleteLedgerEntriesByReference(manager, {
+        businessId,
+        referenceType: AccountTransactionReferenceType.SALE_RETURN,
+        referenceId: saleReturn.id,
+      });
+    }
+
+    await manager
+      .getRepository(SaleReturnItem)
+      .delete({ saleReturnId: saleReturn.id });
+    await manager.getRepository(SaleReturn).delete(saleReturn.id);
+  }
+
   private resolvedLinesFromReturn(
     saleReturn: SaleReturn,
     invoice: SaleInvoice,

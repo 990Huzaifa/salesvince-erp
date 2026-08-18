@@ -736,6 +736,53 @@ export class DeliveryNoteService {
     return approved;
   }
 
+  async reverseApprovedEffects(
+    manager: EntityManager,
+    businessId: string,
+    deliveryNote: DeliveryNote,
+  ): Promise<void> {
+    if (deliveryNote.status !== DeliveryNoteStatus.APPROVED) {
+      return;
+    }
+
+    const items = (deliveryNote.items ?? []).filter(
+      (item) => Number(item.deliveredQuantity) > 0,
+    );
+    if (items.length) {
+      const customerId = deliveryNote.customerId;
+      const grouped = new Map<string, DeliveryNoteItem[]>();
+      for (const item of items) {
+        const rows = grouped.get(item.warehouseId) ?? [];
+        rows.push(item);
+        grouped.set(item.warehouseId, rows);
+      }
+
+      for (const [warehouseId, group] of grouped.entries()) {
+        await this.stockService.receiveStockIn(manager, {
+          businessId,
+          warehouseId,
+          vendorId: customerId,
+          referenceType: ReferenceType.SALE,
+          batchDate: deliveryNote.deliveryNoteDate,
+          batchNumberPrefix: `${deliveryNote.deliveryNoteNumber}-REV`,
+          lines: group.map((item) => ({
+            productId: item.productId,
+            uomId: item.uomId,
+            quantity: Number(item.deliveredQuantity),
+            purchaseUnitPrice: Number(item.saleOrderItem?.purchaseUnitPrice ?? 0),
+            saleUnitPrice: Number(item.saleUnitPrice ?? 0),
+          })),
+        });
+      }
+    }
+
+    await this.transactionService.deleteLedgerEntriesByReference(manager, {
+      businessId,
+      referenceType: AccountTransactionReferenceType.DELIVERY_NOTE,
+      referenceId: deliveryNote.id,
+    });
+  }
+
   async create(
     tenantDb: DataSource,
     businessId: string | undefined,
