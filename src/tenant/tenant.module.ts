@@ -131,6 +131,7 @@ import { EmployeeSalaryStructureController } from './controller/hr/employee-sala
 import { PayrollRunController } from './controller/hr/payroll-run.controller';
 import { PayslipController } from './controller/hr/payslip.controller';
 import { SalaryVoucherController } from './controller/vouchers/salary-voucher.controller';
+import { LedgerWireController } from './controller/ledger-wire.controller';
 import { EmployeeService } from './service/hr/employee.service';
 import { PayPolicyService } from './service/hr/pay-policy.service';
 import { SalaryComponentService } from './service/hr/salary-component.service';
@@ -138,6 +139,7 @@ import { EmployeeSalaryStructureService } from './service/hr/employee-salary-str
 import { PayrollRunService } from './service/hr/payroll-run.service';
 import { PayslipService } from './service/hr/payslip.service';
 import { SalaryVoucherService } from './service/vouchers/salary-voucher.service';
+import { LedgerWireService } from './service/ledger-wire.service';
 import { MasterTenantDataController } from './controller/master-tenant-data.controller';
 import { MasterTenantDataService } from './service/master-tenant-data.service';
 import { DatabaseBackupController } from './controller/database-backup.controller';
@@ -224,6 +226,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     PayrollRunController,
     PayslipController,
     SalaryVoucherController,
+    LedgerWireController,
     MasterTenantDataController,
     DatabaseBackupController,
     ProfileController,
@@ -306,6 +309,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     PayrollRunService,
     PayslipService,
     SalaryVoucherService,
+    LedgerWireService,
     MasterTenantDataService,
     TenantDatabaseBackupService,
     PgDumpService,

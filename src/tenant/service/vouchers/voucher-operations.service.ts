@@ -906,7 +906,7 @@ export class VoucherOperationsService {
       tenantDb,
       businessId,
       config,
-      id,
+      { id },
     );
 
     await this.activityLogService.recordActivityLog(tenantDb, {
@@ -920,17 +920,54 @@ export class VoucherOperationsService {
     return voucher;
   }
 
+  async getByNumber<T extends VoucherEntity>(
+    tenantDb: DataSource,
+    businessId: string,
+    config: VoucherConfig<T>,
+    voucherNumber: string,
+    userId: string,
+  ) {
+    const code = voucherNumber?.trim();
+    if (!code) {
+      throw new BadRequestException('Voucher number is required');
+    }
+
+    const voucher = await this.findVoucherOrThrow(
+      tenantDb,
+      businessId,
+      config,
+      { voucherNumber: code },
+    );
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: userId,
+      businessId,
+      action: `${config.activityKey}_VIEWED`,
+      description: `${config.activityKey} ${voucher.voucherNumber} viewed`,
+      metadata: { voucherId: voucher.id, voucherNumber: voucher.voucherNumber },
+    });
+
+    return voucher;
+  }
+
   private async findVoucherOrThrow<T extends VoucherEntity>(
     tenantDb: DataSource | EntityManager,
     businessId: string,
     config: VoucherConfig<T>,
-    id: string,
+    lookup: { id: string } | { voucherNumber: string },
   ): Promise<T> {
     const alias = 'voucher';
     const qb = tenantDb
       .getRepository(config.entity)
-      .createQueryBuilder(alias)
-      .where(`${alias}.id = :id`, { id });
+      .createQueryBuilder(alias);
+
+    if ('id' in lookup) {
+      qb.where(`${alias}.id = :id`, { id: lookup.id });
+    } else {
+      qb.where(`${alias}.voucherNumber = :voucherNumber`, {
+        voucherNumber: lookup.voucherNumber,
+      });
+    }
 
     if (config.hasParty) {
       qb.innerJoinAndSelect(`${alias}.party`, 'party')
@@ -976,7 +1013,7 @@ export class VoucherOperationsService {
         manager.connection,
         businessId,
         config,
-        id,
+        { id },
       );
       this.assertEditable(voucher);
       this.applyUpdateFields(voucher, config, dto);
@@ -1022,7 +1059,7 @@ export class VoucherOperationsService {
         manager.connection,
         businessId,
         config,
-        id,
+        { id },
       );
 
       if (voucher.status !== VoucherStatus.PAID) {
@@ -1094,7 +1131,7 @@ export class VoucherOperationsService {
         manager.connection,
         businessId,
         config,
-        id,
+        { id },
       );
 
       if (voucher.status === VoucherStatus.PAID) {
@@ -1212,7 +1249,7 @@ export class VoucherOperationsService {
         manager.connection,
         businessId,
         config,
-        id,
+        { id },
       );
 
       if (voucher.status === VoucherStatus.PAID) {
@@ -1276,7 +1313,7 @@ export class VoucherOperationsService {
       manager,
       businessId,
       config,
-      id,
+      { id },
     );
 
     if (voucher.status === VoucherStatus.PAID) {
@@ -1303,7 +1340,7 @@ export class VoucherOperationsService {
         manager.connection,
         businessId,
         config,
-        id,
+        { id },
       );
 
       if (voucher.status === VoucherStatus.PAID) {

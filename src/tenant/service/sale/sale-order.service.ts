@@ -1061,6 +1061,30 @@ export class SaleOrderService {
     return { data: this.mapSaleOrder(order) };
   }
 
+  async viewByCode(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    orderNumber: string,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const code = orderNumber?.trim();
+    if (!code) {
+      throw new BadRequestException('Sale order code is required');
+    }
+
+    const match = await this.findSaleOrderByNumberForBusiness(
+      tenantDb,
+      scopedBusinessId,
+      code,
+    );
+    if (!match) {
+      throw new NotFoundException('Sale order not found');
+    }
+
+    return this.view(tenantDb, scopedBusinessId, match.id, actorUserId);
+  }
+
   async edit(
     tenantDb: DataSource,
     businessId: string | undefined,

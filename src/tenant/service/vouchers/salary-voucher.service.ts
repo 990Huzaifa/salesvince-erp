@@ -535,6 +535,37 @@ export class SalaryVoucherService {
     return { data: this.mapVoucher(voucher) };
   }
 
+  async getByCode(
+    tenantDb: DataSource,
+    businessId: string,
+    voucherNumber: string,
+    userId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const code = voucherNumber?.trim();
+    if (!code) {
+      throw new BadRequestException('Salary voucher number is required');
+    }
+
+    const voucher = await tenantDb.getRepository(SalaryVoucher).findOne({
+      where: { voucherNumber: code, businessId: scopedBusinessId },
+      relations: { employee: true, payslip: true },
+    });
+    if (!voucher) {
+      throw new NotFoundException('Salary voucher not found');
+    }
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: userId,
+      businessId: scopedBusinessId,
+      action: 'SALARY_VOUCHER_VIEWED',
+      description: `Salary voucher ${voucher.voucherNumber} viewed`,
+      metadata: { voucherId: voucher.id, voucherNumber: voucher.voucherNumber },
+    });
+
+    return { data: this.mapVoucher(voucher) };
+  }
+
   async editApproved(
     tenantDb: DataSource,
     businessId: string,

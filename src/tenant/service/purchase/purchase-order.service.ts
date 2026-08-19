@@ -1190,6 +1190,30 @@ export class PurchaseOrderService {
     return { data: this.mapPurchaseOrder(order) };
   }
 
+  async viewByCode(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    orderNumber: string,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const code = orderNumber?.trim();
+    if (!code) {
+      throw new BadRequestException('Purchase order code is required');
+    }
+
+    const match = await this.findOrderByNumberForBusiness(
+      tenantDb,
+      scopedBusinessId,
+      code,
+    );
+    if (!match) {
+      throw new NotFoundException('Purchase order not found');
+    }
+
+    return this.view(tenantDb, scopedBusinessId, match.id, actorUserId);
+  }
+
   async edit(
     tenantDb: DataSource,
     businessId: string | undefined,
