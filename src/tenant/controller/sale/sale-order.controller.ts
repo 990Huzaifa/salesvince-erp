@@ -176,6 +176,23 @@ export class SaleOrderController {
     );
   }
 
+  @Get('product-sale-history')
+  @RequirePermissions('VIEW_SALE_ORDER')
+  getProductSaleHistory(
+    @TenantConnection() tenantDb: DataSource,
+    @Query('customerId', ParseUUIDPipe) customerId: string,
+    @Query('productId', ParseUUIDPipe) productId: string,
+    @Query('uomId', new ParseUUIDPipe({ optional: true })) uomId?: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.saleOrderService.getProductSaleHistory(
+      tenantDb,
+      user.businessId,
+      { customerId, productId, uomId },
+    );
+  }
+
   @Get(':id')
   @RequirePermissions('VIEW_SALE_ORDER')
   view(

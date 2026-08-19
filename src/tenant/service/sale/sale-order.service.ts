@@ -1061,6 +1061,64 @@ export class SaleOrderService {
     return { data: this.mapSaleOrder(order) };
   }
 
+  async getProductSaleHistory(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    options: { customerId: string; productId: string; uomId?: string },
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const customerId = options.customerId?.trim();
+    const productId = options.productId?.trim();
+    const uomId = options.uomId?.trim();
+
+    if (!customerId) {
+      throw new BadRequestException('Customer ID is required');
+    }
+    if (!productId) {
+      throw new BadRequestException('Product ID is required');
+    }
+
+    const qb = tenantDb
+      .getRepository(SaleOrderItem)
+      .createQueryBuilder('soi')
+      .innerJoinAndSelect('soi.saleOrder', 'so')
+      .leftJoinAndSelect('soi.uom', 'uom')
+      .where('so.businessId = :businessId', { businessId: scopedBusinessId })
+      .andWhere('so.customerId = :customerId', { customerId })
+      .andWhere('soi.productId = :productId', { productId })
+      .andWhere('so.orderStatus = :orderStatus', {
+        orderStatus: OrderStatus.APPROVED,
+      });
+
+    if (uomId) {
+      qb.andWhere('soi.uomId = :uomId', { uomId });
+    }
+
+    const rows = await qb
+      .orderBy('so.orderDate', 'DESC')
+      .addOrderBy('so.createdAt', 'DESC')
+      .addOrderBy('soi.createdAt', 'DESC')
+      .take(3)
+      .getMany();
+
+    return {
+      data: rows.map((item) => ({
+        saleOrderId: item.saleOrderId,
+        orderNumber: item.saleOrder.orderNumber,
+        orderDate: item.saleOrder.orderDate,
+        saleUnitPrice: Number(item.saleUnitPrice),
+        quantity: item.quantity,
+        uomId: item.uomId,
+        uom: item.uom
+          ? {
+              id: item.uom.id,
+              name: item.uom.name,
+            }
+          : null,
+      })),
+    };
+  }
+
   async viewByCode(
     tenantDb: DataSource,
     businessId: string | undefined,
