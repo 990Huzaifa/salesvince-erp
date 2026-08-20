@@ -1064,18 +1064,21 @@ export class SaleOrderService {
   async getProductSaleHistory(
     tenantDb: DataSource,
     businessId: string | undefined,
-    options: { customerId: string; productId: string; uomId?: string },
+    options: { partyId?: string; productId?: string; uomId?: string },
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
-    const customerId = options.customerId?.trim();
+    const partyId = options.partyId?.trim();
     const productId = options.productId?.trim();
     const uomId = options.uomId?.trim();
 
-    if (!customerId) {
-      throw new BadRequestException('Customer ID is required');
+    if (!partyId) {
+      throw new BadRequestException('partyId is required');
     }
     if (!productId) {
-      throw new BadRequestException('Product ID is required');
+      throw new BadRequestException('productId is required');
+    }
+    if (!uomId) {
+      throw new BadRequestException('uomId is required');
     }
 
     const qb = tenantDb
@@ -1084,15 +1087,12 @@ export class SaleOrderService {
       .innerJoinAndSelect('soi.saleOrder', 'so')
       .leftJoinAndSelect('soi.uom', 'uom')
       .where('so.businessId = :businessId', { businessId: scopedBusinessId })
-      .andWhere('so.customerId = :customerId', { customerId })
+      .andWhere('so.customerId = :partyId', { partyId })
       .andWhere('soi.productId = :productId', { productId })
+      .andWhere('soi.uomId = :uomId', { uomId })
       .andWhere('so.orderStatus = :orderStatus', {
         orderStatus: OrderStatus.APPROVED,
       });
-
-    if (uomId) {
-      qb.andWhere('soi.uomId = :uomId', { uomId });
-    }
 
     const rows = await qb
       .orderBy('so.orderDate', 'DESC')

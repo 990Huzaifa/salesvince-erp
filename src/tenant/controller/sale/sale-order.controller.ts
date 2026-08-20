@@ -180,16 +180,21 @@ export class SaleOrderController {
   @RequirePermissions('VIEW_SALE_ORDER')
   getProductSaleHistory(
     @TenantConnection() tenantDb: DataSource,
-    @Query('customerId', ParseUUIDPipe) customerId: string,
-    @Query('productId', ParseUUIDPipe) productId: string,
-    @Query('uomId', new ParseUUIDPipe({ optional: true })) uomId?: string,
     @Req() req: Request,
+    @Query('partyId') partyId?: string,
+    @Query('customerId') customerId?: string,
+    @Query('productId') productId?: string,
+    @Query('uomId') uomId?: string,
   ) {
     const user = req.user as TenantRequestUser;
     return this.saleOrderService.getProductSaleHistory(
       tenantDb,
       user.businessId,
-      { customerId, productId, uomId },
+      {
+        partyId: partyId ?? customerId,
+        productId,
+        uomId,
+      },
     );
   }
 
