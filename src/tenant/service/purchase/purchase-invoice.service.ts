@@ -433,6 +433,7 @@ export class PurchaseInvoiceService {
         purchaseOrderId: options.purchaseOrderId,
       });
     }
+
     if (options.search?.trim()) {
       const search = `%${options.search.trim()}%`;
       qb.andWhere(
@@ -440,7 +441,9 @@ export class PurchaseInvoiceService {
           sub
             .where('invoice.invoiceNumber ILIKE :search', { search })
             .orWhere('grn.grnNumber ILIKE :search', { search })
-            .orWhere('purchaseOrder.orderNumber ILIKE :search', { search });
+            .orWhere('purchaseOrder.orderNumber ILIKE :search', { search })
+            .orWhere('vendor.name ILIKE :search', { search })
+            .orWhere('vendor.code ILIKE :search', { search });
         }),
       );
     }

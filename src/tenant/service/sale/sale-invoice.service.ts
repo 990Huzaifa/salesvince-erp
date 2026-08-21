@@ -455,14 +455,19 @@ export class SaleInvoiceService {
         saleOrderId: options.saleOrderId,
       });
     }
+
     if (options.search?.trim()) {
       const search = `%${options.search.trim()}%`;
       qb.andWhere(
         new Brackets((sub) => {
           sub
             .where('invoice.invoiceNumber ILIKE :search', { search })
-            .orWhere('deliveryNote.deliveryNoteNumber ILIKE :search', { search })
-            .orWhere('saleOrder.orderNumber ILIKE :search', { search });
+            .orWhere('deliveryNote.deliveryNoteNumber ILIKE :search', {
+              search,
+            })
+            .orWhere('saleOrder.orderNumber ILIKE :search', { search })
+            .orWhere('customer.name ILIKE :search', { search })
+            .orWhere('customer.code ILIKE :search', { search });
         }),
       );
     }
