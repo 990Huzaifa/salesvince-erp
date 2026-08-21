@@ -249,6 +249,7 @@ export class SaleInvoiceService {
             deliveryNoteNumber: invoice.deliveryNote.deliveryNoteNumber,
             deliveryNoteDate: invoice.deliveryNote.deliveryNoteDate,
             status: invoice.deliveryNote.status,
+            deliveryCost: Number(invoice.deliveryNote.deliveryCost ?? 0),
           }
         : null,
       customerId: invoice.customerId,
@@ -259,10 +260,16 @@ export class SaleInvoiceService {
         ? {
             id: invoice.saleOrder.id,
             orderNumber: invoice.saleOrder.orderNumber,
+            deliveryCost: Number(invoice.saleOrder.deliveryCost ?? 0),
           }
         : null,
       invoiceNumber: invoice.invoiceNumber,
       invoiceDate: invoice.invoiceDate,
+      deliveryCost: Number(
+        invoice.deliveryNote?.deliveryCost ??
+          invoice.saleOrder?.deliveryCost ??
+          0,
+      ),
       totalTaxAmount: invoice.totalTaxAmount,
       totalDiscountAmount: invoice.totalDiscountAmount,
       totalAmount: invoice.totalAmount,
