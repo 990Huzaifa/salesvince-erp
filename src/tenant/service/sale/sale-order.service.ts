@@ -572,6 +572,7 @@ export class SaleOrderService {
         : null,
       orderStatus: order.orderStatus,
       orderTotal: order.orderTotal,
+      deliveryCost: Number(order.deliveryCost ?? 0),
       taxPercentage: order.taxPercentage,
       taxAmount: order.taxAmount,
       discountPercentage: order.discountPercentage,
