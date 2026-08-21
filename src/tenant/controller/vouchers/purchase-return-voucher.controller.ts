@@ -143,7 +143,7 @@ export class PurchaseReturnVoucherController {
     );
   }
 
-  @Post('approve/:id')
+  @Put('approve/:id')
   @RequirePermissions('APPROVE_PURCHASE_RETURN_VOUCHER')
   approve(
     @TenantConnection() tenantDb: DataSource,
@@ -159,7 +159,7 @@ export class PurchaseReturnVoucherController {
     );
   }
 
-  @Post('reject/:id')
+  @Put('reject/:id')
   @RequirePermissions('REJECT_PURCHASE_RETURN_VOUCHER')
   reject(
     @TenantConnection() tenantDb: DataSource,
@@ -175,7 +175,7 @@ export class PurchaseReturnVoucherController {
     );
   }
 
-  @Post('cancel/:id')
+  @Put('cancel/:id')
   @RequirePermissions('CANCEL_PURCHASE_RETURN_VOUCHER')
   cancel(
     @TenantConnection() tenantDb: DataSource,

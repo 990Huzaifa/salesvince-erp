@@ -141,7 +141,7 @@ export class ContraVoucherController {
     );
   }
 
-  @Post('approve/:id')
+  @Put('approve/:id')
   @RequirePermissions('APPROVE_CONTRA_VOUCHER')
   approve(
     @TenantConnection() tenantDb: DataSource,
@@ -157,7 +157,7 @@ export class ContraVoucherController {
     );
   }
 
-  @Post('cancel/:id')
+  @Put('cancel/:id')
   @RequirePermissions('CANCEL_CONTRA_VOUCHER')
   cancel(
     @TenantConnection() tenantDb: DataSource,

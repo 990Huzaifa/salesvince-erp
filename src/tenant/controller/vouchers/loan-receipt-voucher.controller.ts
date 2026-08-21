@@ -143,7 +143,7 @@ export class LoanReceiptVoucherController {
     );
   }
 
-  @Post('approve/:id')
+  @Put('approve/:id')
   @RequirePermissions('APPROVE_LOAN_RECEIPT_VOUCHER')
   approve(
     @TenantConnection() tenantDb: DataSource,
@@ -159,7 +159,7 @@ export class LoanReceiptVoucherController {
     );
   }
 
-  @Post('cancel/:id')
+  @Put('cancel/:id')
   @RequirePermissions('CANCEL_LOAN_RECEIPT_VOUCHER')
   cancel(
     @TenantConnection() tenantDb: DataSource,

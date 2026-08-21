@@ -178,7 +178,7 @@ export class PurchaseVoucherController {
     );
   }
 
-  @Post('approve/:id')
+  @Put('approve/:id')
   @RequirePermissions('APPROVE_PURCHASE_VOUCHER')
   approve(
     @TenantConnection() tenantDb: DataSource,
@@ -194,7 +194,7 @@ export class PurchaseVoucherController {
     );
   }
 
-  @Post('cancel/:id')
+  @Put('cancel/:id')
   @RequirePermissions('CANCEL_PURCHASE_VOUCHER')
   cancel(
     @TenantConnection() tenantDb: DataSource,

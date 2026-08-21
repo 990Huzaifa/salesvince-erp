@@ -141,7 +141,7 @@ export class ExpenseVoucherController {
     );
   }
 
-  @Post('approve/:id')
+  @Put('approve/:id')
   @RequirePermissions('APPROVE_EXPENSE_VOUCHER')
   approve(
     @TenantConnection() tenantDb: DataSource,
@@ -157,7 +157,7 @@ export class ExpenseVoucherController {
     );
   }
 
-  @Post('cancel/:id')
+  @Put('cancel/:id')
   @RequirePermissions('CANCEL_EXPENSE_VOUCHER')
   cancel(
     @TenantConnection() tenantDb: DataSource,

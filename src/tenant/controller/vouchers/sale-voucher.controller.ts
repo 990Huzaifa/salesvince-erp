@@ -178,7 +178,7 @@ export class SaleVoucherController {
     );
   }
 
-  @Post('approve/:id')
+  @Put('approve/:id')
   @RequirePermissions('APPROVE_SALE_VOUCHER')
   approve(
     @TenantConnection() tenantDb: DataSource,
@@ -194,7 +194,7 @@ export class SaleVoucherController {
     );
   }
 
-  @Post('reject/:id')
+  @Put('reject/:id')
   @RequirePermissions('REJECT_SALE_VOUCHER')
   reject(
     @TenantConnection() tenantDb: DataSource,
@@ -210,7 +210,7 @@ export class SaleVoucherController {
     );
   }
 
-  @Post('cancel/:id')
+  @Put('cancel/:id')
   @RequirePermissions('CANCEL_SALE_VOUCHER')
   cancel(
     @TenantConnection() tenantDb: DataSource,
