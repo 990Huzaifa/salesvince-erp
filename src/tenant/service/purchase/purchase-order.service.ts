@@ -1303,7 +1303,10 @@ export class PurchaseOrderService {
       );
       const resolvedLines = this.buildResolvedLines(itemsForTotals, pricingByKey);
       const totals = this.computeOrderTotals(resolvedLines, {
-        deliveryCost: dto.deliveryCost ?? order.deliveryCost,
+        deliveryCost:
+          dto.deliveryCost !== undefined
+            ? dto.deliveryCost
+            : Number(order.deliveryCost ?? 0),
         taxPercentage: dto.taxPercentage ?? order.taxPercentage,
         discountPercentage:
           dto.discountPercentage ?? order.discountPercentage,
@@ -1412,7 +1415,10 @@ export class PurchaseOrderService {
       }));
 
       const totals = this.computeOrderTotals(resolvedLines, {
-        deliveryCost: dto.deliveryCost ?? order.deliveryCost,
+        deliveryCost:
+          dto.deliveryCost !== undefined
+            ? dto.deliveryCost
+            : Number(order.deliveryCost ?? 0),
         taxPercentage: dto.taxPercentage ?? order.taxPercentage,
         discountPercentage:
           dto.discountPercentage ?? order.discountPercentage,

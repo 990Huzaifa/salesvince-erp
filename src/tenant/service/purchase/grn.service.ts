@@ -1264,7 +1264,7 @@ export class GrnService {
     const poOrderTotal = Number(order.orderTotal);
     const poTotalAmount = Number(order.totalAmount);
     const poTaxAmount = Number(order.taxAmount);
-    const poDeliveryCost = Number(order.deliveryCost);
+    const poDeliveryCost = Number(order.deliveryCost ?? 0);
     const poHeaderDiscount = Number(order.discountAmount);
     const ledgerBusinessId = order.businessId ?? businessId;
 
@@ -1345,6 +1345,7 @@ export class GrnService {
       };
 
       await manager.getRepository(Grn).update(grn.id, headerTotals);
+      Object.assign(grn, headerTotals);
 
       const isApproved = String(grn.status) === GrnStatus.APPROVED;
       if (!isApproved) {
@@ -1370,16 +1371,11 @@ export class GrnService {
         },
       );
 
-      const reloaded = await manager.getRepository(Grn).findOneOrFail({
-        where: { id: grn.id },
-      });
-      Object.assign(reloaded, headerTotals);
-      reloaded.status = grn.status;
-      reloaded.items = await manager.getRepository(GrnItem).find({
+      grn.items = await manager.getRepository(GrnItem).find({
         where: { grnId: grn.id },
       });
 
-      await this.purchaseInvoiceService.syncFromGrn(manager, reloaded);
+      await this.purchaseInvoiceService.syncFromGrn(manager, grn);
     }
   }
 }

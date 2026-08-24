@@ -57,6 +57,7 @@ type ResolvedSaleOrderLine = {
 
 type SaleOrderTotals = {
   orderTotal: number;
+  deliveryCost: number;
   taxPercentage: number;
   taxAmount: number;
   discountPercentage: number;
@@ -322,6 +323,7 @@ export class SaleOrderService {
   private computeOrderTotals(
     lines: ResolvedSaleOrderLine[],
     options: {
+      deliveryCost?: number;
       taxPercentage?: number;
       discountPercentage?: number;
       discountAmount?: number;
@@ -331,6 +333,7 @@ export class SaleOrderService {
     const orderTotal = this.roundAmount(
       lines.reduce((sum, line) => sum + line.totalAmount, 0),
     );
+    const deliveryCost = this.roundAmount(Number(options.deliveryCost ?? 0));
     const discountPercentage = this.roundAmount(options.discountPercentage ?? 0);
     const discountAmount =
       options.discountAmount != null
@@ -342,10 +345,13 @@ export class SaleOrderService {
       options.taxAmount != null
         ? this.roundAmount(options.taxAmount)
         : this.roundAmount((taxableBase * taxPercentage) / 100);
-    const totalAmount = this.roundAmount(taxableBase + taxAmount);
+    const totalAmount = this.roundAmount(
+      taxableBase + taxAmount + deliveryCost,
+    );
 
     return {
       orderTotal,
+      deliveryCost,
       taxPercentage,
       taxAmount,
       discountPercentage,
@@ -677,6 +683,7 @@ export class SaleOrderService {
         pricingByKey,
       );
       const totals = this.computeOrderTotals(resolvedLines, {
+        deliveryCost: params.dto.deliveryCost,
         taxPercentage: params.dto.taxPercentage,
         discountPercentage: params.dto.discountPercentage,
       });
@@ -685,7 +692,7 @@ export class SaleOrderService {
       const order = await orderRepo.save(
         orderRepo.create({
           orderNumber,
-          deliveryCost: params.dto.deliveryCost,
+          deliveryCost: totals.deliveryCost,
           customerId: params.dto.customerId,
           businessId: params.businessId,
           orderStatus: params.orderStatus,
@@ -873,6 +880,7 @@ export class SaleOrderService {
     );
     const resolvedLines = this.buildResolvedLines(dto.items, pricingByKey);
     const totals = this.computeOrderTotals(resolvedLines, {
+      deliveryCost: dto.deliveryCost,
       taxPercentage: dto.taxPercentage,
       discountPercentage: dto.discountPercentage,
     });
@@ -882,7 +890,7 @@ export class SaleOrderService {
       const order = await orderRepo.save(
         orderRepo.create({
           orderNumber,
-          deliveryCost: dto.deliveryCost ?? 0,
+          deliveryCost: totals.deliveryCost,
           customerId: dto.customerId,
           businessId: scopedBusinessId,
           orderStatus: OrderStatus.APPROVED,
@@ -1221,6 +1229,10 @@ export class SaleOrderService {
       );
       const resolvedLines = this.buildResolvedLines(itemsForTotals, pricingByKey);
       const totals = this.computeOrderTotals(resolvedLines, {
+        deliveryCost:
+          dto.deliveryCost !== undefined
+            ? dto.deliveryCost
+            : Number(order.deliveryCost ?? 0),
         taxPercentage: dto.taxPercentage ?? order.taxPercentage,
         discountPercentage:
           dto.discountPercentage ?? order.discountPercentage,
@@ -1228,7 +1240,7 @@ export class SaleOrderService {
 
       await manager.getRepository(SaleOrder).update(order.id, {
         orderNumber: order.orderNumber,
-        deliveryCost: order.deliveryCost,
+        deliveryCost: totals.deliveryCost,
         customerId: order.customerId,
         orderDate: order.orderDate,
         notes: order.notes,
@@ -1325,6 +1337,10 @@ export class SaleOrderService {
       }));
 
       const totals = this.computeOrderTotals(resolvedLines, {
+        deliveryCost:
+          dto.deliveryCost !== undefined
+            ? dto.deliveryCost
+            : Number(order.deliveryCost ?? 0),
         taxPercentage: dto.taxPercentage ?? order.taxPercentage,
         discountPercentage:
           dto.discountPercentage ?? order.discountPercentage,
@@ -1337,7 +1353,7 @@ export class SaleOrderService {
       await manager.getRepository(SaleOrder).update(order.id, {
         orderDate,
         notes: dto.notes !== undefined ? dto.notes?.trim() || null : order.notes,
-        deliveryCost: dto.deliveryCost ?? order.deliveryCost,
+        deliveryCost: totals.deliveryCost,
         orderTotal: totals.orderTotal,
         taxPercentage: totals.taxPercentage,
         taxAmount: totals.taxAmount,
@@ -1353,7 +1369,7 @@ export class SaleOrderService {
         where: { saleOrderId: order.id },
       });
       orderForCascade.orderDate = orderDate;
-      orderForCascade.deliveryCost = dto.deliveryCost ?? order.deliveryCost;
+      orderForCascade.deliveryCost = totals.deliveryCost;
       orderForCascade.orderTotal = totals.orderTotal;
       orderForCascade.taxPercentage = totals.taxPercentage;
       orderForCascade.taxAmount = totals.taxAmount;
@@ -2190,12 +2206,14 @@ export class SaleOrderService {
     }));
 
     const totals = this.computeOrderTotals(resolvedLines, {
+      deliveryCost: Number(order.deliveryCost),
       taxPercentage: Number(order.taxPercentage),
       discountPercentage: Number(order.discountPercentage),
     });
 
     await tenantDb.getRepository(SaleOrder).update(orderId, {
       orderTotal: totals.orderTotal,
+      deliveryCost: totals.deliveryCost,
       taxPercentage: totals.taxPercentage,
       taxAmount: totals.taxAmount,
       discountPercentage: totals.discountPercentage,

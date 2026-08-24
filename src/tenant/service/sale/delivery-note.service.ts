@@ -1244,10 +1244,9 @@ export class DeliveryNoteService {
       .getMany();
 
     const soOrderTotal = Number(order.orderTotal);
-    const soDocumentTotal =
-      Number(order.totalAmount) + Number(order.deliveryCost);
+    const soDocumentTotal = Number(order.totalAmount);
     const soTaxAmount = Number(order.taxAmount);
-    const soDeliveryCost = Number(order.deliveryCost);
+    const soDeliveryCost = Number(order.deliveryCost ?? 0);
     const soHeaderDiscount = Number(order.discountAmount);
     const ledgerBusinessId = order.businessId ?? businessId;
 
@@ -1328,6 +1327,7 @@ export class DeliveryNoteService {
       };
 
       await manager.getRepository(DeliveryNote).update(deliveryNote.id, headerTotals);
+      Object.assign(deliveryNote, headerTotals);
 
       const isApproved =
         String(deliveryNote.status) === DeliveryNoteStatus.APPROVED;
@@ -1355,16 +1355,11 @@ export class DeliveryNoteService {
         },
       );
 
-      const reloaded = await manager.getRepository(DeliveryNote).findOneOrFail({
-        where: { id: deliveryNote.id },
-      });
-      Object.assign(reloaded, headerTotals);
-      reloaded.status = deliveryNote.status;
-      reloaded.items = await manager.getRepository(DeliveryNoteItem).find({
+      deliveryNote.items = await manager.getRepository(DeliveryNoteItem).find({
         where: { deliveryNoteId: deliveryNote.id },
       });
 
-      await this.saleInvoiceService.syncFromDeliveryNote(manager, reloaded);
+      await this.saleInvoiceService.syncFromDeliveryNote(manager, deliveryNote);
     }
   }
 }
