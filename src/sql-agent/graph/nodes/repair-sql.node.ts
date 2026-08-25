@@ -4,15 +4,8 @@ import {
   formatSqlAgentFailure,
   getErrorMessage,
 } from '../../utils/format-failure';
+import { extractSql } from '../../utils/extract-sql';
 import { SqlAgentState, SqlAgentStateUpdate } from '../sql-agent.state';
-
-function extractSql(text: string): string {
-  const fenced = text.match(/```sql\s*([\s\S]*?)```/i);
-  if (fenced?.[1]) {
-    return fenced[1].trim();
-  }
-  return text.trim();
-}
 
 export function createRepairSqlNode(aiModelService: AiModelService) {
   return async (state: SqlAgentState): Promise<SqlAgentStateUpdate> => {

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { extractSql } from '../utils/extract-sql';
 
 const BLOCKED_KEYWORDS = [
   'INSERT',
@@ -19,7 +20,7 @@ const BLOCKED_KEYWORDS = [
 @Injectable()
 export class SqlValidatorService {
   validate(sql: string): { valid: boolean; sql?: string; error?: string } {
-    const trimmed = sql.trim();
+    const trimmed = extractSql(sql);
     if (!trimmed) {
       return { valid: false, error: 'SQL is empty' };
     }

@@ -4,15 +4,8 @@ import {
   formatSqlAgentFailure,
   getErrorMessage,
 } from '../../utils/format-failure';
+import { extractSql } from '../../utils/extract-sql';
 import { SqlAgentState, SqlAgentStateUpdate } from '../sql-agent.state';
-
-function extractSql(text: string): string {
-  const fenced = text.match(/```sql\s*([\s\S]*?)```/i);
-  if (fenced?.[1]) {
-    return fenced[1].trim();
-  }
-  return text.trim();
-}
 
 export function createGenerateSqlNode(aiModelService: AiModelService) {
   return async (state: SqlAgentState): Promise<SqlAgentStateUpdate> => {
@@ -30,6 +23,7 @@ export function createGenerateSqlNode(aiModelService: AiModelService) {
       const response = await model.invoke([
         new SystemMessage(
           `You write a single PostgreSQL SELECT (or WITH) query.
+Return ONLY the SQL query with no explanation or markdown unless wrapped in a single \`\`\`sql block.
 Rules: read-only, no semicolons, no comments, one statement only.
 ${businessRule}
 Relevant tables: ${tables}`,
