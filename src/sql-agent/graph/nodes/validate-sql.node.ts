@@ -1,4 +1,5 @@
 import { SqlValidatorService } from '../../services/sql-validator.service';
+import { quoteSchemaIdentifiers } from '../../utils/quote-schema-identifiers';
 import { SqlAgentState, SqlAgentStateUpdate } from '../sql-agent.state';
 
 export function createValidateSqlNode(sqlValidator: SqlValidatorService) {
@@ -10,16 +11,23 @@ export function createValidateSqlNode(sqlValidator: SqlValidatorService) {
       };
     }
 
-    const result = sqlValidator.validate(state.generatedSql);
+    const normalizedSql = quoteSchemaIdentifiers(
+      state.generatedSql,
+      state.schemaText,
+    );
+
+    const result = sqlValidator.validate(normalizedSql);
     if (!result.valid) {
       return {
         validatedSql: null,
         sqlValidationError: result.error ?? 'SQL validation failed',
+        generatedSql: normalizedSql,
       };
     }
 
     return {
-      validatedSql: result.sql ?? state.generatedSql,
+      validatedSql: result.sql ?? normalizedSql,
+      generatedSql: normalizedSql,
       sqlValidationError: null,
     };
   };

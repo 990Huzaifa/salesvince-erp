@@ -5,6 +5,10 @@ import {
   getErrorMessage,
 } from '../../utils/format-failure';
 import { extractSql } from '../../utils/extract-sql';
+import {
+  POSTGRES_IDENTIFIER_RULES,
+  quoteSchemaIdentifiers,
+} from '../../utils/quote-schema-identifiers';
 import { SqlAgentState, SqlAgentStateUpdate } from '../sql-agent.state';
 
 export function createGenerateSqlNode(aiModelService: AiModelService) {
@@ -12,7 +16,7 @@ export function createGenerateSqlNode(aiModelService: AiModelService) {
     try {
       const model = aiModelService.getSqlModel();
       const businessRule = state.businessId
-        ? `When a table has a businessId column, you MUST filter with businessId = '${state.businessId}'.`
+        ? `When a table has a "businessId" column, you MUST filter with "businessId" = '${state.businessId}'.`
         : '';
 
       const filteredSchema = state.schemaText ?? '';
@@ -25,6 +29,7 @@ export function createGenerateSqlNode(aiModelService: AiModelService) {
           `You write a single PostgreSQL SELECT (or WITH) query.
 Return ONLY the SQL query with no explanation or markdown unless wrapped in a single \`\`\`sql block.
 Rules: read-only, no semicolons, no comments, one statement only.
+${POSTGRES_IDENTIFIER_RULES}
 ${businessRule}
 Relevant tables: ${tables}`,
         ),
@@ -33,7 +38,10 @@ Relevant tables: ${tables}`,
         ),
       ]);
 
-      const generatedSql = extractSql(response.content);
+      const generatedSql = quoteSchemaIdentifiers(
+        extractSql(response.content),
+        filteredSchema,
+      );
       return {
         generatedSql,
         sqlValidationError: null,

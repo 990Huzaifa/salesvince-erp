@@ -5,6 +5,10 @@ import {
   getErrorMessage,
 } from '../../utils/format-failure';
 import { extractSql } from '../../utils/extract-sql';
+import {
+  POSTGRES_IDENTIFIER_RULES,
+  quoteSchemaIdentifiers,
+} from '../../utils/quote-schema-identifiers';
 import { SqlAgentState, SqlAgentStateUpdate } from '../sql-agent.state';
 
 export function createRepairSqlNode(aiModelService: AiModelService) {
@@ -17,7 +21,8 @@ export function createRepairSqlNode(aiModelService: AiModelService) {
       const response = await model.invoke([
         new SystemMessage(
           `Fix the PostgreSQL query. Return ONLY the corrected SQL, no explanation.
-Rules: single SELECT/WITH, no semicolons, no comments, read-only.`,
+Rules: single SELECT/WITH, no semicolons, no comments, read-only.
+${POSTGRES_IDENTIFIER_RULES}`,
         ),
         new HumanMessage(
           `Question: ${state.question}
@@ -29,7 +34,10 @@ ${state.schemaText ?? ''}`,
       ]);
 
       return {
-        generatedSql: extractSql(response.content),
+        generatedSql: quoteSchemaIdentifiers(
+          extractSql(response.content),
+          state.schemaText,
+        ),
         validatedSql: null,
         sqlValidationError: null,
         executionError: null,
