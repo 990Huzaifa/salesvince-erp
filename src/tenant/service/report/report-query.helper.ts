@@ -41,11 +41,28 @@ export function parseDateRange(
 
 export function resolvePagination(page?: number, limit?: number) {
   const resolvedPage = Math.max(1, Number(page ?? 1));
-  const resolvedLimit = Math.min(100, Math.max(1, Number(limit ?? 25)));
+  const resolvedLimit = Math.min(100, Math.max(1, Number(limit ?? 20)));
   return {
     page: resolvedPage,
     limit: resolvedLimit,
     skip: (resolvedPage - 1) * resolvedLimit,
+  };
+}
+
+export function paginateItems<T>(
+  items: T[],
+  page?: number,
+  limit?: number,
+): { items: T[]; meta: { total: number; page: number; limit: number } } {
+  const { page: resolvedPage, limit: resolvedLimit, skip } =
+    resolvePagination(page, limit);
+  return {
+    items: items.slice(skip, skip + resolvedLimit),
+    meta: {
+      total: items.length,
+      page: resolvedPage,
+      limit: resolvedLimit,
+    },
   };
 }
 

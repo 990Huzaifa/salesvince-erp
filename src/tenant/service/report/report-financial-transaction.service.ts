@@ -9,6 +9,7 @@ import { ActivityLogService } from '../activity-log.service';
 import {
   assertBusinessId,
   endOfDay,
+  paginateItems,
   parseDateRange,
   roundAmount,
   startOfDay,
@@ -34,6 +35,12 @@ type FinancialTransactionRow = {
 type FinancialSection = {
   data: FinancialTransactionRow[];
   total: number;
+  meta: { total: number; page: number; limit: number };
+};
+
+type FinancialSectionDraft = {
+  data: FinancialTransactionRow[];
+  total: number;
 };
 
 const TRANSACTION_TYPE_BY_CATEGORY: Record<FinancialCategory, string> = {
@@ -50,7 +57,7 @@ export class ReportFinancialTransactionService {
   async getFinancialReport(
     tenantDb: DataSource,
     businessId: string | undefined,
-    options: { startDate?: string; endDate?: string },
+    options: { startDate?: string; endDate?: string; page?: number; limit?: number },
     actorUserId: string,
   ) {
     const scopedBusinessId = assertBusinessId(businessId);
@@ -68,6 +75,8 @@ export class ReportFinancialTransactionService {
       scopedBusinessId,
       startDate,
       endDate,
+      options.page,
+      options.limit,
     );
 
     await this.activityLogService.recordActivityLog(tenantDb, {
@@ -94,6 +103,8 @@ export class ReportFinancialTransactionService {
     businessId: string,
     startDate: Date,
     endDate: Date,
+    page?: number,
+    limit?: number,
   ) {
     const rows = await tenantDb
       .getRepository(Transaction)
@@ -126,7 +137,7 @@ export class ReportFinancialTransactionService {
       .addOrderBy('tx.id', 'DESC')
       .getMany();
 
-    const sections: Record<FinancialCategory, FinancialSection> = {
+    const sections: Record<FinancialCategory, FinancialSectionDraft> = {
       purchases: { data: [], total: 0 },
       sales: { data: [], total: 0 },
       expenses: { data: [], total: 0 },
@@ -174,11 +185,22 @@ export class ReportFinancialTransactionService {
         sections.income.total,
     );
 
+    const paginateSection = (
+      section: FinancialSectionDraft,
+    ): FinancialSection => {
+      const { items, meta } = paginateItems(section.data, page, limit);
+      return {
+        data: items,
+        total: section.total,
+        meta,
+      };
+    };
+
     return {
-      purchases: sections.purchases,
-      sales: sections.sales,
-      expenses: sections.expenses,
-      income: sections.income,
+      purchases: paginateSection(sections.purchases),
+      sales: paginateSection(sections.sales),
+      expenses: paginateSection(sections.expenses),
+      income: paginateSection(sections.income),
       netProfit,
     };
   }

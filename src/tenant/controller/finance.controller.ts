@@ -10,6 +10,10 @@ import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator'
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { FinanceService } from '../service/finance.service';
+import {
+  FinanceAdvanceLedgerQueryDto,
+  FinanceLedgerQueryDto,
+} from '../dto/finance/finance-ledger.query.dto';
 
 @Controller('tenant/finance')
 @UseGuards(
@@ -27,15 +31,19 @@ export class FinanceController {
   getLedger(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
-    @Query('chartOfAccountId') chartOfAccountId: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
+    @Query() query: FinanceLedgerQueryDto,
   ) {
     const user = req.user as TenantRequestUser;
     return this.financeService.getLedger(
       tenantDb,
       user.businessId,
-      { chartOfAccountId, startDate, endDate },
+      {
+        chartOfAccountId: query.chartOfAccountId,
+        startDate: query.startDate,
+        endDate: query.endDate,
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
+      },
       user.userId,
     );
   }
@@ -45,16 +53,20 @@ export class FinanceController {
   getAdvanceLedger(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
-    @Query('chartOfAccountId') chartOfAccountId: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Query('sortOrder') sortOrder?: 'credit_first' | 'debit_first',
+    @Query() query: FinanceAdvanceLedgerQueryDto,
   ) {
     const user = req.user as TenantRequestUser;
     return this.financeService.getAdvanceLedger(
       tenantDb,
       user.businessId,
-      { chartOfAccountId, startDate, endDate, sortOrder },
+      {
+        chartOfAccountId: query.chartOfAccountId,
+        startDate: query.startDate,
+        endDate: query.endDate,
+        sortOrder: query.sortOrder,
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
+      },
       user.userId,
     );
   }

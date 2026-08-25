@@ -11,11 +11,14 @@ import {
 import { Party } from 'src/tenant-db/entities/party.entity';
 import { Transaction } from 'src/tenant-db/entities/transaction.entity';
 import { ActivityLogService } from './activity-log.service';
+import { paginateItems } from './report/report-query.helper';
 
 export type LedgerQueryOptions = {
   chartOfAccountId: string;
   startDate?: string;
   endDate?: string;
+  page?: number;
+  limit?: number;
 };
 
 export type AdvanceLedgerSortOrder = 'credit_first' | 'debit_first';
@@ -25,6 +28,8 @@ export type AdvanceLedgerQueryOptions = {
   startDate?: string;
   endDate?: string;
   sortOrder?: AdvanceLedgerSortOrder;
+  page?: number;
+  limit?: number;
 };
 
 export type AdvanceLedgerMode = 'CUSTOMER' | 'VENDOR';
@@ -346,6 +351,12 @@ export class FinanceService {
       ? this.roundAmount(Number(entries[entries.length - 1].currentBalance))
       : openingBalance;
 
+    const { items: pagedEntries, meta } = paginateItems(
+      entries,
+      options.page,
+      options.limit,
+    );
+
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
       businessId: scopedBusinessId,
@@ -355,7 +366,7 @@ export class FinanceService {
         chartOfAccountId,
         startDate: options.startDate ?? null,
         endDate: options.endDate ?? null,
-        entryCount: entries.length,
+        entryCount: meta.total,
       },
     });
 
@@ -372,8 +383,8 @@ export class FinanceService {
       },
       openingBalance,
       closingBalance,
-      entries,
-      meta: { total: entries.length },
+      entries: pagedEntries,
+      meta,
     };
   }
 
@@ -425,6 +436,12 @@ export class FinanceService {
 
     const entries = this.applySortOrder(progressEntries, options.sortOrder);
 
+    const { items: pagedEntries, meta } = paginateItems(
+      entries,
+      options.page,
+      options.limit,
+    );
+
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
       businessId: scopedBusinessId,
@@ -435,7 +452,7 @@ export class FinanceService {
         ledgerMode,
         startDate: options.startDate ?? null,
         endDate: options.endDate ?? null,
-        entryCount: entries.length,
+        entryCount: meta.total,
       },
     });
 
@@ -458,8 +475,8 @@ export class FinanceService {
         endDate: options.endDate ?? null,
       },
       poolTotal,
-      entries,
-      meta: { total: entries.length },
+      entries: pagedEntries,
+      meta,
     };
   }
 }

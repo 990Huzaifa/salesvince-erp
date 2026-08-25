@@ -19,6 +19,7 @@ import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
 import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity';
 import { ActivityLogService } from './activity-log.service';
 import { MasterGeoHelperService } from './master-geo-helper.service';
+import { paginateItems } from './report/report-query.helper';
 
 type BalanceRow = {
   chartOfAccountId: string;
@@ -29,17 +30,22 @@ type ReportAccountType = 'CASH' | 'BANK';
 
 type PartyBalanceMode = 'CUSTOMER' | 'VENDOR';
 
+type PaginationOptions = {
+  page?: number;
+  limit?: number;
+};
+
 type ProfitReportOptions = {
   startDate?: string;
   endDate?: string;
-};
+} & PaginationOptions;
 
 type InvoiceSummaryReportOptions = {
   startDate?: string;
   endDate?: string;
   partyId?: string;
   cityId?: string;
-};
+} & PaginationOptions;
 
 type InvoiceSummaryTotals = {
   invoiceCount: number;
@@ -465,7 +471,7 @@ export class ReportService {
       ...cityRows.map((row) => row.cityId),
     ]);
 
-    const partyWise = partyRows.map((row) => ({
+    const partyWiseAll = partyRows.map((row) => ({
       partyId: row.partyId,
       partyCode: row.partyCode,
       partyName: row.partyName,
@@ -474,13 +480,16 @@ export class ReportService {
       ...this.mapAggregateTotals(row),
     }));
 
-    const cityWise = cityRows.map((row) => ({
+    const cityWiseAll = cityRows.map((row) => ({
       cityId: row.cityId,
       cityName: this.cityDisplayName(row.cityId, cityNames),
       ...this.mapAggregateTotals(row),
     }));
 
     const totals = this.mapAggregateTotals(totalsRow);
+
+    const partyPage = this.applyListPagination(partyWiseAll, options);
+    const cityPage = this.applyListPagination(cityWiseAll, options);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
@@ -507,11 +516,13 @@ export class ReportService {
         cityId: cityId ?? null,
         scope: partyId ? 'PARTY' : cityId ? 'CITY' : 'ALL',
       },
-      partyWise,
-      cityWise,
+      partyWise: partyPage.items,
+      cityWise: cityPage.items,
       meta: {
-        partyCount: partyWise.length,
-        cityCount: cityWise.length,
+        partyCount: partyPage.meta.total,
+        cityCount: cityPage.meta.total,
+        page: partyPage.meta.page,
+        limit: partyPage.meta.limit,
       },
     };
   }
@@ -555,10 +566,22 @@ export class ReportService {
     return snapshots;
   }
 
+  private applyListPagination<T>(
+    items: T[],
+    options?: PaginationOptions,
+  ): { items: T[]; meta: { total: number; page?: number; limit?: number } } {
+    if (options?.page == null && options?.limit == null) {
+      return { items, meta: { total: items.length } };
+    }
+    const paginated = paginateItems(items, options.page, options.limit);
+    return { items: paginated.items, meta: paginated.meta };
+  }
+
   async getCashAndBankBalances(
     tenantDb: DataSource,
     businessId: string | undefined,
     actorUserId: string,
+    options?: PaginationOptions,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const accounts = await tenantDb.getRepository(ChartOfAccount).find({
@@ -578,7 +601,7 @@ export class ReportService {
       this.getOpeningBalanceMap(tenantDb, scopedBusinessId, accounts),
     ]);
 
-    const data = accounts.map((account) => ({
+    const allData = accounts.map((account) => ({
       accId: account.id,
       accountName: account.name,
       accountCode: account.code,
@@ -587,7 +610,7 @@ export class ReportService {
       currentBalance: latestBalances.get(account.id) ?? 0,
     }));
 
-    const totals = data.reduce(
+    const totals = allData.reduce(
       (sum, account) => {
         if (account.accountType === 'CASH') {
           sum.cash = this.roundAmount(sum.cash + account.currentBalance);
@@ -599,18 +622,20 @@ export class ReportService {
       { cash: 0, bank: 0 },
     );
 
+    const { items: data, meta } = this.applyListPagination(allData, options);
+
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
       businessId: scopedBusinessId,
       action: 'CASH_BANK_BALANCE_REPORT_VIEWED',
       description: 'Cash and bank balance report viewed',
-      metadata: { count: data.length, totals },
+      metadata: { count: meta.total, totals },
     });
 
     return {
       data,
       totals,
-      meta: { total: data.length },
+      meta,
     };
   }
 
@@ -618,6 +643,7 @@ export class ReportService {
     tenantDb: DataSource,
     businessId: string | undefined,
     actorUserId: string,
+    options?: PaginationOptions,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const parties = await tenantDb.getRepository(Party).find({
@@ -640,7 +666,7 @@ export class ReportService {
       accountIds,
     );
 
-    const data = parties.map((party) =>
+    const allData = parties.map((party) =>
       this.mapPartyBalance(
         party,
         party.receivableAccount,
@@ -652,22 +678,26 @@ export class ReportService {
       ),
     );
 
+    const totals = {
+      currentBalance: this.roundAmount(
+        allData.reduce((sum, party) => sum + party.currentBalance, 0),
+      ),
+    };
+
+    const { items: data, meta } = this.applyListPagination(allData, options);
+
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
       businessId: scopedBusinessId,
       action: 'CUSTOMER_BALANCE_REPORT_VIEWED',
       description: 'Customer balance report viewed',
-      metadata: { count: data.length },
+      metadata: { count: meta.total },
     });
 
     return {
       data,
-      totals: {
-        currentBalance: this.roundAmount(
-          data.reduce((sum, party) => sum + party.currentBalance, 0),
-        ),
-      },
-      meta: { total: data.length },
+      totals,
+      meta,
     };
   }
 
@@ -675,6 +705,7 @@ export class ReportService {
     tenantDb: DataSource,
     businessId: string | undefined,
     actorUserId: string,
+    options?: PaginationOptions,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const employees = await tenantDb.getRepository(Employee).find({
@@ -699,7 +730,7 @@ export class ReportService {
       this.getOpeningBalanceMap(tenantDb, scopedBusinessId, accounts),
     ]);
 
-    const data = employees.map((employee) =>
+    const allData = employees.map((employee) =>
       this.mapEmployeeBalance(
         employee,
         employee.salaryAccount,
@@ -712,22 +743,26 @@ export class ReportService {
       ),
     );
 
+    const totals = {
+      currentBalance: this.roundAmount(
+        allData.reduce((sum, employee) => sum + employee.currentBalance, 0),
+      ),
+    };
+
+    const { items: data, meta } = this.applyListPagination(allData, options);
+
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
       businessId: scopedBusinessId,
       action: 'EMPLOYEE_BALANCE_REPORT_VIEWED',
       description: 'Employee balance report viewed',
-      metadata: { count: data.length },
+      metadata: { count: meta.total },
     });
 
     return {
       data,
-      totals: {
-        currentBalance: this.roundAmount(
-          data.reduce((sum, employee) => sum + employee.currentBalance, 0),
-        ),
-      },
-      meta: { total: data.length },
+      totals,
+      meta,
     };
   }
 
@@ -735,6 +770,7 @@ export class ReportService {
     tenantDb: DataSource,
     businessId: string | undefined,
     actorUserId: string,
+    options?: PaginationOptions,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const parties = await tenantDb.getRepository(Party).find({
@@ -757,7 +793,7 @@ export class ReportService {
       accountIds,
     );
 
-    const data = parties.map((party) =>
+    const allData = parties.map((party) =>
       this.mapPartyBalance(
         party,
         party.payableAccount,
@@ -767,22 +803,26 @@ export class ReportService {
       ),
     );
 
+    const totals = {
+      currentBalance: this.roundAmount(
+        allData.reduce((sum, party) => sum + party.currentBalance, 0),
+      ),
+    };
+
+    const { items: data, meta } = this.applyListPagination(allData, options);
+
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
       businessId: scopedBusinessId,
       action: 'VENDOR_BALANCE_REPORT_VIEWED',
       description: 'Vendor balance report viewed',
-      metadata: { count: data.length },
+      metadata: { count: meta.total },
     });
 
     return {
       data,
-      totals: {
-        currentBalance: this.roundAmount(
-          data.reduce((sum, party) => sum + party.currentBalance, 0),
-        ),
-      },
-      meta: { total: data.length },
+      totals,
+      meta,
     };
   }
 
@@ -883,7 +923,7 @@ export class ReportService {
       }
     }
 
-    const data = [...reportRows.values()]
+    const allData = [...reportRows.values()]
       .map((row) => ({
         ...row,
         profitPercentage:
@@ -893,7 +933,7 @@ export class ReportService {
       }))
       .sort((left, right) => right.profit - left.profit);
 
-    const totals = data.reduce(
+    const totals = allData.reduce(
       (sum, row) => {
         sum.totalSale = this.roundAmount(sum.totalSale + row.totalSale);
         sum.totalCost = this.roundAmount(sum.totalCost + row.totalCost);
@@ -903,6 +943,8 @@ export class ReportService {
       { totalSale: 0, totalCost: 0, profit: 0 },
     );
 
+    const { items: data, meta } = this.applyListPagination(allData, options);
+
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
       businessId: scopedBusinessId,
@@ -911,7 +953,7 @@ export class ReportService {
       metadata: {
         startDate: options.startDate ?? null,
         endDate: options.endDate ?? null,
-        count: data.length,
+        count: meta.total,
         totals,
       },
     });
@@ -923,7 +965,7 @@ export class ReportService {
         endDate: options.endDate ?? null,
       },
       data,
-      meta: { total: data.length },
+      meta,
     };
   }
 

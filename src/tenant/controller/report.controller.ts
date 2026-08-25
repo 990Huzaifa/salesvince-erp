@@ -48,6 +48,9 @@ import {
 import { ReportSaleChartQueryDto } from '../dto/report/report-sale-chart.query.dto';
 import { ReportSaleOverviewQueryDto } from '../dto/report/report-sale-overview.query.dto';
 import { ReportCustomerLowPaymentQueryDto } from '../dto/report/report-customer-low-payment.query.dto';
+import { ReportPaginationQueryDto } from '../dto/report/report-pagination.query.dto';
+import { ReportDateRangeQueryDto } from '../dto/report/report-date-range.query.dto';
+import { ReportInvoiceSummaryQueryDto } from '../dto/report/report-invoice-summary.query.dto';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
 
 @Controller('tenant/reports')
@@ -78,12 +81,14 @@ export class ReportController {
   getCashAndBankBalances(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
+    @Query() query: ReportPaginationQueryDto,
   ) {
     const user = req.user as TenantRequestUser;
     return this.reportService.getCashAndBankBalances(
       tenantDb,
       user.businessId,
       user.userId,
+      { page: query.page ?? 1, limit: query.limit ?? 20 },
     );
   }
 
@@ -92,12 +97,14 @@ export class ReportController {
   getCustomerBalances(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
+    @Query() query: ReportPaginationQueryDto,
   ) {
     const user = req.user as TenantRequestUser;
     return this.reportService.getCustomerBalances(
       tenantDb,
       user.businessId,
       user.userId,
+      { page: query.page ?? 1, limit: query.limit ?? 20 },
     );
   }
 
@@ -120,7 +127,8 @@ export class ReportController {
         maxBalance: query.maxBalance,
         minLastPaymentDays: query.minLastPaymentDays,
         maxLastPaymentDays: query.maxLastPaymentDays,
-        limit: query.limit,
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
       },
     );
   }
@@ -130,12 +138,14 @@ export class ReportController {
   getVendorBalances(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
+    @Query() query: ReportPaginationQueryDto,
   ) {
     const user = req.user as TenantRequestUser;
     return this.reportService.getVendorBalances(
       tenantDb,
       user.businessId,
       user.userId,
+      { page: query.page ?? 1, limit: query.limit ?? 20 },
     );
   }
 
@@ -144,12 +154,14 @@ export class ReportController {
   getEmployeeBalances(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
+    @Query() query: ReportPaginationQueryDto,
   ) {
     const user = req.user as TenantRequestUser;
     return this.reportService.getEmployeeBalances(
       tenantDb,
       user.businessId,
       user.userId,
+      { page: query.page ?? 1, limit: query.limit ?? 20 },
     );
   }
 
@@ -158,14 +170,18 @@ export class ReportController {
   getProfitReport(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
+    @Query() query: ReportDateRangeQueryDto,
   ) {
     const user = req.user as TenantRequestUser;
     return this.reportService.getProfitReport(
       tenantDb,
       user.businessId,
-      { startDate, endDate },
+      {
+        startDate: query.startDate,
+        endDate: query.endDate,
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
+      },
       user.userId,
     );
   }
@@ -217,16 +233,20 @@ export class ReportController {
   getSalesSummaryReport(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Query('partyId') partyId?: string,
-    @Query('cityId') cityId?: string,
+    @Query() query: ReportInvoiceSummaryQueryDto,
   ) {
     const user = req.user as TenantRequestUser;
     return this.reportService.getSalesSummaryReport(
       tenantDb,
       user.businessId,
-      { startDate, endDate, partyId, cityId },
+      {
+        startDate: query.startDate,
+        endDate: query.endDate,
+        partyId: query.partyId,
+        cityId: query.cityId,
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
+      },
       user.userId,
     );
   }
@@ -236,16 +256,20 @@ export class ReportController {
   getPurchaseSummaryReport(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Query('partyId') partyId?: string,
-    @Query('cityId') cityId?: string,
+    @Query() query: ReportInvoiceSummaryQueryDto,
   ) {
     const user = req.user as TenantRequestUser;
     return this.reportService.getPurchaseSummaryReport(
       tenantDb,
       user.businessId,
-      { startDate, endDate, partyId, cityId },
+      {
+        startDate: query.startDate,
+        endDate: query.endDate,
+        partyId: query.partyId,
+        cityId: query.cityId,
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
+      },
       user.userId,
     );
   }
@@ -265,6 +289,8 @@ export class ReportController {
         chartOfAccountId: query.chartOfAccountId,
         startDate: query.startDate,
         endDate: query.endDate,
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
       },
       user.userId,
     );
@@ -285,6 +311,8 @@ export class ReportController {
         startDate: query.startDate,
         endDate: query.endDate,
         asOfDate: query.asOfDate,
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
       },
       user.userId,
     );
@@ -444,7 +472,12 @@ export class ReportController {
     return this.reportFinancialTransactionService.getFinancialReport(
       tenantDb,
       user.businessId,
-      { startDate: query.startDate, endDate: query.endDate },
+      {
+        startDate: query.startDate,
+        endDate: query.endDate,
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
+      },
       user.userId,
     );
   }

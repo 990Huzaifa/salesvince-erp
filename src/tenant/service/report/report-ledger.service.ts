@@ -13,6 +13,7 @@ import { ActivityLogService } from '../activity-log.service';
 import {
   assertBusinessId,
   endOfDay,
+  paginateItems,
   parseDateRange,
   roundAmount,
   startOfDay,
@@ -40,6 +41,8 @@ export class ReportLedgerService {
       chartOfAccountId: string;
       startDate?: string;
       endDate?: string;
+      page?: number;
+      limit?: number;
     },
     actorUserId: string,
   ) {
@@ -122,6 +125,12 @@ export class ReportLedgerService {
       lines.reduce((sum, line) => sum + (line.creditAmount ?? 0), 0),
     );
 
+    const { items: pagedEntries, meta } = paginateItems(
+      lines,
+      options.page,
+      options.limit,
+    );
+
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
       businessId: scopedBusinessId,
@@ -130,7 +139,7 @@ export class ReportLedgerService {
       metadata: {
         chartOfAccountId: account.id,
         accountCode: account.code,
-        entryCount: lines.length,
+        entryCount: meta.total,
       },
     });
 
@@ -149,15 +158,21 @@ export class ReportLedgerService {
       openingBalance,
       closingBalance: runningBalance,
       totals: { periodDebit, periodCredit },
-      entries: lines,
-      meta: { total: lines.length },
+      entries: pagedEntries,
+      meta,
     };
   }
 
   async getTrialBalance(
     tenantDb: DataSource,
     businessId: string | undefined,
-    options: { startDate?: string; endDate?: string; asOfDate?: string },
+    options: {
+      startDate?: string;
+      endDate?: string;
+      asOfDate?: string;
+      page?: number;
+      limit?: number;
+    },
     actorUserId: string,
   ) {
     const scopedBusinessId = assertBusinessId(businessId);
@@ -188,6 +203,7 @@ export class ReportLedgerService {
     });
 
     if (accounts.length === 0) {
+      const emptyMeta = paginateItems([], options.page, options.limit).meta;
       return {
         period: {
           startDate: options.startDate ?? null,
@@ -202,7 +218,7 @@ export class ReportLedgerService {
           closingDebit: 0,
           closingCredit: 0,
         },
-        meta: { total: 0 },
+        meta: emptyMeta,
       };
     }
 
@@ -314,14 +330,20 @@ export class ReportLedgerService {
       metadata: { rowCount: rows.length, ...totals },
     });
 
+    const { items: pagedRows, meta } = paginateItems(
+      rows,
+      options.page,
+      options.limit,
+    );
+
     return {
       period: {
         startDate: options.startDate ?? null,
         endDate: options.endDate ?? options.asOfDate ?? null,
       },
-      rows,
+      rows: pagedRows,
       totals,
-      meta: { total: rows.length },
+      meta,
     };
   }
 

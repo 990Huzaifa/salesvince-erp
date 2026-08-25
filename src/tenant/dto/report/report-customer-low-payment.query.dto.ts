@@ -1,15 +1,14 @@
-import { Type } from 'class-transformer';
 import {
   IsInt,
   IsNumber,
   IsOptional,
   IsString,
-  IsUUID,
-  Max,
   Min,
 } from 'class-validator';
+import { Type } from 'class-transformer';
+import { ReportPaginationQueryDto } from './report-pagination.query.dto';
 
-export class ReportCustomerLowPaymentQueryDto {
+export class ReportCustomerLowPaymentQueryDto extends ReportPaginationQueryDto {
   @IsOptional()
   @IsString()
   search?: string;
@@ -41,11 +40,4 @@ export class ReportCustomerLowPaymentQueryDto {
   @IsInt()
   @Min(0)
   maxLastPaymentDays?: number;
-
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number;
 }
