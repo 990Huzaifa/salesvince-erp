@@ -1,9 +1,11 @@
+import { normalizeModelContent } from './model-content';
+
 /**
  * Extracts a single PostgreSQL read query from model output.
  * Handles ```sql fences, plain text, and prose before/after the query.
  */
-export function extractSql(text: string): string {
-  const raw = String(text ?? '').trim();
+export function extractSql(content: unknown): string {
+  const raw = normalizeModelContent(content);
   if (!raw) {
     return '';
   }
@@ -44,18 +46,12 @@ function findReadQueryStatement(text: string): string | null {
     return null;
   }
 
-  // Drop trailing explanation paragraphs after the SQL block.
   return candidate.split(/\n\s*\n/)[0]?.trim() ?? null;
 }
 
 function normalizeExtractedSql(sql: string): string {
   let cleaned = sql.trim();
-
-  // Drop trailing prose after the query ends.
   cleaned = cleaned.replace(/\s+```[\s\S]*$/i, '').trim();
-
-  // Remove a single trailing semicolon (multi-statement still blocked in validator).
   cleaned = cleaned.replace(/;\s*$/, '').trim();
-
   return cleaned;
 }

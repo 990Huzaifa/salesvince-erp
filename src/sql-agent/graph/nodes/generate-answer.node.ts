@@ -4,6 +4,7 @@ import {
   formatSqlAgentFailure,
   getErrorMessage,
 } from '../../utils/format-failure';
+import { normalizeModelContent } from '../../utils/model-content';
 import { SqlAgentState, SqlAgentStateUpdate } from '../sql-agent.state';
 
 export function createGenerateAnswerNode(aiModelService: AiModelService) {
@@ -23,7 +24,7 @@ If there is no data, say so. Do not invent numbers not present in the rows.`,
       ]);
 
       return {
-        answer: String(response.content ?? '').trim(),
+        answer: normalizeModelContent(response.content),
         status: 'success',
       };
     } catch (error) {

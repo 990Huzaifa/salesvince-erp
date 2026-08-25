@@ -1,10 +1,12 @@
+import { stringifySqlForDisplay } from './model-content';
+
 /**
  * Builds a clear, debug-friendly failure message for SQL agent clients.
  */
 export function formatSqlAgentFailure(
   reason: string,
   stage?: string,
-  sql?: string | null,
+  sql?: unknown,
 ): string {
   const cleaned = reason?.trim() || 'Unknown error';
   const stageLabel = stage?.trim() ? ` [${stage.trim()}]` : '';
@@ -14,7 +16,7 @@ export function formatSqlAgentFailure(
     `Reason: ${cleaned}`,
   ];
 
-  const sqlText = sql?.trim();
+  const sqlText = stringifySqlForDisplay(sql);
   if (sqlText) {
     parts.push('', 'SQL:', sqlText);
   } else {
@@ -26,7 +28,7 @@ export function formatSqlAgentFailure(
 
 export function appendSqlToFailureMessage(
   answer: string,
-  sql?: string | null,
+  sql?: unknown,
 ): string {
   if (!answer?.trim()) {
     return formatSqlAgentFailure('Unknown failure', undefined, sql);
@@ -36,7 +38,7 @@ export function appendSqlToFailureMessage(
     return answer;
   }
 
-  const sqlText = sql?.trim();
+  const sqlText = stringifySqlForDisplay(sql);
   if (sqlText) {
     return `${answer.trim()}\n\nSQL:\n${sqlText}`;
   }

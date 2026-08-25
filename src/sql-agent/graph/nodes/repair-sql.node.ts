@@ -29,7 +29,7 @@ ${state.schemaText ?? ''}`,
       ]);
 
       return {
-        generatedSql: extractSql(String(response.content ?? '')),
+        generatedSql: extractSql(response.content),
         validatedSql: null,
         sqlValidationError: null,
         executionError: null,

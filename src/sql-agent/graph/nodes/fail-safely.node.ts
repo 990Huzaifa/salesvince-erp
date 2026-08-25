@@ -1,8 +1,9 @@
-import { SqlAgentState, SqlAgentStateUpdate } from '../sql-agent.state';
 import {
   appendSqlToFailureMessage,
   formatSqlAgentFailure,
 } from '../../utils/format-failure';
+import { stringifySqlForDisplay } from '../../utils/model-content';
+import { SqlAgentState, SqlAgentStateUpdate } from '../sql-agent.state';
 
 export function createFailSafelyNode() {
   return async (state: SqlAgentState): Promise<SqlAgentStateUpdate> => {
@@ -11,7 +12,7 @@ export function createFailSafelyNode() {
       state.executionError ??
       'Unable to complete the database query';
 
-    const sql = state.validatedSql ?? state.generatedSql;
+    const sql = stringifySqlForDisplay(state.validatedSql ?? state.generatedSql);
 
     // Keep stage-specific answers already produced by earlier nodes,
     // but always attach the SQL for debugging.

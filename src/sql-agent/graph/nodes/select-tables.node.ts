@@ -4,6 +4,7 @@ import {
   formatSqlAgentFailure,
   getErrorMessage,
 } from '../../utils/format-failure';
+import { normalizeModelContent } from '../../utils/model-content';
 import { SqlAgentState, SqlAgentStateUpdate } from '../sql-agent.state';
 
 export function createSelectTablesNode(aiModelService: AiModelService) {
@@ -36,7 +37,7 @@ Use only tables from the schema. ${businessHint}`,
         ),
       ]);
 
-      const content = String(response.content ?? '').trim();
+      const content = normalizeModelContent(response.content);
       let selectedTables: string[] = [];
 
       try {

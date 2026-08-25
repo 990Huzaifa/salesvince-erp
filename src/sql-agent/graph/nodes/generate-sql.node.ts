@@ -33,7 +33,7 @@ Relevant tables: ${tables}`,
         ),
       ]);
 
-      const generatedSql = extractSql(String(response.content ?? ''));
+      const generatedSql = extractSql(response.content);
       return {
         generatedSql,
         sqlValidationError: null,

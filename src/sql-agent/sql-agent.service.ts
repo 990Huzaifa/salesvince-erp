@@ -15,6 +15,7 @@ import {
   formatSqlAgentFailure,
   getErrorMessage,
 } from './utils/format-failure';
+import { stringifySqlForDisplay } from './utils/model-content';
 
 export type SqlAgentChatInput = {
   tenantId: string;
@@ -117,7 +118,7 @@ export class SqlAgentService {
     const status = state.status === 'success' ? 'success' : 'failed';
     const reason =
       state.sqlValidationError ?? state.executionError ?? null;
-    const sql = state.validatedSql ?? state.generatedSql;
+    const sql = stringifySqlForDisplay(state.validatedSql ?? state.generatedSql);
     const stage = this.inferStateStage(state);
 
     const answer =
