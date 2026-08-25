@@ -11,6 +11,7 @@ import { SchemaReaderService } from './services/schema-reader.service';
 import { SqlValidatorService } from './services/sql-validator.service';
 import { TenantDbConnectionConfig } from './types/db-connection.types';
 import {
+  appendSqlToFailureMessage,
   formatSqlAgentFailure,
   getErrorMessage,
 } from './utils/format-failure';
@@ -116,27 +117,30 @@ export class SqlAgentService {
     const status = state.status === 'success' ? 'success' : 'failed';
     const reason =
       state.sqlValidationError ?? state.executionError ?? null;
+    const sql = state.validatedSql ?? state.generatedSql;
+    const stage = this.inferStateStage(state);
 
     const answer =
       status === 'success'
         ? state.answer ?? 'No answer generated.'
-        : state.answer ??
-          formatSqlAgentFailure(
-            reason ?? 'Unknown failure',
-            this.inferStateStage(state),
+        : appendSqlToFailureMessage(
+            state.answer ??
+              formatSqlAgentFailure(reason ?? 'Unknown failure', stage, sql),
+            sql,
           );
 
     const base: SqlAgentChatResult = {
       status,
       answer,
       error: reason,
-      failedStage: status === 'failed' ? this.inferStateStage(state) : null,
+      failedStage: status === 'failed' ? stage : null,
+      sql: status === 'failed' ? sql : undefined,
     };
 
     if (status === 'failed' || debug) {
       return {
         ...base,
-        sql: state.validatedSql ?? state.generatedSql,
+        sql,
         rows: debug ? state.rows : undefined,
         selectedTables: state.selectedTables,
         debug: debug
@@ -154,6 +158,8 @@ export class SqlAgentService {
               tableCount: state.allTables.length,
             }
           : {
+              generatedSql: state.generatedSql,
+              validatedSql: state.validatedSql,
               retryCount: state.retryCount,
               maxRetries: state.maxRetries,
               schemaLoaded: Boolean(state.schemaText),
