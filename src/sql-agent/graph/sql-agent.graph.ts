@@ -30,7 +30,22 @@ function routeAfterSchema(state: SqlAgentState): string {
   return state.status === 'failed' ? 'fail_safely' : 'select_tables';
 }
 
+function routeAfterSelectTables(state: SqlAgentState): string {
+  return state.status === 'failed' ? 'fail_safely' : 'generate_sql';
+}
+
+function routeAfterGenerateSql(state: SqlAgentState): string {
+  return state.status === 'failed' ? 'fail_safely' : 'validate_sql';
+}
+
+function routeAfterRepair(state: SqlAgentState): string {
+  return state.status === 'failed' ? 'fail_safely' : 'validate_sql';
+}
+
 function routeAfterValidate(state: SqlAgentState): string {
+  if (state.status === 'failed') {
+    return 'fail_safely';
+  }
   if (state.validatedSql) {
     return 'execute_sql';
   }
@@ -41,6 +56,9 @@ function routeAfterValidate(state: SqlAgentState): string {
 }
 
 function routeAfterExecute(state: SqlAgentState): string {
+  if (state.status === 'failed') {
+    return 'fail_safely';
+  }
   if (!state.executionError) {
     return 'generate_answer';
   }
@@ -72,8 +90,16 @@ export function buildSqlAgentGraph(deps: SqlAgentGraphDeps) {
       'select_tables',
       'fail_safely',
     ])
-    .addEdge('select_tables', 'generate_sql')
-    .addEdge('generate_sql', 'validate_sql')
+    .addConditionalEdges(
+      'select_tables',
+      routeAfterSelectTables as RouteFn as never,
+      ['generate_sql', 'fail_safely'],
+    )
+    .addConditionalEdges(
+      'generate_sql',
+      routeAfterGenerateSql as RouteFn as never,
+      ['validate_sql', 'fail_safely'],
+    )
     .addConditionalEdges('validate_sql', routeAfterValidate as RouteFn as never, [
       'execute_sql',
       'repair_sql',
@@ -84,7 +110,10 @@ export function buildSqlAgentGraph(deps: SqlAgentGraphDeps) {
       'repair_sql',
       'fail_safely',
     ])
-    .addEdge('repair_sql', 'validate_sql')
+    .addConditionalEdges('repair_sql', routeAfterRepair as RouteFn as never, [
+      'validate_sql',
+      'fail_safely',
+    ])
     .addEdge('generate_answer', END)
     .addEdge('fail_safely', END);
 

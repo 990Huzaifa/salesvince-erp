@@ -10,6 +10,10 @@ import { QueryExecutorService } from './services/query-executor.service';
 import { SchemaReaderService } from './services/schema-reader.service';
 import { SqlValidatorService } from './services/sql-validator.service';
 import { TenantDbConnectionConfig } from './types/db-connection.types';
+import {
+  formatSqlAgentFailure,
+  getErrorMessage,
+} from './utils/format-failure';
 
 export type SqlAgentChatInput = {
   tenantId: string;
@@ -26,6 +30,7 @@ export type SqlAgentChatResult = {
   rows?: Record<string, unknown>[] | null;
   selectedTables?: string[];
   error?: string | null;
+  failedStage?: string | null;
   debug?: Record<string, unknown>;
 };
 
@@ -74,16 +79,34 @@ export class SqlAgentService {
 
       return this.toChatResult(finalState, input.debug ?? false);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'SQL agent failed';
-      this.logger.error(message, error instanceof Error ? error.stack : undefined);
+      const message = getErrorMessage(error, 'SQL agent failed');
+      this.logger.error(
+        message,
+        error instanceof Error ? error.stack : undefined,
+      );
+
+      const stage = this.inferCrashStage(message);
       return {
         status: 'failed',
-        answer:
-          'I could not safely answer this question from the available database schema. Please try again later.',
+        answer: formatSqlAgentFailure(message, stage),
         error: message,
+        failedStage: stage,
       };
     }
+  }
+
+  private inferCrashStage(message: string): string {
+    const lower = message.toLowerCase();
+    if (lower.includes('openai') || lower.includes('api key')) {
+      return 'ai_model';
+    }
+    if (lower.includes('tenant db config')) {
+      return 'tenant_db_config';
+    }
+    if (lower.includes('timeout') || lower.includes('econnrefused')) {
+      return 'connection';
+    }
+    return 'unhandled_exception';
   }
 
   private toChatResult(
@@ -91,31 +114,76 @@ export class SqlAgentService {
     debug: boolean,
   ): SqlAgentChatResult {
     const status = state.status === 'success' ? 'success' : 'failed';
+    const reason =
+      state.sqlValidationError ?? state.executionError ?? null;
+
+    const answer =
+      status === 'success'
+        ? state.answer ?? 'No answer generated.'
+        : state.answer ??
+          formatSqlAgentFailure(
+            reason ?? 'Unknown failure',
+            this.inferStateStage(state),
+          );
+
     const base: SqlAgentChatResult = {
       status,
-      answer:
-        state.answer ??
-        'I could not safely answer this question from the available database schema.',
-      error: state.sqlValidationError ?? state.executionError ?? null,
+      answer,
+      error: reason,
+      failedStage: status === 'failed' ? this.inferStateStage(state) : null,
     };
 
-    if (!debug) {
-      return base;
+    if (status === 'failed' || debug) {
+      return {
+        ...base,
+        sql: state.validatedSql ?? state.generatedSql,
+        rows: debug ? state.rows : undefined,
+        selectedTables: state.selectedTables,
+        debug: debug
+          ? {
+              dbType: state.dbType,
+              selectedTables: state.selectedTables,
+              generatedSql: state.generatedSql,
+              validatedSql: state.validatedSql,
+              sqlValidationError: state.sqlValidationError,
+              executionError: state.executionError,
+              retryCount: state.retryCount,
+              maxRetries: state.maxRetries,
+              rowCount: state.rowCount,
+              schemaLoaded: Boolean(state.schemaText),
+              tableCount: state.allTables.length,
+            }
+          : {
+              retryCount: state.retryCount,
+              maxRetries: state.maxRetries,
+              schemaLoaded: Boolean(state.schemaText),
+              tableCount: state.allTables.length,
+            },
+      };
     }
 
-    return {
-      ...base,
-      sql: state.validatedSql ?? state.generatedSql,
-      rows: state.rows,
-      selectedTables: state.selectedTables,
-      debug: {
-        dbType: state.dbType,
-        selectedTables: state.selectedTables,
-        generatedSql: state.generatedSql,
-        validatedSql: state.validatedSql,
-        retryCount: state.retryCount,
-        rowCount: state.rowCount,
-      },
-    };
+    return base;
+  }
+
+  private inferStateStage(state: SqlAgentState): string {
+    if (!state.dbConfig) {
+      return 'load_connection';
+    }
+    if (!state.schemaText) {
+      return 'load_schema';
+    }
+    if (!state.selectedTables.length && state.status === 'failed') {
+      return 'select_tables';
+    }
+    if (state.sqlValidationError) {
+      return 'validate_sql';
+    }
+    if (state.executionError) {
+      return 'execute_sql';
+    }
+    if (state.generatedSql && !state.answer) {
+      return 'generate_answer';
+    }
+    return 'fail_safely';
   }
 }
