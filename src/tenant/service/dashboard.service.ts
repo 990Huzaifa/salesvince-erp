@@ -648,6 +648,7 @@ export class DashboardService {
       totalPurchasesAll,
       totalPurchasesCurrent,
       totalPurchasesPrevious,
+      amountReceivedTotal,
       amountReceivedCurrent,
       amountReceivedPrevious,
       salesSnapshot,
@@ -688,6 +689,7 @@ export class DashboardService {
         prevStart,
         prevEnd,
       ),
+      this.sumSaleVouchersPaid(tenantDb, scopedBusinessId),
       this.sumSaleVouchersPaid(
         tenantDb,
         scopedBusinessId,
@@ -767,6 +769,7 @@ export class DashboardService {
         trend: purchasesTrend.trend,
       },
       amountReceived: {
+        totalAmount: this.formatAmount(amountReceivedTotal),
         currentMonth: this.formatAmount(amountReceivedCurrent),
         previousMonth: this.formatAmount(amountReceivedPrevious),
         percentageIncrease: receivedTrend.percentageIncrease,
