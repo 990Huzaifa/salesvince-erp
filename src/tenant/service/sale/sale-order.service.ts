@@ -251,18 +251,15 @@ export class SaleOrderService {
           : Number(existing.saleUnitPrice),
       );
       const lineSubtotal = saleUnitPrice * item.quantity;
-      // DTO field is discountPercentage but value is treated as discount amount.
-      // Keep percentage value as received; do not reverse-calc/trim from amount.
+      // Keep incoming % exact — do not round/ceil/trim before converting to amount.
       const discountPercentage =
         item.discountPercentage != null
           ? Number(item.discountPercentage)
           : Number(existing.discountPercentage);
       const discountAmount =
-        item.discountPercentage != null
-          ? this.roundAmount(Number(item.discountPercentage))
-          : item.discountAmount != null
-            ? this.roundAmount(item.discountAmount)
-            : this.roundAmount(discountPercentage);
+        item.discountAmount != null && item.discountPercentage == null
+          ? this.roundAmount(Number(item.discountAmount))
+          : this.roundAmount((lineSubtotal * discountPercentage) / 100);
       const totalAmount = this.roundAmount(lineSubtotal - discountAmount);
 
       await itemRepo.update(existing.id, {
@@ -297,10 +294,12 @@ export class SaleOrderService {
         : this.defaultSaleUnitPriceFromPricing(purchaseUnitPrice, pricing),
     );
 
-    // DTO field is discountPercentage but value is treated as discount amount.
+    // Keep incoming % exact — do not round/ceil/trim before converting to amount.
     const discountPercentage = Number(item.discountPercentage ?? 0);
     const lineSubtotal = saleUnitPrice * item.quantity;
-    const discountAmount = this.roundAmount(discountPercentage);
+    const discountAmount = this.roundAmount(
+      (lineSubtotal * discountPercentage) / 100,
+    );
     const totalAmount = this.roundAmount(lineSubtotal - discountAmount);
 
     return {
@@ -331,12 +330,11 @@ export class SaleOrderService {
       lines.reduce((sum, line) => sum + line.totalAmount, 0),
     );
     const deliveryCost = this.roundAmount(Number(options.deliveryCost ?? 0));
-    // DTO sends discountPercentage; treat the whole value as discount amount.
-    // Keep percentage as received (no reverse-calc / trim from amount).
+    // Keep incoming % exact — do not round/ceil/trim; convert directly to amount.
     const discountPercentage = Number(options.discountPercentage ?? 0);
     const discountAmount =
       options.discountPercentage != null
-        ? this.roundAmount(Number(options.discountPercentage))
+        ? this.roundAmount((orderTotal * Number(options.discountPercentage)) / 100)
         : this.roundAmount(Number(options.discountAmount ?? 0));
     const taxableBase = this.roundAmount(orderTotal - discountAmount);
     const taxPercentage = this.roundAmount(options.taxPercentage ?? 0);
