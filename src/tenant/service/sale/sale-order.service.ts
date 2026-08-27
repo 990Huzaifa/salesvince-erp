@@ -251,26 +251,24 @@ export class SaleOrderService {
           : Number(existing.saleUnitPrice),
       );
       const lineSubtotal = saleUnitPrice * item.quantity;
-      let discountPercentage =
-        item.discountPercentage ?? Number(existing.discountPercentage);
-      let discountAmount: number;
-      if (item.discountAmount != null) {
-        discountAmount = this.roundAmount(item.discountAmount);
-        discountPercentage =
-          lineSubtotal > 0
-            ? this.roundAmount((discountAmount / lineSubtotal) * 100)
-            : 0;
-      } else {
-        discountAmount = this.roundAmount(
-          (lineSubtotal * discountPercentage) / 100,
-        );
-      }
+      // DTO field is discountPercentage but value is treated as discount amount.
+      // Keep percentage value as received; do not reverse-calc/trim from amount.
+      const discountPercentage =
+        item.discountPercentage != null
+          ? Number(item.discountPercentage)
+          : Number(existing.discountPercentage);
+      const discountAmount =
+        item.discountPercentage != null
+          ? this.roundAmount(Number(item.discountPercentage))
+          : item.discountAmount != null
+            ? this.roundAmount(item.discountAmount)
+            : this.roundAmount(discountPercentage);
       const totalAmount = this.roundAmount(lineSubtotal - discountAmount);
 
       await itemRepo.update(existing.id, {
         purchaseUnitPrice,
         saleUnitPrice,
-        discountPercentage: this.roundAmount(discountPercentage),
+        discountPercentage,
         discountAmount,
         totalAmount,
       });
@@ -299,11 +297,10 @@ export class SaleOrderService {
         : this.defaultSaleUnitPriceFromPricing(purchaseUnitPrice, pricing),
     );
 
-    const discountPercentage = item.discountPercentage ?? 0;
+    // DTO field is discountPercentage but value is treated as discount amount.
+    const discountPercentage = Number(item.discountPercentage ?? 0);
     const lineSubtotal = saleUnitPrice * item.quantity;
-    const discountAmount = this.roundAmount(
-      (lineSubtotal * discountPercentage) / 100,
-    );
+    const discountAmount = this.roundAmount(discountPercentage);
     const totalAmount = this.roundAmount(lineSubtotal - discountAmount);
 
     return {
@@ -314,7 +311,7 @@ export class SaleOrderService {
       quantity: item.quantity,
       purchaseUnitPrice: this.roundAmount(purchaseUnitPrice),
       saleUnitPrice,
-      discountPercentage: this.roundAmount(discountPercentage),
+      discountPercentage,
       discountAmount,
       totalAmount,
     };
@@ -334,11 +331,13 @@ export class SaleOrderService {
       lines.reduce((sum, line) => sum + line.totalAmount, 0),
     );
     const deliveryCost = this.roundAmount(Number(options.deliveryCost ?? 0));
-    const discountPercentage = this.roundAmount(options.discountPercentage ?? 0);
+    // DTO sends discountPercentage; treat the whole value as discount amount.
+    // Keep percentage as received (no reverse-calc / trim from amount).
+    const discountPercentage = Number(options.discountPercentage ?? 0);
     const discountAmount =
-      options.discountAmount != null
-        ? this.roundAmount(options.discountAmount)
-        : this.roundAmount((orderTotal * discountPercentage) / 100);
+      options.discountPercentage != null
+        ? this.roundAmount(Number(options.discountPercentage))
+        : this.roundAmount(Number(options.discountAmount ?? 0));
     const taxableBase = this.roundAmount(orderTotal - discountAmount);
     const taxPercentage = this.roundAmount(options.taxPercentage ?? 0);
     const taxAmount =
@@ -1344,7 +1343,6 @@ export class SaleOrderService {
         taxPercentage: dto.taxPercentage ?? order.taxPercentage,
         discountPercentage:
           dto.discountPercentage ?? order.discountPercentage,
-        discountAmount: dto.discountAmount ?? order.discountAmount,
         taxAmount: dto.taxAmount ?? order.taxAmount,
       });
 

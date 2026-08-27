@@ -230,11 +230,12 @@ export class DeliveryNoteService {
   ): ResolvedDeliveryNoteLine {
     const saleUnitPrice = this.roundAmount(Number(orderItem.saleUnitPrice));
     const lineSubtotal = saleUnitPrice * deliveredQuantity;
-    const discountPercentage = this.roundAmount(
-      Number(orderItem.discountPercentage),
-    );
+    // discountPercentage on SO item is stored as amount (not %).
+    const discountPercentage = Number(orderItem.discountPercentage);
+    const orderQty = Number(orderItem.quantity);
+    const ratio = orderQty > 0 ? deliveredQuantity / orderQty : 0;
     const discountAmount = this.roundAmount(
-      (lineSubtotal * discountPercentage) / 100,
+      Number(orderItem.discountAmount) * ratio,
     );
     const taxableBase = this.roundAmount(lineSubtotal - discountAmount);
     const taxAmount = this.roundAmount(
@@ -277,10 +278,9 @@ export class DeliveryNoteService {
       ),
     );
     const deliveryCost = this.roundAmount(options.deliveryCost ?? 0);
-    const discountPercentage = this.roundAmount(options.discountPercentage ?? 0);
-    const totalDiscountAmount = this.roundAmount(
-      (lineBase * discountPercentage) / 100,
-    );
+    // discountPercentage is treated as discount amount (same as sale order).
+    const discountPercentage = Number(options.discountPercentage ?? 0);
+    const totalDiscountAmount = this.roundAmount(discountPercentage);
     const taxableBase = this.roundAmount(lineBase - totalDiscountAmount);
     const taxPercentage = this.roundAmount(options.taxPercentage ?? 0);
     const totalTaxAmount = this.roundAmount(

@@ -37,5 +37,6 @@ export class CreateSaleOrderItemDto {
   @IsOptional()
   @IsNumber()
   @Min(0)
+  /** Discount amount (field name kept for API compatibility; not a %). */
   discountPercentage?: number;
 }
