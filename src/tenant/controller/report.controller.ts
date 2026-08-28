@@ -49,9 +49,9 @@ import { ReportSaleChartQueryDto } from '../dto/report/report-sale-chart.query.d
 import { ReportSaleOverviewQueryDto } from '../dto/report/report-sale-overview.query.dto';
 import { ReportCustomerLowPaymentQueryDto } from '../dto/report/report-customer-low-payment.query.dto';
 import { ReportPaginationQueryDto } from '../dto/report/report-pagination.query.dto';
-import { ReportDateRangeQueryDto } from '../dto/report/report-date-range.query.dto';
 import { ReportInvoiceSummaryQueryDto } from '../dto/report/report-invoice-summary.query.dto';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
+import { ReportProfitQueryDto } from '../dto/report/report-profit.query.dto';
 
 @Controller('tenant/reports')
 @UseGuards(
@@ -170,13 +170,14 @@ export class ReportController {
   getProfitReport(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
-    @Query() query: ReportDateRangeQueryDto,
+    @Query() query: ReportProfitQueryDto,
   ) {
     const user = req.user as TenantRequestUser;
     return this.reportService.getProfitReport(
       tenantDb,
       user.businessId,
       {
+        type: query.type,
         startDate: query.startDate,
         endDate: query.endDate,
         page: query.page ?? 1,

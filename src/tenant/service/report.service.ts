@@ -20,6 +20,7 @@ import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity'
 import { ActivityLogService } from './activity-log.service';
 import { MasterGeoHelperService } from './master-geo-helper.service';
 import { paginateItems } from './report/report-query.helper';
+import { ReportProfitViewType } from '../dto/report/report-profit.query.dto';
 
 type BalanceRow = {
   chartOfAccountId: string;
@@ -36,6 +37,7 @@ type PaginationOptions = {
 };
 
 type ProfitReportOptions = {
+  type?: ReportProfitViewType;
   startDate?: string;
   endDate?: string;
 } & PaginationOptions;
@@ -833,6 +835,7 @@ export class ReportService {
     actorUserId: string,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
+    const viewType = options.type ?? ReportProfitViewType.PRODUCT;
     const { startDate, endDate } = this.parseDateRange(
       options.startDate,
       options.endDate,
@@ -842,6 +845,7 @@ export class ReportService {
       .getRepository(SaleInvoice)
       .createQueryBuilder('invoice')
       .leftJoinAndSelect('invoice.items', 'items')
+      .leftJoinAndSelect('invoice.customer', 'customer')
       .leftJoinAndSelect('items.product', 'product')
       .leftJoinAndSelect('items.productFlavour', 'productFlavour')
       .leftJoinAndSelect('productFlavour.flavour', 'flavour')
@@ -866,6 +870,55 @@ export class ReportService {
       .addOrderBy('invoice.createdAt', 'ASC')
       .getMany();
 
+    const allData: Array<{
+      totalSale: number;
+      totalCost: number;
+      profit: number;
+      profitPercentage: number;
+    }> =
+      viewType === ReportProfitViewType.CUSTOMER
+        ? this.buildCustomerProfitRows(invoices)
+        : this.buildProductProfitRows(invoices);
+
+    const totals = allData.reduce(
+      (sum, row) => {
+        sum.totalSale = this.roundAmount(sum.totalSale + row.totalSale);
+        sum.totalCost = this.roundAmount(sum.totalCost + row.totalCost);
+        sum.profit = this.roundAmount(sum.totalSale - sum.totalCost);
+        return sum;
+      },
+      { totalSale: 0, totalCost: 0, profit: 0 },
+    );
+
+    const { items: data, meta } = this.applyListPagination(allData, options);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'PROFIT_REPORT_VIEWED',
+      description: 'Profit report viewed',
+      metadata: {
+        type: viewType,
+        startDate: options.startDate ?? null,
+        endDate: options.endDate ?? null,
+        count: meta.total,
+        totals,
+      },
+    });
+
+    return {
+      type: viewType,
+      totals,
+      period: {
+        startDate: options.startDate ?? null,
+        endDate: options.endDate ?? null,
+      },
+      data,
+      meta,
+    };
+  }
+
+  private buildProductProfitRows(invoices: SaleInvoice[]) {
     const reportRows = new Map<
       string,
       {
@@ -923,7 +976,7 @@ export class ReportService {
       }
     }
 
-    const allData = [...reportRows.values()]
+    return [...reportRows.values()]
       .map((row) => ({
         ...row,
         profitPercentage:
@@ -932,41 +985,66 @@ export class ReportService {
             : 0,
       }))
       .sort((left, right) => right.profit - left.profit);
+  }
 
-    const totals = allData.reduce(
-      (sum, row) => {
-        sum.totalSale = this.roundAmount(sum.totalSale + row.totalSale);
-        sum.totalCost = this.roundAmount(sum.totalCost + row.totalCost);
-        sum.profit = this.roundAmount(sum.totalSale - sum.totalCost);
-        return sum;
-      },
-      { totalSale: 0, totalCost: 0, profit: 0 },
-    );
+  private buildCustomerProfitRows(invoices: SaleInvoice[]) {
+    const reportRows = new Map<
+      string,
+      {
+        customerId: string;
+        customerName: string;
+        customerCode: string;
+        totalSale: number;
+        totalCost: number;
+        profit: number;
+      }
+    >();
 
-    const { items: data, meta } = this.applyListPagination(allData, options);
+    for (const invoice of invoices) {
+      const costSnapshots = this.buildCostSnapshots(invoice);
+      let invoiceSale = 0;
+      let invoiceCost = 0;
 
-    await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: actorUserId,
-      businessId: scopedBusinessId,
-      action: 'PROFIT_REPORT_VIEWED',
-      description: 'Profit report viewed',
-      metadata: {
-        startDate: options.startDate ?? null,
-        endDate: options.endDate ?? null,
-        count: meta.total,
-        totals,
-      },
-    });
+      for (const item of invoice.items ?? []) {
+        const costSnapshot = costSnapshots.get(
+          this.saleLineKey(item.productId, item.uomId, item.productFlavourId),
+        );
+        const quantity = Number(item.quantity ?? 0);
+        invoiceSale = this.roundAmount(
+          invoiceSale + Number(item.totalAmount ?? 0),
+        );
+        invoiceCost = this.roundAmount(
+          invoiceCost +
+            (costSnapshot?.purchaseUnitPrice ?? 0) * quantity,
+        );
+      }
 
-    return {
-      totals,
-      period: {
-        startDate: options.startDate ?? null,
-        endDate: options.endDate ?? null,
-      },
-      data,
-      meta,
-    };
+      const key = invoice.customerId;
+      const existing = reportRows.get(key);
+      const next = existing ?? {
+        customerId: invoice.customerId,
+        customerName: invoice.customer?.name ?? '',
+        customerCode: invoice.customer?.code ?? '',
+        totalSale: 0,
+        totalCost: 0,
+        profit: 0,
+      };
+
+      next.totalSale = this.roundAmount(next.totalSale + invoiceSale);
+      next.totalCost = this.roundAmount(next.totalCost + invoiceCost);
+      next.profit = this.roundAmount(next.totalSale - next.totalCost);
+      reportRows.set(key, next);
+    }
+
+    return [...reportRows.values()]
+      .map((row) => ({
+        ...row,
+        profitPercentage:
+          row.totalSale > 0
+            ? this.roundAmount((row.profit / row.totalSale) * 100)
+            : 0,
+      }))
+      .sort((left, right) => right.profit - left.profit);
   }
 
   async getSalesSummaryReport(
