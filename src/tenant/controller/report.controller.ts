@@ -28,6 +28,7 @@ import { ReportSaleChartService } from '../service/report/report-sale-chart.serv
 import { ReportSaleOverviewService } from '../service/report/report-sale-overview.service';
 import { ReportCustomerLowPaymentService } from '../service/report/report-customer-low-payment.service';
 import { ReportReceivablePayableService } from '../service/report/report-receivable-payable.service';
+import { ReportReceivingService } from '../service/report/report-receiving.service';
 import { ReportGeneralLedgerQueryDto } from '../dto/report/report-ledger.query.dto';
 import { ReportTrialBalanceQueryDto } from '../dto/report/report-ledger.query.dto';
 import { ReportOutstandingDocumentsQueryDto } from '../dto/report/report-outstanding.query.dto';
@@ -55,6 +56,7 @@ import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { ReportProfitQueryDto } from '../dto/report/report-profit.query.dto';
 import { ReportReceivableQueryDto } from '../dto/report/report-receivable.query.dto';
 import { ReportPayableQueryDto } from '../dto/report/report-payable.query.dto';
+import { ReportReceivingQueryDto } from '../dto/report/report-receiving.query.dto';
 
 @Controller('tenant/reports')
 @UseGuards(
@@ -78,6 +80,7 @@ export class ReportController {
     private readonly reportSaleOverviewService: ReportSaleOverviewService,
     private readonly reportCustomerLowPaymentService: ReportCustomerLowPaymentService,
     private readonly reportReceivablePayableService: ReportReceivablePayableService,
+    private readonly reportReceivingService: ReportReceivingService,
   ) {}
 
   @Get('cash-bank-balances')
@@ -174,6 +177,28 @@ export class ReportController {
         startDate: query.startDate,
         endDate: query.endDate,
         partyId: query.vendorId,
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
+      },
+      user.userId,
+    );
+  }
+
+  @Get('receiving')
+  @RequirePermissions('VIEW_RECEIVING_REPORT')
+  getReceivingReport(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportReceivingQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportReceivingService.getReceivingReport(
+      tenantDb,
+      user.businessId,
+      {
+        startDate: query.startDate,
+        endDate: query.endDate,
+        partyId: query.partyId,
         page: query.page ?? 1,
         limit: query.limit ?? 20,
       },

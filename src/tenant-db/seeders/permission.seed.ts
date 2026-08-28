@@ -258,6 +258,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'VIEW_RECEIVABLE_REPORT', name: 'View Receivable Report' },
   { key: 'VIEW_VENDOR_BALANCE_REPORT', name: 'View Vendor Balance Report' },
   { key: 'VIEW_PAYABLE_REPORT', name: 'View Payable Report' },
+  { key: 'VIEW_RECEIVING_REPORT', name: 'View Receiving Report' },
   { key: 'VIEW_EMPLOYEE_BALANCE_REPORT', name: 'View Employee Balance Report' },
   { key: 'VIEW_CUSTOMER_LOW_PAYMENT_REPORT', name: 'View Customer Low Payment Report' },
   { key: 'VIEW_PROFIT_REPORT', name: 'View Profit Report' },
