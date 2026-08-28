@@ -1,11 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { Brackets, DataSource, SelectQueryBuilder } from 'typeorm';
 import {
+  Batch,
   ReferenceType,
   StockBalance,
   StockMovement,
   StockMovementType,
 } from 'src/tenant-db/entities/stock.entity';
+import { GrnItem, GrnStatus } from 'src/tenant-db/entities/grn.entity';
 import { GetStockBalanceDto } from 'src/tenant/dto/inventory/get-stock-balance.dto';
 import { InventoryScope } from 'src/tenant/dto/inventory/inventory-scope.dto';
 import {
@@ -38,6 +40,23 @@ export class InventoryBalanceService {
         search: `%${dto.search.trim()}%`,
       });
     }
+    if (dto.partyId) {
+      qb.andWhere((subQb) => {
+        const batchExists = subQb
+          .subQuery()
+          .select('1')
+          .from(Batch, 'batch')
+          .where('batch.businessId = balance.businessId')
+          .andWhere('batch.deletedAt IS NULL')
+          .andWhere('batch.vendorId = :partyId')
+          .andWhere('batch.productId = balance.productId')
+          .andWhere('batch.uomId = balance.uomId')
+          .andWhere('batch.warehouseId = balance.warehouseId');
+
+        return `EXISTS ${batchExists.getQuery()}`;
+      });
+      qb.setParameter('partyId', dto.partyId);
+    }
   }
 
   private buildLineKey(key: StockBalanceLineKey): string {
@@ -50,12 +69,83 @@ export class InventoryBalanceService {
     tenantDb: DataSource,
     businessId: string,
     keys: StockBalanceLineKey[],
+    vendorId?: string,
   ): Promise<Map<string, number>> {
     if (!keys.length) {
       return new Map();
     }
 
     const includeWarehouse = keys.some((key) => key.warehouseId);
+
+    if (vendorId) {
+      const qb = tenantDb
+        .getRepository(GrnItem)
+        .createQueryBuilder('item')
+        .innerJoin('item.grn', 'grn')
+        .distinctOn(
+          includeWarehouse
+            ? ['item.productId', 'item.uomId', 'grn.warehouseId']
+            : ['item.productId', 'item.uomId'],
+        )
+        .select('item.productId', 'productId')
+        .addSelect('item.uomId', 'uomId')
+        .addSelect('item.receivedQuantity', 'quantity')
+        .where('grn.businessId = :businessId', { businessId })
+        .andWhere('grn.deletedAt IS NULL')
+        .andWhere('grn.status = :status', { status: GrnStatus.APPROVED })
+        .andWhere('grn.vendorId = :vendorId', { vendorId })
+        .andWhere('item.receivedQuantity > 0')
+        .andWhere(
+          new Brackets((subQb) => {
+            keys.forEach((key, index) => {
+              const params: Record<string, string> = {
+                [`productId${index}`]: key.productId,
+                [`uomId${index}`]: key.uomId,
+              };
+              let condition = `(item.productId = :productId${index} AND item.uomId = :uomId${index}`;
+              if (includeWarehouse && key.warehouseId) {
+                condition += ` AND grn.warehouseId = :warehouseId${index}`;
+                params[`warehouseId${index}`] = key.warehouseId;
+              }
+              condition += ')';
+              subQb.orWhere(condition, params);
+            });
+          }),
+        );
+
+      if (includeWarehouse) {
+        qb.addSelect('grn.warehouseId', 'warehouseId')
+          .orderBy('item.productId', 'ASC')
+          .addOrderBy('item.uomId', 'ASC')
+          .addOrderBy('grn.warehouseId', 'ASC')
+          .addOrderBy('grn.grnDate', 'DESC')
+          .addOrderBy('grn.createdAt', 'DESC');
+      } else {
+        qb.orderBy('item.productId', 'ASC')
+          .addOrderBy('item.uomId', 'ASC')
+          .addOrderBy('grn.grnDate', 'DESC')
+          .addOrderBy('grn.createdAt', 'DESC');
+      }
+
+      const rows = await qb.getRawMany<{
+        productId: string;
+        uomId: string;
+        warehouseId?: string;
+        quantity: string;
+      }>();
+
+      return new Map(
+        rows.map((row) => [
+          this.buildLineKey({
+            productId: row.productId,
+            uomId: row.uomId,
+            warehouseId: row.warehouseId,
+          }),
+          Number(row.quantity),
+        ]),
+      );
+    }
+
     const qb = tenantDb
       .getRepository(StockMovement)
       .createQueryBuilder('movement')
@@ -192,6 +282,7 @@ export class InventoryBalanceService {
           productId: row.productId,
           uomId: row.uomId,
         })),
+        dto.partyId,
       );
 
       return {
@@ -288,6 +379,7 @@ export class InventoryBalanceService {
         uomId: row.uomId,
         warehouseId: row.warehouseId,
       })),
+      dto.partyId,
     );
 
     return {
