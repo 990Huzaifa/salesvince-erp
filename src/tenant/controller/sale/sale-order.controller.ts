@@ -31,6 +31,7 @@ import {
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { OrderStatus } from 'src/tenant-db/entities/sale-order.entity';
 import { SaleOrderService } from '../../service/sale/sale-order.service';
+import { SaleOrderReverseService } from '../../service/sale/sale-order-reverse.service';
 import { CreateSaleOrderDto } from '../../dto/sale-order/create-sale-order.dto';
 import { UpdateSaleOrderDto } from '../../dto/sale-order/update-sale-order.dto';
 import { EditApprovedSaleOrderDto } from '../../dto/sale-order/edit-approved-sale-order.dto';
@@ -44,7 +45,10 @@ import { EditApprovedSaleOrderDto } from '../../dto/sale-order/edit-approved-sal
   TenantPermissionGuard,
 )
 export class SaleOrderController {
-  constructor(private readonly saleOrderService: SaleOrderService) {}
+  constructor(
+    private readonly saleOrderService: SaleOrderService,
+    private readonly saleOrderReverseService: SaleOrderReverseService,
+  ) {}
 
   @Post('import')
   @RequirePermissions('CREATE_SALE_ORDER')
@@ -259,6 +263,22 @@ export class SaleOrderController {
   ) {
     const user = req.user as TenantRequestUser;
     return this.saleOrderService.delete(
+      tenantDb,
+      user.businessId,
+      id,
+      user.userId,
+    );
+  }
+
+  @Post('reverse/:id')
+  @RequirePermissions('REVERSE_SALE_ORDER')
+  reverse(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.saleOrderReverseService.reverse(
       tenantDb,
       user.businessId,
       id,

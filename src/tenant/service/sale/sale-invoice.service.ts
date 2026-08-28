@@ -556,4 +556,22 @@ export class SaleInvoiceService {
       }),
     };
   }
+
+  async softDeleteBySaleOrder(
+    manager: EntityManager,
+    saleOrderId: string,
+  ): Promise<string[]> {
+    const invoices = await manager.getRepository(SaleInvoice).find({
+      where: { saleOrderId, deletedAt: IsNull() },
+      select: ['id'],
+    });
+
+    if (!invoices.length) {
+      return [];
+    }
+
+    const invoiceIds = invoices.map((invoice) => invoice.id);
+    await manager.getRepository(SaleInvoice).softDelete(invoiceIds);
+    return invoiceIds;
+  }
 }

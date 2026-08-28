@@ -179,6 +179,12 @@ export class SaleOrderService {
   }
 
   private assertApprovedStatus(order: SaleOrder): void {
+    if (order.orderStatus === OrderStatus.CANCELLED) {
+      throw new BadRequestException(
+        'Cancelled sale orders cannot be edited',
+      );
+    }
+
     if (order.orderStatus !== OrderStatus.APPROVED) {
       throw new BadRequestException(
         'Only approved sale orders can be edited with this endpoint',
@@ -1552,6 +1558,10 @@ export class SaleOrderService {
 
     if (order.orderStatus === OrderStatus.APPROVED) {
       throw new BadRequestException('Sale order is already approved');
+    }
+
+    if (order.orderStatus === OrderStatus.CANCELLED) {
+      throw new BadRequestException('Cancelled sale orders cannot be approved');
     }
 
     if (order.orderStatus !== OrderStatus.PENDING) {

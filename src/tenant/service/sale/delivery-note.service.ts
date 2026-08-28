@@ -455,10 +455,17 @@ export class DeliveryNoteService {
       .leftJoinAndSelect('so.customer', 'customer')
       .where('so.id = :saleOrderId', { saleOrderId })
       .andWhere('so.businessId = :businessId', { businessId })
-      .andWhere('so.orderStatus = :status', { status: OrderStatus.APPROVED })
       .getOne();
 
     if (!order) {
+      throw new NotFoundException('Sale order not found for this business');
+    }
+
+    if (order.orderStatus === OrderStatus.CANCELLED) {
+      throw new BadRequestException('Sale order has been cancelled');
+    }
+
+    if (order.orderStatus !== OrderStatus.APPROVED) {
       throw new NotFoundException(
         'Approved sale order not found for this business',
       );
@@ -781,6 +788,16 @@ export class DeliveryNoteService {
       referenceType: AccountTransactionReferenceType.DELIVERY_NOTE,
       referenceId: deliveryNote.id,
     });
+  }
+
+  async reverseApproved(
+    manager: EntityManager,
+    businessId: string,
+    deliveryNote: DeliveryNote,
+  ): Promise<void> {
+    await this.reverseApprovedEffects(manager, businessId, deliveryNote);
+    deliveryNote.status = DeliveryNoteStatus.REVERSED;
+    await manager.getRepository(DeliveryNote).save(deliveryNote);
   }
 
   async create(

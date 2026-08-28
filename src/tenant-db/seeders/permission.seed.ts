@@ -163,6 +163,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'REJECT_PURCHASE_ORDER', name: 'Reject Purchase Order' },
   { key: 'APPROVE_SALE_ORDER', name: 'Approve Sale Order' },
   { key: 'REJECT_SALE_ORDER', name: 'Reject Sale Order' },
+  { key: 'REVERSE_SALE_ORDER', name: 'Reverse Sale Order' },
   { key: 'UPDATE_OPENING_STOCK', name: 'Update Opening Stock' },
   { key: 'UPDATE_PURCHASE_STOCK', name: 'Update Purchase Stock' },
   { key: 'UPDATE_TRANSFER_STOCK', name: 'Update Transfer Stock' },

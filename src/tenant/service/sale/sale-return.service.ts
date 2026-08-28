@@ -590,7 +590,7 @@ export class SaleReturnService {
     }
   }
 
-  async removeForOrderCascade(
+  async reverseApprovedEffects(
     manager: EntityManager,
     businessId: string,
     saleReturn: SaleReturn,
@@ -616,6 +616,17 @@ export class SaleReturnService {
         referenceId: saleReturn.id,
       });
     }
+
+    saleReturn.status = SaleReturnStatus.REJECTED;
+    await manager.getRepository(SaleReturn).save(saleReturn);
+  }
+
+  async removeForOrderCascade(
+    manager: EntityManager,
+    businessId: string,
+    saleReturn: SaleReturn,
+  ): Promise<void> {
+    await this.reverseApprovedEffects(manager, businessId, saleReturn);
 
     await manager
       .getRepository(SaleReturnItem)
