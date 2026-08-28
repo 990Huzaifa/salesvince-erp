@@ -27,6 +27,7 @@ import { ReportTaxService } from '../service/report/report-tax.service';
 import { ReportSaleChartService } from '../service/report/report-sale-chart.service';
 import { ReportSaleOverviewService } from '../service/report/report-sale-overview.service';
 import { ReportCustomerLowPaymentService } from '../service/report/report-customer-low-payment.service';
+import { ReportReceivablePayableService } from '../service/report/report-receivable-payable.service';
 import { ReportGeneralLedgerQueryDto } from '../dto/report/report-ledger.query.dto';
 import { ReportTrialBalanceQueryDto } from '../dto/report/report-ledger.query.dto';
 import { ReportOutstandingDocumentsQueryDto } from '../dto/report/report-outstanding.query.dto';
@@ -52,6 +53,8 @@ import { ReportPaginationQueryDto } from '../dto/report/report-pagination.query.
 import { ReportInvoiceSummaryQueryDto } from '../dto/report/report-invoice-summary.query.dto';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { ReportProfitQueryDto } from '../dto/report/report-profit.query.dto';
+import { ReportReceivableQueryDto } from '../dto/report/report-receivable.query.dto';
+import { ReportPayableQueryDto } from '../dto/report/report-payable.query.dto';
 
 @Controller('tenant/reports')
 @UseGuards(
@@ -74,6 +77,7 @@ export class ReportController {
     private readonly reportSaleChartService: ReportSaleChartService,
     private readonly reportSaleOverviewService: ReportSaleOverviewService,
     private readonly reportCustomerLowPaymentService: ReportCustomerLowPaymentService,
+    private readonly reportReceivablePayableService: ReportReceivablePayableService,
   ) {}
 
   @Get('cash-bank-balances')
@@ -130,6 +134,50 @@ export class ReportController {
         page: query.page ?? 1,
         limit: query.limit ?? 20,
       },
+    );
+  }
+
+  @Get('receivables')
+  @RequirePermissions('VIEW_RECEIVABLE_REPORT')
+  getReceivableReport(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportReceivableQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportReceivablePayableService.getReceivableReport(
+      tenantDb,
+      user.businessId,
+      {
+        startDate: query.startDate,
+        endDate: query.endDate,
+        partyId: query.customerId,
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
+      },
+      user.userId,
+    );
+  }
+
+  @Get('payables')
+  @RequirePermissions('VIEW_PAYABLE_REPORT')
+  getPayableReport(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportPayableQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportReceivablePayableService.getPayableReport(
+      tenantDb,
+      user.businessId,
+      {
+        startDate: query.startDate,
+        endDate: query.endDate,
+        partyId: query.vendorId,
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
+      },
+      user.userId,
     );
   }
 
