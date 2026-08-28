@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource, SelectQueryBuilder } from 'typeorm';
-import { StockBalance } from 'src/tenant-db/entities/stock.entity';
+import { Brackets, DataSource, SelectQueryBuilder } from 'typeorm';
+import {
+  ReferenceType,
+  StockBalance,
+  StockMovement,
+  StockMovementType,
+} from 'src/tenant-db/entities/stock.entity';
 import { GetStockBalanceDto } from 'src/tenant/dto/inventory/get-stock-balance.dto';
 import { InventoryScope } from 'src/tenant/dto/inventory/inventory-scope.dto';
 import {
@@ -9,6 +14,12 @@ import {
   createCountQuery,
   resolveInventoryScope,
 } from './inventory-query.helper';
+
+type StockBalanceLineKey = {
+  productId: string;
+  uomId: string;
+  warehouseId?: string;
+};
 
 @Injectable()
 export class InventoryBalanceService {
@@ -27,6 +38,90 @@ export class InventoryBalanceService {
         search: `%${dto.search.trim()}%`,
       });
     }
+  }
+
+  private buildLineKey(key: StockBalanceLineKey): string {
+    return key.warehouseId
+      ? `${key.productId}:${key.uomId}:${key.warehouseId}`
+      : `${key.productId}:${key.uomId}`;
+  }
+
+  private async loadLastPurchaseQuantities(
+    tenantDb: DataSource,
+    businessId: string,
+    keys: StockBalanceLineKey[],
+  ): Promise<Map<string, number>> {
+    if (!keys.length) {
+      return new Map();
+    }
+
+    const includeWarehouse = keys.some((key) => key.warehouseId);
+    const qb = tenantDb
+      .getRepository(StockMovement)
+      .createQueryBuilder('movement')
+      .distinctOn(
+        includeWarehouse
+          ? ['movement.productId', 'movement.uomId', 'movement.warehouseId']
+          : ['movement.productId', 'movement.uomId'],
+      )
+      .select('movement.productId', 'productId')
+      .addSelect('movement.uomId', 'uomId')
+      .addSelect('movement.quantity', 'quantity')
+      .where('movement.businessId = :businessId', { businessId })
+      .andWhere('movement.deletedAt IS NULL')
+      .andWhere('movement.movementType = :movementType', {
+        movementType: StockMovementType.IN,
+      })
+      .andWhere('movement.referenceType = :referenceType', {
+        referenceType: ReferenceType.PURCHASE,
+      })
+      .andWhere(
+        new Brackets((subQb) => {
+          keys.forEach((key, index) => {
+            const params: Record<string, string> = {
+              [`productId${index}`]: key.productId,
+              [`uomId${index}`]: key.uomId,
+            };
+            let condition = `(movement.productId = :productId${index} AND movement.uomId = :uomId${index}`;
+            if (includeWarehouse && key.warehouseId) {
+              condition += ` AND movement.warehouseId = :warehouseId${index}`;
+              params[`warehouseId${index}`] = key.warehouseId;
+            }
+            condition += ')';
+            subQb.orWhere(condition, params);
+          });
+        }),
+      );
+
+    if (includeWarehouse) {
+      qb.addSelect('movement.warehouseId', 'warehouseId')
+        .orderBy('movement.productId', 'ASC')
+        .addOrderBy('movement.uomId', 'ASC')
+        .addOrderBy('movement.warehouseId', 'ASC')
+        .addOrderBy('movement.createdAt', 'DESC');
+    } else {
+      qb.orderBy('movement.productId', 'ASC')
+        .addOrderBy('movement.uomId', 'ASC')
+        .addOrderBy('movement.createdAt', 'DESC');
+    }
+
+    const rows = await qb.getRawMany<{
+      productId: string;
+      uomId: string;
+      warehouseId?: string;
+      quantity: string;
+    }>();
+
+    return new Map(
+      rows.map((row) => [
+        this.buildLineKey({
+          productId: row.productId,
+          uomId: row.uomId,
+          warehouseId: row.warehouseId,
+        }),
+        Number(row.quantity),
+      ]),
+    );
   }
 
   async list(
@@ -90,6 +185,15 @@ export class InventoryBalanceService {
           quantityDamaged: string;
         }>();
 
+      const lastPurchaseMap = await this.loadLastPurchaseQuantities(
+        tenantDb,
+        scopedBusinessId,
+        rows.map((row) => ({
+          productId: row.productId,
+          uomId: row.uomId,
+        })),
+      );
+
       return {
         data: rows.map((row) => ({
           productId: row.productId,
@@ -101,6 +205,13 @@ export class InventoryBalanceService {
           quantityOnHand: Number(row.quantityOnHand),
           quantityReserved: Number(row.quantityReserved),
           quantityDamaged: Number(row.quantityDamaged),
+          lastPurchaseQty:
+            lastPurchaseMap.get(
+              this.buildLineKey({
+                productId: row.productId,
+                uomId: row.uomId,
+              }),
+            ) ?? 0,
         })),
         meta: {
           total: Number(totalRow?.total ?? 0),
@@ -169,6 +280,16 @@ export class InventoryBalanceService {
         updatedAt: Date;
       }>();
 
+    const lastPurchaseMap = await this.loadLastPurchaseQuantities(
+      tenantDb,
+      scopedBusinessId,
+      rows.map((row) => ({
+        productId: row.productId,
+        uomId: row.uomId,
+        warehouseId: row.warehouseId,
+      })),
+    );
+
     return {
       data: rows.map((row) => ({
         id: row.id,
@@ -184,6 +305,14 @@ export class InventoryBalanceService {
         quantityOnHand: Number(row.quantityOnHand),
         quantityReserved: Number(row.quantityReserved),
         quantityDamaged: Number(row.quantityDamaged),
+        lastPurchaseQty:
+          lastPurchaseMap.get(
+            this.buildLineKey({
+              productId: row.productId,
+              uomId: row.uomId,
+              warehouseId: row.warehouseId,
+            }),
+          ) ?? 0,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
       })),
