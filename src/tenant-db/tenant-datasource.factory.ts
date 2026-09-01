@@ -17,13 +17,11 @@ export function createTenantDataSource(
         username,
         password,
         database,
-        entities: [
-            path.join(__dirname, 'entities/**/*.js')
-        ],
-
-        migrations: [
-            path.join(__dirname, 'migrations/**/*.js')
-        ],
+        // The API runs from TypeScript in development and compiled JavaScript
+        // in production. Loading only *.js leaves dynamic tenant data sources
+        // without metadata during `nest start`.
+        entities: [path.join(__dirname, 'entities/**/*.entity{.ts,.js}')],
+        migrations: [path.join(__dirname, 'migrations/**/*{.ts,.js}')],
     });
 }
 
@@ -41,12 +39,7 @@ export function TenantDataSource(
         username,
         password,
         database,
-        entities: [
-            path.join(__dirname, 'entities/**/*.js')
-        ],
-
-        migrations: [
-            path.join(__dirname, 'migrations/**/*.js')
-        ],
+        entities: [path.join(__dirname, 'entities/**/*.entity{.ts,.js}')],
+        migrations: [path.join(__dirname, 'migrations/**/*{.ts,.js}')],
     });
 }

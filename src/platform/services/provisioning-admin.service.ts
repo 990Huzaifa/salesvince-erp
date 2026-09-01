@@ -1,18 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { getProvisioningDatabaseConfig } from 'src/config/database/database-env';
 
 @Injectable()
 export class ProvisioningAdminService {
     private adminDataSource: DataSource;
 
     async createAdminConnection() {
+        const config = getProvisioningDatabaseConfig();
         this.adminDataSource = new DataSource({
             type: 'postgres',
-            host: process.env.PROVISION_DB_HOST,
-            port: Number(process.env.PROVISION_DB_PORT),
-            username: process.env.PROVISION_DB_USER,
-            password: process.env.PROVISION_DB_PASS,
-            database: process.env.PROVISION_DB_NAME, // usually 'postgres'
+            host: config.host,
+            port: config.port,
+            username: config.username,
+            password: config.password,
+            database: config.database,
             synchronize: false,
         });
 
@@ -71,12 +73,13 @@ export class ProvisioningAdminService {
     }
 
     async grantSchemaPrivileges(dbName: string, username: string) {
+        const config = getProvisioningDatabaseConfig();
         const tenantDs = new DataSource({
             type: 'postgres',
-            host: process.env.PROVISION_DB_HOST,
-            port: Number(process.env.PROVISION_DB_PORT),
-            username: process.env.PROVISION_DB_USER,
-            password: process.env.PROVISION_DB_PASS,
+            host: config.host,
+            port: config.port,
+            username: config.username,
+            password: config.password,
             database: dbName,
         });
 

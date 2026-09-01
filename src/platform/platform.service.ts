@@ -27,6 +27,7 @@ import { ActivityLogActorType } from 'src/master-db/entities/activity-log.entity
 import { TenantModule } from 'src/master-db/entities/tenant-modules.entity';
 import { Module } from 'src/master-db/entities/module.entity';
 import { WhatsappAccountService } from './services/whatsapp-account.service';
+import { getTenantDatabaseLocation } from 'src/config/database/database-env';
 
 @Injectable()
 export class PlatformService {
@@ -373,6 +374,7 @@ export class PlatformService {
       // ===============================
       // 🔹 STEP 0: Setup Database & User
       // ===============================
+      const tenantDbLocation = getTenantDatabaseLocation();
       await this.provisioningAdminService.createAdminConnection();
       const dbName = `erp_t_${tenant.code}`;
 
@@ -430,8 +432,8 @@ export class PlatformService {
 
       // migrations
       await this.tenantDatabaseService.runMigrations(
-        String(process.env.PROVISION_DB_HOST),
-        Number(process.env.PROVISION_DB_PORT),
+        tenantDbLocation.host,
+        tenantDbLocation.port,
         dbUser,
         dbPass,
         dbName,
@@ -445,8 +447,8 @@ export class PlatformService {
 
       // seed data
       await this.tenantDatabaseService.runTenantSeeders(
-        String(process.env.PROVISION_DB_HOST),
-        Number(process.env.PROVISION_DB_PORT),
+        tenantDbLocation.host,
+        tenantDbLocation.port,
         dbUser,
         dbPass,
         dbName,
@@ -643,11 +645,12 @@ export class PlatformService {
     });
 
     if (!existing) {
+      const tenantDbLocation = getTenantDatabaseLocation();
       await this.dbConfigRepo.save(
         this.dbConfigRepo.create({
           tenant,
-          host: process.env.PROVISION_DB_HOST,
-          port: Number(process.env.PROVISION_DB_PORT),
+          host: tenantDbLocation.host,
+          port: tenantDbLocation.port,
           database: dbName,
           username: dbUser,
           password: dbPass,

@@ -3,7 +3,6 @@ import {
   Logger,
   NotFoundException,
   OnModuleDestroy,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -23,7 +22,7 @@ export class TenantConnectionManager implements OnModuleDestroy {
 
   async getConnection(tenantId: string): Promise<DataSource> {
     const existingPool = this.pools.get(tenantId);
-    if (existingPool) {
+    if (existingPool !== undefined) {
       this.logger.debug(`Tenant DB pool cache hit for tenant ${tenantId}`);
       return existingPool;
     }
@@ -43,7 +42,7 @@ export class TenantConnectionManager implements OnModuleDestroy {
 
   async closeConnection(tenantId: string): Promise<void> {
     const poolPromise = this.pools.get(tenantId);
-    if (!poolPromise) {
+    if (poolPromise === undefined) {
       return;
     }
 
@@ -88,7 +87,7 @@ export class TenantConnectionManager implements OnModuleDestroy {
 
     if (!dbConfig) {
       this.logger.warn(`No tenant DB config found for tenant ${tenantId}`);
-      throw new UnauthorizedException('Tenant DB config not found');
+      throw new NotFoundException('Tenant DB config not found');
     }
 
     const dataSource = createTenantDataSource(
