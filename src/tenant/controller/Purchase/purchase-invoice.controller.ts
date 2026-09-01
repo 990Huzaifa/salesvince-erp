@@ -5,9 +5,10 @@ import {
   ParseUUIDPipe,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
 import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
@@ -18,6 +19,7 @@ import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { PurchaseInvoiceService } from '../../service/purchase/purchase-invoice.service';
+import { sendPdf } from 'src/common/pdf';
 
 @Controller('tenant/purchase-invoices')
 @UseGuards(
@@ -56,6 +58,24 @@ export class PurchaseInvoiceController {
       },
       user.userId,
     );
+  }
+
+  @Get(':id/pdf')
+  @RequirePermissions('VIEW_PURCHASE_INVOICE')
+  async downloadPdf(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const user = req.user as TenantRequestUser;
+    const { buffer, filename } = await this.purchaseInvoiceService.generatePdf(
+      tenantDb,
+      user.businessId,
+      id,
+      user.userId,
+    );
+    sendPdf(res, { buffer, filename });
   }
 
   @Get(':id')

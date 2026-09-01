@@ -11,12 +11,13 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
 import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
@@ -35,6 +36,7 @@ import { SaleOrderReverseService } from '../../service/sale/sale-order-reverse.s
 import { CreateSaleOrderDto } from '../../dto/sale-order/create-sale-order.dto';
 import { UpdateSaleOrderDto } from '../../dto/sale-order/update-sale-order.dto';
 import { EditApprovedSaleOrderDto } from '../../dto/sale-order/edit-approved-sale-order.dto';
+import { sendPdf } from 'src/common/pdf';
 
 @Controller('tenant/sale-orders')
 @UseGuards(
@@ -200,6 +202,24 @@ export class SaleOrderController {
         uomId,
       },
     );
+  }
+
+  @Get(':id/pdf')
+  @RequirePermissions('VIEW_SALE_ORDER')
+  async downloadPdf(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const user = req.user as TenantRequestUser;
+    const { buffer, filename } = await this.saleOrderService.generatePdf(
+      tenantDb,
+      user.businessId,
+      id,
+      user.userId,
+    );
+    sendPdf(res, { buffer, filename });
   }
 
   @Get(':id')

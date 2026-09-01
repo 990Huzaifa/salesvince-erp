@@ -23,6 +23,13 @@ import {
   ListAnalyticsService,
 } from '../list-analytics.service';
 import { MasterGeoHelperService } from '../master-geo-helper.service';
+import {
+  buildSaleInvoicePdfHtml,
+  PdfLogoService,
+  PdfRendererService,
+  safePdfFilenamePart,
+} from 'src/common/pdf';
+import { Business } from 'src/tenant-db/entities/business.entity';
 
 const INVOICE_NUMBER_PREFIX = 'SI';
 
@@ -43,6 +50,8 @@ export class SaleInvoiceService {
     private readonly activityLogService: ActivityLogService,
     private readonly masterGeoHelperService: MasterGeoHelperService,
     private readonly listAnalyticsService: ListAnalyticsService,
+    private readonly pdfRendererService: PdfRendererService,
+    private readonly pdfLogoService: PdfLogoService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -554,6 +563,83 @@ export class SaleInvoiceService {
         customerGeoNames,
         customerBalance,
       }),
+    };
+  }
+
+  async generatePdf(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    invoiceId: string,
+    actorUserId: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const invoice = await tenantDb
+      .getRepository(SaleInvoice)
+      .createQueryBuilder('invoice')
+      .leftJoinAndSelect('invoice.deliveryNote', 'deliveryNote')
+      .leftJoinAndSelect('invoice.saleOrder', 'saleOrder')
+      .leftJoinAndSelect('invoice.items', 'items')
+      .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
+      .leftJoinAndSelect('items.uom', 'uom')
+      .leftJoinAndSelect('items.warehouse', 'warehouse')
+      .leftJoinAndSelect('invoice.customer', 'customer')
+      .where('invoice.id = :invoiceId', { invoiceId })
+      .andWhere('invoice.businessId = :businessId', {
+        businessId: scopedBusinessId,
+      })
+      .andWhere('invoice.deletedAt IS NULL')
+      .getOne();
+
+    if (!invoice) {
+      throw new NotFoundException('Sale invoice not found');
+    }
+
+    const [customerGeoNames, customerBalance, business] = await Promise.all([
+      this.getCustomerGeoNames(invoice),
+      this.getCustomerBalanceSnapshot(tenantDb, scopedBusinessId, invoice),
+      tenantDb.getRepository(Business).findOne({
+        where: { id: scopedBusinessId },
+      }),
+    ]);
+
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    const mappedInvoice = this.mapSaleInvoice(invoice, {
+      customerGeoNames,
+      customerBalance,
+    });
+    const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
+    const html = buildSaleInvoicePdfHtml(
+      mappedInvoice,
+      {
+        name: business.name,
+        legalName: business.legalName,
+        address: business.address,
+        phone: business.phone,
+        currency: business.currency,
+      },
+      logoDataUri,
+    );
+    const buffer = await this.pdfRendererService.renderHtmlToPdf({
+      html,
+      enforceSinglePage: false,
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'SALE_INVOICE_PDF_DOWNLOADED',
+      description: `Sale invoice ${invoice.invoiceNumber} PDF downloaded`,
+      metadata: { saleInvoiceId: invoice.id },
+    });
+
+    return {
+      buffer,
+      filename: `${safePdfFilenamePart(invoice.invoiceNumber)}.pdf`,
     };
   }
 

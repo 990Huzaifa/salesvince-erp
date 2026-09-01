@@ -19,6 +19,13 @@ import {
   ListAnalyticsService,
 } from '../list-analytics.service';
 import { MasterGeoHelperService } from '../master-geo-helper.service';
+import {
+  buildPurchaseInvoicePdfHtml,
+  PdfLogoService,
+  PdfRendererService,
+  safePdfFilenamePart,
+} from 'src/common/pdf';
+import { Business } from 'src/tenant-db/entities/business.entity';
 
 const INVOICE_NUMBER_PREFIX = 'PI';
 
@@ -39,6 +46,8 @@ export class PurchaseInvoiceService {
     private readonly activityLogService: ActivityLogService,
     private readonly masterGeoHelperService: MasterGeoHelperService,
     private readonly listAnalyticsService: ListAnalyticsService,
+    private readonly pdfRendererService: PdfRendererService,
+    private readonly pdfLogoService: PdfLogoService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -523,6 +532,82 @@ export class PurchaseInvoiceService {
         vendorGeoNames,
         vendorBalance,
       }),
+    };
+  }
+
+  async generatePdf(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    invoiceId: string,
+    actorUserId: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const invoice = await tenantDb
+      .getRepository(PurchaseInvoice)
+      .createQueryBuilder('invoice')
+      .leftJoinAndSelect('invoice.grn', 'grn')
+      .leftJoinAndSelect('invoice.purchaseOrder', 'purchaseOrder')
+      .leftJoinAndSelect('invoice.items', 'items')
+      .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
+      .leftJoinAndSelect('items.uom', 'uom')
+      .leftJoinAndSelect('invoice.vendor', 'vendor')
+      .where('invoice.id = :invoiceId', { invoiceId })
+      .andWhere('invoice.businessId = :businessId', {
+        businessId: scopedBusinessId,
+      })
+      .andWhere('invoice.deletedAt IS NULL')
+      .getOne();
+
+    if (!invoice) {
+      throw new NotFoundException('Purchase invoice not found');
+    }
+
+    const [vendorGeoNames, vendorBalance, business] = await Promise.all([
+      this.getVendorGeoNames(invoice),
+      this.getVendorBalanceSnapshot(tenantDb, scopedBusinessId, invoice),
+      tenantDb.getRepository(Business).findOne({
+        where: { id: scopedBusinessId },
+      }),
+    ]);
+
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    const mappedInvoice = this.mapPurchaseInvoice(invoice, {
+      vendorGeoNames,
+      vendorBalance,
+    });
+    const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
+    const html = buildPurchaseInvoicePdfHtml(
+      mappedInvoice,
+      {
+        name: business.name,
+        legalName: business.legalName,
+        address: business.address,
+        phone: business.phone,
+        currency: business.currency,
+      },
+      logoDataUri,
+    );
+    const buffer = await this.pdfRendererService.renderHtmlToPdf({
+      html,
+      enforceSinglePage: false,
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'PURCHASE_INVOICE_PDF_DOWNLOADED',
+      description: `Purchase invoice ${invoice.invoiceNumber} PDF downloaded`,
+      metadata: { purchaseInvoiceId: invoice.id },
+    });
+
+    return {
+      buffer,
+      filename: `${safePdfFilenamePart(invoice.invoiceNumber)}.pdf`,
     };
   }
 }

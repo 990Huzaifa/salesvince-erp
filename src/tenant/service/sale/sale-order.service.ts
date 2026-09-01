@@ -39,6 +39,13 @@ import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import { DeliveryNoteService } from './delivery-note.service';
 import { SaleReturnService } from './sale-return.service';
 import { SaleReturnVoucherService } from '../vouchers/sale-return-voucher.service';
+import {
+  buildSaleOrderPdfHtml,
+  PdfLogoService,
+  PdfRendererService,
+  safePdfFilenamePart,
+} from 'src/common/pdf';
+import { Business } from 'src/tenant-db/entities/business.entity';
 
 const ORDER_NUMBER_PREFIX = 'SO';
 
@@ -95,6 +102,8 @@ export class SaleOrderService {
     private readonly notificationService: NotificationService,
     private readonly tenantJobService: TenantJobService,
     private readonly listAnalyticsService: ListAnalyticsService,
+    private readonly pdfRendererService: PdfRendererService,
+    private readonly pdfLogoService: PdfLogoService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -1071,6 +1080,58 @@ export class SaleOrderService {
     });
 
     return { data: this.mapSaleOrder(order) };
+  }
+
+  async generatePdf(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    orderId: string,
+    actorUserId: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const order = await this.findOrderForBusiness(
+      tenantDb,
+      scopedBusinessId,
+      orderId,
+    );
+    const business = await tenantDb.getRepository(Business).findOne({
+      where: { id: scopedBusinessId },
+    });
+
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
+    const mappedOrder = this.mapSaleOrder(order);
+    const html = buildSaleOrderPdfHtml(
+      mappedOrder,
+      {
+        name: business.name,
+        legalName: business.legalName,
+        address: business.address,
+        phone: business.phone,
+        currency: business.currency,
+      },
+      logoDataUri,
+    );
+    const buffer = await this.pdfRendererService.renderHtmlToPdf({
+      html,
+      enforceSinglePage: false,
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'SALE_ORDER_PDF_DOWNLOADED',
+      description: `Sale order ${order.orderNumber} PDF downloaded`,
+      metadata: { saleOrderId: order.id },
+    });
+
+    return {
+      buffer,
+      filename: `${safePdfFilenamePart(order.orderNumber)}.pdf`,
+    };
   }
 
   async getProductSaleHistory(
