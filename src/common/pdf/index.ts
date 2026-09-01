@@ -17,6 +17,8 @@ export {
 export { escapeHtml } from './pdf-html';
 export {
   PdfGenerationException,
+  browserLaunchFailed,
+  pdfRenderFailed,
   singlePageOverflow,
 } from './pdf.errors';
 export { sendPdf } from './pdf-response.helper';
