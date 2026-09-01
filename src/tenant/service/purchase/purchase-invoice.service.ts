@@ -20,12 +20,12 @@ import {
 } from '../list-analytics.service';
 import { MasterGeoHelperService } from '../master-geo-helper.service';
 import {
-  buildPurchaseInvoicePdfHtml,
   PdfLogoService,
   PdfRendererService,
   safePdfFilenamePart,
 } from 'src/common/pdf';
 import { Business } from 'src/tenant-db/entities/business.entity';
+import { buildPurchaseInvoicePdfHtml } from './purchase-invoice-pdf.template';
 
 const INVOICE_NUMBER_PREFIX = 'PI';
 
@@ -341,7 +341,7 @@ export class PurchaseInvoiceService {
    * Updates an existing purchase invoice from an approved GRN after PO financial edit.
    */
   async syncFromGrn(manager: EntityManager, grn: Grn): Promise<PurchaseInvoice | null> {
-    if (String(grn.status) !== GrnStatus.APPROVED) {
+    if (grn.status !== GrnStatus.APPROVED) {
       return null;
     }
 
@@ -540,6 +540,7 @@ export class PurchaseInvoiceService {
     businessId: string | undefined,
     invoiceId: string,
     actorUserId: string,
+    showBalanceDetails = true,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const invoice = await tenantDb
@@ -591,10 +592,11 @@ export class PurchaseInvoiceService {
         currency: business.currency,
       },
       logoDataUri,
+      showBalanceDetails,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,
-      enforceSinglePage: false,
+      enforceSinglePage: true,
     });
 
     await this.activityLogService.recordActivityLog(tenantDb, {

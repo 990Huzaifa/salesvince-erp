@@ -20,13 +20,102 @@ import {
 import { ActivityLogService } from '../activity-log.service';
 import { TransactionService } from '../transaction.service';
 import { assertBusinessId, roundAmount } from './hr-common.util';
+import { Business } from 'src/tenant-db/entities/business.entity';
+import {
+  formatDocumentDate,
+  formatMonthName,
+  formatPrintedAt,
+  PdfLogoService,
+  PdfRendererService,
+  safePdfFilenamePart,
+} from 'src/common/pdf';
+import { buildPayslipPdfHtml } from './payslip-pdf.template';
 
 @Injectable()
 export class PayslipService {
   constructor(
     private readonly activityLogService: ActivityLogService,
     private readonly transactionService: TransactionService,
+    private readonly pdfRendererService: PdfRendererService,
+    private readonly pdfLogoService: PdfLogoService,
   ) {}
+
+  async generatePdf(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    id: string,
+    actorUserId: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const scopedBusinessId = assertBusinessId(businessId);
+    const payslip = await this.findForBusiness(tenantDb, scopedBusinessId, id, true);
+    const business = await tenantDb.getRepository(Business).findOne({
+      where: { id: scopedBusinessId },
+    });
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    const mapped = this.mapPayslip(payslip, true);
+    const employeeCode = mapped.employee?.employeeCode || '-';
+    const month = String(mapped.periodMonth).padStart(2, '0');
+    const payslipNumber = `PSLIP-${mapped.periodYear}-${month}-${employeeCode
+      .toUpperCase()
+      .replace(/[\s-]+/g, '')}`;
+    const lines = (mapped.lines ?? []).map((line) => ({
+      componentName: line.salaryComponent?.name || '-',
+      componentCode: line.salaryComponent?.code || line.salaryComponentId || '-',
+      componentType: line.componentType,
+      calculationType: line.calculationType,
+      value: line.value,
+      calculatedAmount: line.calculatedAmount,
+      isEarning: String(line.componentType).toLowerCase() === 'earning',
+      isDeduction: String(line.componentType).toLowerCase() === 'deduction',
+    }));
+    const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
+    const html = buildPayslipPdfHtml(
+      {
+        payslipNumber,
+        periodLabel: `${formatMonthName(mapped.periodMonth)} ${mapped.periodYear}`,
+        payslipDate: formatPrintedAt(mapped.createdAt || mapped.updatedAt),
+        paymentDate: formatDocumentDate(mapped.paymentDate),
+        currency: mapped.currency || business.currency || 'PKR',
+        status: mapped.status,
+        isApproved: String(mapped.status).toLowerCase() === 'approved',
+        employeeName: mapped.employee?.fullName || mapped.employeeId,
+        employeeCode,
+        basicSalary: mapped.basicSalary,
+        grossSalary: mapped.grossSalary,
+        totalDeductions: mapped.totalDeductions,
+        netSalary: mapped.netSalary,
+        lines,
+        business: {
+          name: business.name,
+          legalName: business.legalName,
+          address: business.address,
+          phone: business.phone,
+          currency: business.currency,
+        },
+      },
+      logoDataUri,
+    );
+    const buffer = await this.pdfRendererService.renderHtmlToPdf({
+      html,
+      enforceSinglePage: false,
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'PAYSLIP_PDF_DOWNLOADED',
+      description: `Payslip PDF downloaded for ${mapped.employee?.fullName ?? mapped.employeeId}`,
+      metadata: { payslipId: id },
+    });
+
+    return {
+      buffer,
+      filename: `Employee Payslip ${safePdfFilenamePart(payslipNumber)}.pdf`,
+    };
+  }
 
   private mapLine(line: PayslipLine) {
     return {

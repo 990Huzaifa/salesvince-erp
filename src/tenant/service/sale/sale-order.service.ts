@@ -40,11 +40,11 @@ import { DeliveryNoteService } from './delivery-note.service';
 import { SaleReturnService } from './sale-return.service';
 import { SaleReturnVoucherService } from '../vouchers/sale-return-voucher.service';
 import {
-  buildSaleOrderPdfHtml,
   PdfLogoService,
   PdfRendererService,
   safePdfFilenamePart,
 } from 'src/common/pdf';
+import { buildSaleInvoicePdfHtml } from './sale-invoice-pdf.template';
 import { Business } from 'src/tenant-db/entities/business.entity';
 
 const ORDER_NUMBER_PREFIX = 'SO';
@@ -1104,8 +1104,16 @@ export class SaleOrderService {
 
     const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
     const mappedOrder = this.mapSaleOrder(order);
-    const html = buildSaleOrderPdfHtml(
-      mappedOrder,
+    const html = buildSaleInvoicePdfHtml(
+      {
+        invoiceNumber: mappedOrder.orderNumber,
+        invoiceDate: mappedOrder.orderDate,
+        customer: mappedOrder.customer,
+        totalDiscountAmount: mappedOrder.discountAmount,
+        totalAmount: mappedOrder.totalAmount,
+        deliveryCost: mappedOrder.deliveryCost,
+        items: mappedOrder.items,
+      },
       {
         name: business.name,
         legalName: business.legalName,
@@ -1114,10 +1122,19 @@ export class SaleOrderService {
         currency: business.currency,
       },
       logoDataUri,
+      false,
+      new Date(),
+      {
+        documentTitle: 'Sale Order',
+        documentNumberLabel: 'Order No.',
+        orderNumber: mappedOrder.orderNumber,
+        watermarkText:
+          String(mappedOrder.orderStatus || '').toUpperCase() || 'DRAFT',
+      },
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,
-      enforceSinglePage: false,
+      enforceSinglePage: true,
     });
 
     await this.activityLogService.recordActivityLog(tenantDb, {
@@ -1697,7 +1714,7 @@ export class SaleOrderService {
 
   private sanitizeSaleOrderImportText(value: unknown): string {
     if (typeof value !== 'string') {
-      return String(value ?? '').trim();
+      return typeof value === 'number' ? value.toString().trim() : '';
     }
     return value.trim();
   }
@@ -2089,7 +2106,13 @@ export class SaleOrderService {
     if (value === null || value === undefined || value === '') {
       return null;
     }
-    const parsed = Number(String(value).replace(/,/g, '').trim());
+    const normalized =
+      typeof value === 'number'
+        ? value
+        : typeof value === 'string'
+          ? value.replace(/,/g, '').trim()
+          : '';
+    const parsed = Number(normalized);
     return Number.isFinite(parsed) ? parsed : null;
   }
 

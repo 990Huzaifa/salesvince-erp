@@ -151,16 +151,18 @@ const baseStyles = `
 const formatAmount = (value: unknown, currency: string): string =>
   `${escapeHtml(currency)} ${escapeHtml(formatPakistaniNumber(value))}`;
 
-const formatPartyLines = (party: {
-  name?: string | null;
-  code?: string | null;
-  address?: string | null;
-  email?: string | null;
-  phone?: string | null;
-  cityName?: string | null;
-  stateName?: string | null;
-  countryName?: string | null;
-} | null): string[] => {
+const formatPartyLines = (
+  party: {
+    name?: string | null;
+    code?: string | null;
+    address?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    cityName?: string | null;
+    stateName?: string | null;
+    countryName?: string | null;
+  } | null,
+): string[] => {
   if (!party) {
     return ['-'];
   }
@@ -180,6 +182,8 @@ const formatPartyLines = (party: {
 
 const wrapDocumentPdfHtml = (options: PdfPageOptions): string => {
   const businessName = options.business.legalName || options.business.name;
+  const businessAddress =
+    options.business.address || 'Shahrah e faisal Karachi';
   const logoHtml = options.logoDataUri
     ? `<img class="logo" src="${options.logoDataUri}" alt="Logo" />`
     : '';
@@ -221,7 +225,7 @@ const wrapDocumentPdfHtml = (options: PdfPageOptions): string => {
       <div>
         ${logoHtml}
         <h1 class="business-name">${escapeHtml(businessName)}</h1>
-        ${options.business.address ? `<div class="muted">${escapeHtml(options.business.address)}</div>` : ''}
+        <div class="muted">${escapeHtml(businessAddress)}</div>
         ${options.business.phone ? `<div class="muted">${escapeHtml(options.business.phone)}</div>` : ''}
       </div>
       <div>
@@ -345,7 +349,10 @@ export const buildSaleOrderPdfHtml = (
 
   const totalsHtml = buildTotalsTable([
     { label: 'Order Total', value: formatAmount(order.orderTotal, currency) },
-    { label: 'Delivery Cost', value: formatAmount(order.deliveryCost, currency) },
+    {
+      label: 'Delivery Cost',
+      value: formatAmount(order.deliveryCost, currency),
+    },
     { label: 'Tax', value: formatAmount(order.taxAmount, currency) },
     { label: 'Discount', value: formatAmount(order.discountAmount, currency) },
     {
@@ -458,7 +465,10 @@ export const buildSaleInvoicePdfHtml = (
 
   const metaRows: Array<{ label: string; value: string }> = [];
   if (invoice.saleOrder?.orderNumber) {
-    metaRows.push({ label: 'Sale Order', value: invoice.saleOrder.orderNumber });
+    metaRows.push({
+      label: 'Sale Order',
+      value: invoice.saleOrder.orderNumber,
+    });
   }
   if (invoice.deliveryNote?.deliveryNoteNumber) {
     metaRows.push({
@@ -468,8 +478,14 @@ export const buildSaleInvoicePdfHtml = (
   }
 
   const totalsHtml = buildTotalsTable([
-    { label: 'Delivery Cost', value: formatAmount(invoice.deliveryCost, currency) },
-    { label: 'Total Tax', value: formatAmount(invoice.totalTaxAmount, currency) },
+    {
+      label: 'Delivery Cost',
+      value: formatAmount(invoice.deliveryCost, currency),
+    },
+    {
+      label: 'Total Tax',
+      value: formatAmount(invoice.totalTaxAmount, currency),
+    },
     {
       label: 'Total Discount',
       value: formatAmount(invoice.totalDiscountAmount, currency),
@@ -593,7 +609,10 @@ export const buildPurchaseInvoicePdfHtml = (
   }
 
   const totalsHtml = buildTotalsTable([
-    { label: 'Total Tax', value: formatAmount(invoice.totalTaxAmount, currency) },
+    {
+      label: 'Total Tax',
+      value: formatAmount(invoice.totalTaxAmount, currency),
+    },
     {
       label: 'Total Discount',
       value: formatAmount(invoice.totalDiscountAmount, currency),

@@ -24,11 +24,11 @@ import {
 } from '../list-analytics.service';
 import { MasterGeoHelperService } from '../master-geo-helper.service';
 import {
-  buildSaleInvoicePdfHtml,
   PdfLogoService,
   PdfRendererService,
   safePdfFilenamePart,
 } from 'src/common/pdf';
+import { buildSaleInvoicePdfHtml } from './sale-invoice-pdf.template';
 import { Business } from 'src/tenant-db/entities/business.entity';
 
 const INVOICE_NUMBER_PREFIX = 'SI';
@@ -368,7 +368,7 @@ export class SaleInvoiceService {
     manager: EntityManager,
     deliveryNote: DeliveryNote,
   ): Promise<SaleInvoice | null> {
-    if (String(deliveryNote.status) !== DeliveryNoteStatus.APPROVED) {
+    if (deliveryNote.status !== DeliveryNoteStatus.APPROVED) {
       return null;
     }
 
@@ -571,6 +571,7 @@ export class SaleInvoiceService {
     businessId: string | undefined,
     invoiceId: string,
     actorUserId: string,
+    showBalanceDetails = true,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const invoice = await tenantDb
@@ -623,10 +624,11 @@ export class SaleInvoiceService {
         currency: business.currency,
       },
       logoDataUri,
+      showBalanceDetails,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,
-      enforceSinglePage: false,
+      enforceSinglePage: true,
     });
 
     await this.activityLogService.recordActivityLog(tenantDb, {

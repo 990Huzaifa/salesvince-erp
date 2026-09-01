@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, In, IsNull } from 'typeorm';
 import { ChartOfAccount } from 'src/tenant-db/entities/chart-of-account.entity';
+import { Business } from 'src/tenant-db/entities/business.entity';
 import {
   AccountTransactionReferenceType,
   Transaction,
@@ -18,6 +19,12 @@ import {
   roundAmount,
   startOfDay,
 } from './report-query.helper';
+import {
+  PdfLogoService,
+  PdfRendererService,
+  safePdfFilenamePart,
+} from 'src/common/pdf';
+import { buildGeneralLedgerPdfHtml } from './general-ledger-pdf.template';
 
 type PeriodMovementRow = {
   chartOfAccountId: string;
@@ -32,7 +39,75 @@ type BalanceAsOfRow = {
 
 @Injectable()
 export class ReportLedgerService {
-  constructor(private readonly activityLogService: ActivityLogService) {}
+  constructor(
+    private readonly activityLogService: ActivityLogService,
+    private readonly pdfRendererService: PdfRendererService,
+    private readonly pdfLogoService: PdfLogoService,
+  ) {}
+
+  async generateGeneralLedgerPdf(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    accountId: string,
+    actorUserId: string,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const scopedBusinessId = assertBusinessId(businessId);
+    const [ledger, business] = await Promise.all([
+      this.getGeneralLedger(
+        tenantDb,
+        scopedBusinessId,
+        { chartOfAccountId: accountId, startDate, endDate, page: 1, limit: 100 },
+        actorUserId,
+      ),
+      tenantDb.getRepository(Business).findOne({
+        where: { id: scopedBusinessId },
+      }),
+    ]);
+
+    if (!business) {
+      throw new NotFoundException('Business not found');
+    }
+
+    const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
+    const html = buildGeneralLedgerPdfHtml(
+      {
+        accountId: ledger.account.code,
+        vendor: ledger.account.name,
+        entries: ledger.entries,
+        totalDebit: ledger.totals.periodDebit,
+        totalCredit: ledger.totals.periodCredit,
+        closingBalance: ledger.closingBalance,
+        business: {
+          name: business.name,
+          legalName: business.legalName,
+          address: business.address,
+          phone: business.phone,
+          currency: business.currency,
+        },
+        preparedBy: 'Admin',
+      },
+      logoDataUri,
+    );
+    const buffer = await this.pdfRendererService.renderHtmlToPdf({
+      html,
+      enforceSinglePage: false,
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'GENERAL_LEDGER_PDF_DOWNLOADED',
+      description: `General ledger PDF downloaded for ${ledger.account.code}`,
+      metadata: { chartOfAccountId: accountId },
+    });
+
+    return {
+      buffer,
+      filename: `General Ledger ${safePdfFilenamePart(ledger.account.code)}.pdf`,
+    };
+  }
 
   async getGeneralLedger(
     tenantDb: DataSource,

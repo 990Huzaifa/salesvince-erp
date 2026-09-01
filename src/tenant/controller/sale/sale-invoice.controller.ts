@@ -1,5 +1,6 @@
 import {
   Controller,
+  BadRequestException,
   Get,
   Param,
   ParseUUIDPipe,
@@ -14,6 +15,7 @@ import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
 import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
 import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
+import { parseBooleanQuery } from 'src/common/pdf';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
@@ -65,13 +67,19 @@ export class SaleInvoiceController {
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: Request,
     @Res() res: Response,
+    @Query('showBalanceDetails') showBalanceDetailsQuery?: string,
   ) {
+    const showBalanceDetails = parseBooleanQuery(showBalanceDetailsQuery);
+    if (showBalanceDetails === null) {
+      throw new BadRequestException('showBalanceDetails must be true or false');
+    }
     const user = req.user as TenantRequestUser;
     const { buffer, filename } = await this.saleInvoiceService.generatePdf(
       tenantDb,
       user.businessId,
       id,
       user.userId,
+      showBalanceDetails,
     );
     sendPdf(res, { buffer, filename });
   }

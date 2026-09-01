@@ -5,9 +5,10 @@ import {
   ParseEnumPipe,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
 import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
@@ -53,6 +54,7 @@ import { ReportCustomerLowPaymentQueryDto } from '../dto/report/report-customer-
 import { ReportPaginationQueryDto } from '../dto/report/report-pagination.query.dto';
 import { ReportInvoiceSummaryQueryDto } from '../dto/report/report-invoice-summary.query.dto';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
+import { sendPdf } from 'src/common/pdf';
 import { ReportProfitQueryDto } from '../dto/report/report-profit.query.dto';
 import { ReportReceivableQueryDto } from '../dto/report/report-receivable.query.dto';
 import { ReportPayableQueryDto } from '../dto/report/report-payable.query.dto';
@@ -368,6 +370,29 @@ export class ReportController {
       },
       user.userId,
     );
+  }
+
+  @Get('ledger/general/:accountId/pdf')
+  @RequirePermissions('VIEW_GENERAL_LEDGER_REPORT')
+  async downloadGeneralLedgerPdf(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('accountId') accountId: string,
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    const user = req.user as TenantRequestUser;
+    const { buffer, filename } =
+      await this.reportLedgerService.generateGeneralLedgerPdf(
+        tenantDb,
+        user.businessId,
+        accountId,
+        user.userId,
+        startDate,
+        endDate,
+      );
+    sendPdf(res, { buffer, filename });
   }
 
   @Get('ledger/trial-balance')
