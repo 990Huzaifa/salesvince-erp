@@ -46,8 +46,17 @@ import {
 } from 'src/common/pdf';
 import { buildSaleInvoicePdfHtml } from './sale-invoice-pdf.template';
 import { Business } from 'src/tenant-db/entities/business.entity';
+import {
+  AccountTransactionReferenceType,
+  Transaction,
+} from 'src/tenant-db/entities/transaction.entity';
 
 const ORDER_NUMBER_PREFIX = 'SO';
+
+type CustomerBalanceSnapshot = {
+  previousBalance: number;
+  currentBalance: number;
+};
 
 type ResolvedSaleOrderLine = {
   warehouseId: string;
@@ -527,7 +536,98 @@ export class SaleOrderService {
     };
   }
 
-  private mapSaleOrder(order: SaleOrder) {
+  private async getCustomerBalanceSnapshot(
+    tenantDb: DataSource,
+    businessId: string,
+    order: SaleOrder,
+  ): Promise<CustomerBalanceSnapshot | null> {
+    if (!order.customer?.receivableAccountId) {
+      return null;
+    }
+
+    const deliveryNote = await tenantDb.getRepository(DeliveryNote).findOne({
+      where: {
+        saleOrderId: order.id,
+        businessId,
+        status: DeliveryNoteStatus.APPROVED,
+      },
+      order: {
+        deliveryNoteDate: 'DESC',
+        createdAt: 'DESC',
+        id: 'DESC',
+      },
+      select: ['id'],
+    });
+
+    if (deliveryNote) {
+      const transaction = await tenantDb.getRepository(Transaction).findOne({
+        where: {
+          businessId,
+          chartOfAccountId: order.customer.receivableAccountId,
+          referenceType: AccountTransactionReferenceType.DELIVERY_NOTE,
+          referenceId: deliveryNote.id,
+        },
+        order: {
+          transactionDate: 'DESC',
+          createdAt: 'DESC',
+          id: 'DESC',
+        },
+        select: [
+          'id',
+          'debitAmount',
+          'creditAmount',
+          'currentBalance',
+          'transactionDate',
+          'createdAt',
+        ],
+      });
+
+      if (transaction) {
+        const debitAmount = Number(transaction.debitAmount ?? 0);
+        const creditAmount = Number(transaction.creditAmount ?? 0);
+        const currentBalance = this.roundAmount(
+          Number(transaction.currentBalance ?? 0),
+        );
+
+        return {
+          previousBalance: this.roundAmount(
+            currentBalance - debitAmount + creditAmount,
+          ),
+          currentBalance,
+        };
+      }
+    }
+
+    const lastTransaction = await tenantDb.getRepository(Transaction).findOne({
+      where: {
+        businessId,
+        chartOfAccountId: order.customer.receivableAccountId,
+      },
+      order: {
+        transactionDate: 'DESC',
+        createdAt: 'DESC',
+        id: 'DESC',
+      },
+      select: ['currentBalance'],
+    });
+
+    const previousBalance = this.roundAmount(
+      Number(lastTransaction?.currentBalance ?? 0),
+    );
+    const orderTotal = this.roundAmount(Number(order.totalAmount ?? 0));
+
+    return {
+      previousBalance,
+      currentBalance: this.roundAmount(previousBalance + orderTotal),
+    };
+  }
+
+  private mapSaleOrder(
+    order: SaleOrder,
+    options?: {
+      customerBalance?: CustomerBalanceSnapshot | null;
+    },
+  ) {
     const items = (order.items ?? []).map((item) => ({
       id: item.id,
       warehouseId: item.warehouseId,
@@ -586,8 +686,12 @@ export class SaleOrderService {
             code: order.customer.code,
             name: order.customer.name,
             type: order.customer.type,
+            previousBalance:
+              options?.customerBalance?.previousBalance ?? null,
+            currentBalance: options?.customerBalance?.currentBalance ?? null,
           }
         : null,
+      customerBalance: options?.customerBalance ?? null,
       orderStatus: order.orderStatus,
       orderTotal: order.orderTotal,
       deliveryCost: Number(order.deliveryCost ?? 0),
@@ -1071,6 +1175,12 @@ export class SaleOrderService {
       orderId,
     );
 
+    const customerBalance = await this.getCustomerBalanceSnapshot(
+      tenantDb,
+      scopedBusinessId,
+      order,
+    );
+
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
       businessId: scopedBusinessId,
@@ -1079,7 +1189,11 @@ export class SaleOrderService {
       metadata: { saleOrderId: order.id },
     });
 
-    return { data: this.mapSaleOrder(order) };
+    return {
+      data: this.mapSaleOrder(order, {
+        customerBalance,
+      }),
+    };
   }
 
   async generatePdf(
