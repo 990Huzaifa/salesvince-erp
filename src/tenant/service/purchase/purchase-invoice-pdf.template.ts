@@ -237,7 +237,7 @@ export const buildPurchaseInvoicePdfHtml = (
     </table>
 
     <div class="quantity-wrap">
-      <table class="quantity-table"><tbody><tr>
+      <table class="quantity-table"><colgroup><col style="width:75%" /><col style="width:25%" /></colgroup><tbody><tr>
         <td>Total Quantity</td><td class="number">${escapeHtml(formatPakistaniNumber(overallQuantity, 0))}</td>
       </tr></tbody></table>
     </div>
@@ -252,7 +252,7 @@ export const buildPurchaseInvoicePdfHtml = (
       </div>`
           : ''
       }
-      <table class="totals-table"><tbody>
+      <table class="totals-table"><colgroup><col style="width:56%" /><col style="width:44%" /></colgroup><tbody>
         <tr><td class="total-label">Total</td><td class="number total-value">${money(subTotal)}</td></tr>
         <tr><td class="muted-cell">Less Discount</td><td class="number muted-cell">${money(invoice.totalDiscountAmount)}</td></tr>
         <tr><td class="muted-cell"><strong>Total Amount</strong></td><td class="number muted-cell"><strong>${money(invoice.totalAmount)}</strong></td></tr>
