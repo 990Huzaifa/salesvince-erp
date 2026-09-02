@@ -36,7 +36,7 @@ import { SaleOrderReverseService } from '../../service/sale/sale-order-reverse.s
 import { CreateSaleOrderDto } from '../../dto/sale-order/create-sale-order.dto';
 import { UpdateSaleOrderDto } from '../../dto/sale-order/update-sale-order.dto';
 import { EditApprovedSaleOrderDto } from '../../dto/sale-order/edit-approved-sale-order.dto';
-import { sendPdf } from 'src/common/pdf';
+import { sendPdf, parseBooleanQuery } from 'src/common/pdf';
 
 @Controller('tenant/sale-orders')
 @UseGuards(
@@ -211,13 +211,19 @@ export class SaleOrderController {
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: Request,
     @Res() res: Response,
+    @Query('showBalanceDetails') showBalanceDetailsQuery?: string,
   ) {
+    const showBalanceDetails = parseBooleanQuery(showBalanceDetailsQuery);
+    if (showBalanceDetails === null) {
+      throw new BadRequestException('showBalanceDetails must be true or false');
+    }
     const user = req.user as TenantRequestUser;
     const { buffer, filename } = await this.saleOrderService.generatePdf(
       tenantDb,
       user.businessId,
       id,
       user.userId,
+      showBalanceDetails,
     );
     sendPdf(res, { buffer, filename });
   }

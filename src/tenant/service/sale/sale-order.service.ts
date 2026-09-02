@@ -1201,6 +1201,7 @@ export class SaleOrderService {
     businessId: string | undefined,
     orderId: string,
     actorUserId: string,
+    showBalanceDetails = true,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const order = await this.findOrderForBusiness(
@@ -1208,21 +1209,25 @@ export class SaleOrderService {
       scopedBusinessId,
       orderId,
     );
-    const business = await tenantDb.getRepository(Business).findOne({
-      where: { id: scopedBusinessId },
-    });
+    const [customerBalance, business] = await Promise.all([
+      this.getCustomerBalanceSnapshot(tenantDb, scopedBusinessId, order),
+      tenantDb.getRepository(Business).findOne({
+        where: { id: scopedBusinessId },
+      }),
+    ]);
 
     if (!business) {
       throw new NotFoundException('Business not found');
     }
 
     const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
-    const mappedOrder = this.mapSaleOrder(order);
+    const mappedOrder = this.mapSaleOrder(order, { customerBalance });
     const html = buildSaleInvoicePdfHtml(
       {
         invoiceNumber: mappedOrder.orderNumber,
         invoiceDate: mappedOrder.orderDate,
         customer: mappedOrder.customer,
+        customerBalance: mappedOrder.customerBalance,
         totalDiscountAmount: mappedOrder.discountAmount,
         totalAmount: mappedOrder.totalAmount,
         deliveryCost: mappedOrder.deliveryCost,
@@ -1236,7 +1241,7 @@ export class SaleOrderService {
         currency: business.currency,
       },
       logoDataUri,
-      false,
+      showBalanceDetails,
       new Date(),
       {
         documentTitle: 'Sale Order',
