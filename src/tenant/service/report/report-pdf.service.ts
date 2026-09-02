@@ -45,8 +45,8 @@ export class ReportPdfService {
       { key: 'currentBalance', label: 'Current Balance', width: '16%', align: 'right', format: 'amount' },
     ];
     return this.render(db, businessId, actorUserId, {
-      layout: 'balance', title: 'Receivable Report', subtitle: 'Customer outstanding balance statement',
-      filters: [{ label: 'Report', value: 'Receivable' }, { label: 'Rows', value: data.meta.total }],
+      layout: 'balance', title: 'Customer Balance Report', subtitle: 'Customer outstanding balance statement',
+      filters: [{ label: 'Report', value: 'Customer Balance' }, { label: 'Rows', value: data.meta.total }],
       summary: [{ label: 'Total Customers', value: data.meta.total }, { label: 'Current Receivable', value: money(data.totals.currentBalance) }],
       sections: [{ columns, rows: asRows(rows), emptyMessage: 'No customer balances found' }], minimumRows: 12,
     }, 'Customer-Balance-Report');
@@ -64,8 +64,8 @@ export class ReportPdfService {
       { key: 'currentBalance', label: 'Current Balance', width: '12%', align: 'right', format: 'amount' },
     ];
     return this.render(db, businessId, actorUserId, {
-      layout: 'balance', title: 'Payable Report', subtitle: 'Vendor outstanding balance statement',
-      filters: [{ label: 'Report', value: 'Payable' }, { label: 'Rows', value: data.meta.total }],
+      layout: 'balance', title: 'Vendor Balance Report', subtitle: 'Vendor outstanding balance statement',
+      filters: [{ label: 'Report', value: 'Vendor Balance' }, { label: 'Rows', value: data.meta.total }],
       summary: [{ label: 'Total Vendors', value: data.meta.total }, { label: 'Current Payable', value: money(data.totals.currentBalance) }],
       sections: [{ columns, rows: asRows(data.data), emptyMessage: 'No vendor balances found' }], minimumRows: 12,
     }, 'Vendor-Balance-Report');
