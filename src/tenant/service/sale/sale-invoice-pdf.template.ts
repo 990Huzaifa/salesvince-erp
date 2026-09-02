@@ -140,7 +140,7 @@ export const buildSaleInvoicePdfHtml = (
     * { box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     html, body { margin:0; padding:0; background:#fff; font-family:Arial,sans-serif; color:#000; }
     body { width:190mm; }
-    .pdf-content { width:190mm; min-height:0; padding:10mm; position:relative; } .watermark { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-32deg); color:rgba(45,95,62,.11); font-size:82px; font-weight:800; letter-spacing:8px; line-height:1; white-space:nowrap; pointer-events:none; user-select:none; z-index:0; }
+    .pdf-content { width:190mm; min-height:0; margin:0 auto; padding:0; position:relative; } .watermark { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%) rotate(-32deg); color:rgba(45,95,62,.11); font-size:82px; font-weight:800; letter-spacing:8px; line-height:1; white-space:nowrap; pointer-events:none; user-select:none; z-index:0; }
     .document-header { border-bottom:3px solid var(--primary); padding-bottom:10px; margin-bottom:14px; }
     .document-header-main { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; }
     .document-heading { flex:1; } h1 { margin:0; color:var(--foreground); font-size:68px; line-height:.9; font-weight:300; }

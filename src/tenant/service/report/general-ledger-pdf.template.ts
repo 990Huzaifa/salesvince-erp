@@ -86,7 +86,7 @@ export const buildGeneralLedgerPdfHtml = (
     :root { --primary:#9786ee; --primary-text:#fff; --foreground:#17182a; --muted:#667085; --border:#e5e8f0; --row-a:rgba(151,134,238,.06); --row-b:rgba(151,134,238,.03); --surface-muted:#f7f8fc; }
     @page { size:A4 portrait; margin:10mm; } * { box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     html,body { margin:0; padding:0; background:#fff; font-family:Arial,sans-serif; color:#000; } body { width:190mm; }
-    .pdf-content { width:190mm; padding:10mm; } .document-header { border-bottom:3px solid var(--primary); padding-bottom:10px; margin-bottom:16px; }
+    .pdf-content { width:190mm; margin:0 auto; padding:0; } .document-header { border-bottom:3px solid var(--primary); padding-bottom:10px; margin-bottom:16px; }
     .document-header-main { display:flex; justify-content:space-between; gap:16px; } h1 { margin:0; font-size:48px; line-height:.9; font-weight:300; color:var(--foreground); }
     .document-meta { margin-top:10px; font-size:12px; line-height:1.5; } .company { text-align:center; min-width:130px; }
     .logo-box { width:96px; height:96px; margin:0 auto; background:var(--primary); display:flex; align-items:center; justify-content:center; overflow:hidden; }

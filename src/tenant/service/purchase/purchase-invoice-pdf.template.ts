@@ -142,7 +142,7 @@ export const buildPurchaseInvoicePdfHtml = (
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     html, body { margin: 0; padding: 0; background: #ffffff; font-family: Arial, sans-serif; color: #000000; }
     body { width: 190mm; }
-    .pdf-content { width: 190mm; min-height: 0; padding: 10mm; position: relative; }
+    .pdf-content { width: 190mm; min-height: 0; margin: 0 auto; padding: 0; position: relative; }
     .document-header { border-bottom: 3px solid var(--primary); padding-bottom: 10px; margin-bottom: 14px; }
     .document-header-main { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
     .document-heading { flex: 1; }

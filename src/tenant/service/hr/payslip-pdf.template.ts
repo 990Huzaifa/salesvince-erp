@@ -62,7 +62,7 @@ export const buildPayslipPdfHtml = (
     :root { --primary:#9786ee; --primary-text:#fff; --foreground:#17182a; --muted:#667085; --border:#e5e8f0; --surface:#fff; --light-bg:#f5f6fb; --success:#16a34a; --destructive:#dc2626; }
     @page { size:A4 portrait; margin:8mm; } * { box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     html,body { margin:0; padding:0; background:var(--light-bg); font-family:Inter,Arial,sans-serif; color:var(--foreground); } body { width:194mm; }
-    .pdf-content { padding:8mm; } .card { background:var(--surface); border-radius:16px; padding:24px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+    .pdf-content { width:194mm; margin:0 auto; padding:0; } .card { background:var(--surface); border-radius:16px; padding:24px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
     .company-header { display:flex; align-items:center; gap:12px; padding-bottom:20px; margin-bottom:24px; border-bottom:1px solid var(--border); }
     .company-header img { width:40px; height:40px; object-fit:contain; border-radius:8px; } .company-header h2 { margin:0; font-size:18px; }
     .title-row { display:flex; justify-content:space-between; gap:24px; margin-bottom:24px; } .title-row h1 { margin:0; font-size:28px; }
