@@ -24,6 +24,7 @@ type PartyLedgerReportOptions = {
   partyId?: string;
   page?: number;
   limit?: number;
+  allRows?: boolean;
 };
 
 type PartyLedgerTotals = {
@@ -214,11 +215,9 @@ export class ReportReceivablePayableService {
       },
     );
 
-    const { items: data, meta } = paginateItems(
-      allData,
-      options.page,
-      options.limit,
-    );
+    const { items: data, meta } = options.allRows
+      ? { items: allData, meta: { total: allData.length, page: 1, limit: allData.length } }
+      : paginateItems(allData, options.page, options.limit);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
