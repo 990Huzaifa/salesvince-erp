@@ -59,6 +59,7 @@ import { ReportProfitQueryDto } from '../dto/report/report-profit.query.dto';
 import { ReportReceivableQueryDto } from '../dto/report/report-receivable.query.dto';
 import { ReportPayableQueryDto } from '../dto/report/report-payable.query.dto';
 import { ReportReceivingQueryDto } from '../dto/report/report-receiving.query.dto';
+import { ReportPdfService } from '../service/report/report-pdf.service';
 
 @Controller('tenant/reports')
 @UseGuards(
@@ -83,7 +84,16 @@ export class ReportController {
     private readonly reportCustomerLowPaymentService: ReportCustomerLowPaymentService,
     private readonly reportReceivablePayableService: ReportReceivablePayableService,
     private readonly reportReceivingService: ReportReceivingService,
+    private readonly reportPdfService: ReportPdfService,
   ) {}
+
+  @Get('cash-bank-balances/pdf')
+  @RequirePermissions('VIEW_CASH_BANK_BALANCE_REPORT')
+  async downloadCashAndBankBalancesPdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response) {
+    const user = req.user as TenantRequestUser;
+    const result = await this.reportPdfService.generateCashBankBalancesPdf(tenantDb, user.businessId, user.userId);
+    sendPdf(res, result);
+  }
 
   @Get('cash-bank-balances')
   @RequirePermissions('VIEW_CASH_BANK_BALANCE_REPORT')
@@ -99,6 +109,14 @@ export class ReportController {
       user.userId,
       { page: query.page ?? 1, limit: query.limit ?? 20 },
     );
+  }
+
+  @Get('customer-balances/pdf')
+  @RequirePermissions('VIEW_CUSTOMER_BALANCE_REPORT')
+  async downloadCustomerBalancesPdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response) {
+    const user = req.user as TenantRequestUser;
+    const result = await this.reportPdfService.generateCustomerBalancesPdf(tenantDb, user.businessId, user.userId);
+    sendPdf(res, result);
   }
 
   @Get('customer-balances')
@@ -142,6 +160,14 @@ export class ReportController {
     );
   }
 
+  @Get('receivables/pdf')
+  @RequirePermissions('VIEW_RECEIVABLE_REPORT')
+  async downloadReceivablePdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response, @Query() query: ReportReceivableQueryDto) {
+    const user = req.user as TenantRequestUser;
+    const result = await this.reportPdfService.generatePartyLedgerPdf(tenantDb, user.businessId, user.userId, 'receivable', query);
+    sendPdf(res, result);
+  }
+
   @Get('receivables')
   @RequirePermissions('VIEW_RECEIVABLE_REPORT')
   getReceivableReport(
@@ -162,6 +188,14 @@ export class ReportController {
       },
       user.userId,
     );
+  }
+
+  @Get('payables/pdf')
+  @RequirePermissions('VIEW_PAYABLE_REPORT')
+  async downloadPayablePdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response, @Query() query: ReportPayableQueryDto) {
+    const user = req.user as TenantRequestUser;
+    const result = await this.reportPdfService.generatePartyLedgerPdf(tenantDb, user.businessId, user.userId, 'payable', query);
+    sendPdf(res, result);
   }
 
   @Get('payables')
@@ -208,6 +242,14 @@ export class ReportController {
     );
   }
 
+  @Get('vendor-balances/pdf')
+  @RequirePermissions('VIEW_VENDOR_BALANCE_REPORT')
+  async downloadVendorBalancesPdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response) {
+    const user = req.user as TenantRequestUser;
+    const result = await this.reportPdfService.generateVendorBalancesPdf(tenantDb, user.businessId, user.userId);
+    sendPdf(res, result);
+  }
+
   @Get('vendor-balances')
   @RequirePermissions('VIEW_VENDOR_BALANCE_REPORT')
   getVendorBalances(
@@ -222,6 +264,14 @@ export class ReportController {
       user.userId,
       { page: query.page ?? 1, limit: query.limit ?? 20 },
     );
+  }
+
+  @Get('employee-balances/pdf')
+  @RequirePermissions('VIEW_EMPLOYEE_BALANCE_REPORT')
+  async downloadEmployeeBalancesPdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response) {
+    const user = req.user as TenantRequestUser;
+    const result = await this.reportPdfService.generateEmployeeBalancesPdf(tenantDb, user.businessId, user.userId);
+    sendPdf(res, result);
   }
 
   @Get('employee-balances')
@@ -304,6 +354,14 @@ export class ReportController {
     );
   }
 
+  @Get('sales-summary/pdf')
+  @RequirePermissions('VIEW_SALES_SUMMARY_REPORT')
+  async downloadSalesSummaryPdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response, @Query() query: ReportInvoiceSummaryQueryDto) {
+    const user = req.user as TenantRequestUser;
+    const result = await this.reportPdfService.generateSummaryPdf(tenantDb, user.businessId, user.userId, 'sales', query);
+    sendPdf(res, result);
+  }
+
   @Get('sales-summary')
   @RequirePermissions('VIEW_SALES_SUMMARY_REPORT')
   getSalesSummaryReport(
@@ -325,6 +383,14 @@ export class ReportController {
       },
       user.userId,
     );
+  }
+
+  @Get('purchase-summary/pdf')
+  @RequirePermissions('VIEW_PURCHASE_SUMMARY_REPORT')
+  async downloadPurchaseSummaryPdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response, @Query() query: ReportInvoiceSummaryQueryDto) {
+    const user = req.user as TenantRequestUser;
+    const result = await this.reportPdfService.generateSummaryPdf(tenantDb, user.businessId, user.userId, 'purchase', query);
+    sendPdf(res, result);
   }
 
   @Get('purchase-summary')
