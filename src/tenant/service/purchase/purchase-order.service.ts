@@ -346,12 +346,12 @@ export class PurchaseOrderService {
     const orderTotal = this.roundAmount(
       lines.reduce((sum, line) => sum + line.totalAmount, 0),
     );
-    const deliveryCost = this.roundAmount(options.deliveryCost ?? 0);
-    const discountPercentage = this.roundAmount(options.discountPercentage ?? 0);
+    const deliveryCost = this.roundAmount(Number(options.deliveryCost ?? 0));
+    const discountPercentage = Number(options.discountPercentage ?? 0);
     const discountAmount =
-      options.discountAmount != null
-        ? this.roundAmount(options.discountAmount)
-        : this.roundAmount((orderTotal * discountPercentage) / 100);
+      options.discountPercentage != null
+        ? this.roundAmount((orderTotal * Number(options.discountPercentage)) / 100)
+        : this.roundAmount(Number(options.discountAmount ?? 0));
     const taxableBase = this.roundAmount(orderTotal - discountAmount);
     const taxPercentage = this.roundAmount(options.taxPercentage ?? 0);
     const taxAmount =
