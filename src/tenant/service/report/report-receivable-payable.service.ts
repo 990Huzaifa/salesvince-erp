@@ -187,14 +187,11 @@ export class ReportReceivablePayableService {
         id: party.id,
         name: party.name,
         accId: account?.id ?? null,
-        accountCode: account?.code ?? null,
         code: party.code,
-        address: party.address,
         openingBalance,
         periodDebit: movement.debit,
         periodCredit: movement.credit,
         closingBalance,
-        partyType: party.type,
         balanceType: mode,
       };
     });
@@ -215,9 +212,15 @@ export class ReportReceivablePayableService {
       },
     );
 
-    const { items: data, meta } = options.allRows
+    const { items: pagedData, meta } = options.allRows
       ? { items: allData, meta: { total: allData.length, page: 1, limit: allData.length } }
       : paginateItems(allData, options.page, options.limit);
+    const data = pagedData.map((row, index) => ({
+      ...row,
+      serial: (meta.page != null && meta.limit != null)
+        ? (meta.page - 1) * meta.limit + index + 1
+        : index + 1,
+    }));
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,

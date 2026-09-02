@@ -55,13 +55,11 @@ export class ReportPdfService {
   async generateVendorBalancesPdf(db: DataSource, businessId: string, actorUserId: string) {
     const data = await this.reportService.getVendorBalances(db, businessId, actorUserId);
     const columns: ReportPdfColumn[] = [
+      { key: 'serial', label: 'S No.', width: '8%', align: 'center' },
       { key: 'code', label: 'Code', width: '10%', align: 'center' },
-      { key: 'name', label: 'Name', width: '18%' },
-      { key: 'accountCode', label: 'Account Code', width: '13%', align: 'center' },
-      { key: 'address', label: 'Address', width: '23%' },
-      { key: 'partyType', label: 'Party Type', width: '12%', align: 'center' },
-      { key: 'openingBalance', label: 'Opening Balance', width: '12%', align: 'right', format: 'amount' },
-      { key: 'currentBalance', label: 'Current Balance', width: '12%', align: 'right', format: 'amount' },
+      { key: 'name', label: 'Name', width: '42%' },
+      { key: 'openingBalance', label: 'Opening Balance', width: '14%', align: 'right', format: 'amount' },
+      { key: 'currentBalance', label: 'Current Balance', width: '16%', align: 'right', format: 'amount' },
     ];
     return this.render(db, businessId, actorUserId, {
       layout: 'balance', title: 'Vendor Balance Report', subtitle: 'Vendor outstanding balance statement',
@@ -106,7 +104,7 @@ export class ReportPdfService {
     const title = variant === 'receivable' ? 'Receivable Report' : 'Payable Report';
     const partyName = partyId ? data.data.find((row) => row.id === partyId)?.name : undefined;
     const filters = [{ label: 'Date Filter', value: dateFilterLabel(query.startDate, query.endDate) }, { label: 'Period', value: formatReportDateRange(data.period.startDate, data.period.endDate) }, { label: variant === 'receivable' ? 'Customer' : 'Vendor', value: partyName }];
-    const columns: ReportPdfColumn[] = [{ key: 'code', label: 'Code', width: '9%' }, { key: 'name', label: 'Name', width: '16%' }, { key: 'openingBalance', label: 'Opening', width: '11%', align: 'right', format: 'amount' }, { key: 'periodDebit', label: 'Debit', width: '10%', align: 'right', format: 'amount' }, { key: 'periodCredit', label: 'Credit', width: '10%', align: 'right', format: 'amount' }, { key: 'closingBalance', label: 'Closing', width: '11%', align: 'right', format: 'amount' }];
+    const columns: ReportPdfColumn[] = [{ key: 'serial', label: 'S No.', width: '8%', align: 'center' }, { key: 'code', label: 'Code', width: '10%' }, { key: 'name', label: 'Name', width: '26%' }, { key: 'openingBalance', label: 'Opening', width: '14%', align: 'right', format: 'amount' }, { key: 'periodDebit', label: 'Debit', width: '14%', align: 'right', format: 'amount' }, { key: 'periodCredit', label: 'Credit', width: '14%', align: 'right', format: 'amount' }, { key: 'closingBalance', label: 'Closing', width: '14%', align: 'right', format: 'amount' }];
     return this.render(db, businessId, actorUserId, { layout: 'party-ledger', title, subtitle: `${variant === 'receivable' ? 'Customer' : 'Vendor'} ledger balance statement`, filters, summary: [{ label: 'Opening Balance', value: money(data.totals.openingBalance) }, { label: 'Period Debit', value: money(data.totals.periodDebit) }, { label: 'Period Credit', value: money(data.totals.periodCredit) }, { label: 'Closing Balance', value: money(data.totals.closingBalance) }], sections: [{ title: 'Party Ledger Details', columns, rows: asRows(data.data), emptyMessage: 'No party ledger records found.' }], footerRight: `Party Count: ${data.meta.total}` }, `${variant === 'receivable' ? 'Receivable' : 'Payable'}-Report`);
   }
 
