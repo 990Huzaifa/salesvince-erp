@@ -163,7 +163,7 @@ export const buildPurchaseInvoicePdfHtml = (
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     .items-table { font-size: 11px; }
     .items-table thead { background: var(--primary); color: var(--primary-text); }
-    .items-table th { padding: 8px 6px; border: 1px solid var(--border); font-weight: 700; }
+    .items-table th { padding: 8px 6px; border: 1px solid var(--primary); font-weight: 700; }
     .items-table td { height: 24px; padding: 5.7px 6px; border: 1px solid var(--border); line-height: 1.15; vertical-align: middle; }
     .items-table td:nth-child(2) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .row-a { background: var(--row-a); }
@@ -171,17 +171,17 @@ export const buildPurchaseInvoicePdfHtml = (
     .center { text-align: center; }
     .number { text-align: right; font-variant-numeric: tabular-nums; }
     .quantity-wrap { display: flex; justify-content: flex-start; margin-top: 10px; }
-    .quantity-table { max-width: 260px; font-size: 12px; }
+    .quantity-table { width: 260px; max-width: 260px; font-size: 12px; }
     .quantity-table td { padding: 8px 10px; border: 1px solid var(--border); background: var(--surface-muted); font-weight: 700; }
     .summary { display: flex; justify-content: ${showBalanceDetails ? 'space-between' : 'flex-end'}; align-items: flex-end; gap: 16px; margin-top: 22px; }
     .balances { max-width: 340px; flex: 1 1 0; font-size: 12px; }
     .balance-row { display: grid; grid-template-columns: 1fr auto; padding: 4px 0; font-weight: 700; }
-    .totals-table { max-width: 350px; font-size: 12px; }
+    .totals-table { width: 350px; max-width: 350px; font-size: 12px; }
     .totals-table td { padding: 6px 10px; border: 2px solid var(--border); }
     .totals-table .total-label { border-color: var(--primary); background: var(--primary); color: var(--primary-text); font-weight: 700; }
     .totals-table .total-value { border-color: var(--primary); }
     .totals-table .muted-cell { background: var(--surface-muted); }
-    .prepared-by { margin-top: 20px; text-align: right; font-size: 11px; font-weight: 700; }
+    .prepared-by { margin-top: 36px; text-align: right; font-size: 11px; font-weight: 700; }
   </style>
 </head>
 <body>
@@ -227,8 +227,8 @@ export const buildPurchaseInvoicePdfHtml = (
 
     <table class="items-table">
       <colgroup>
-        <col style="width: 9%" /><col style="width: 42%" /><col style="width: 7%" />
-        <col style="width: 9%" /><col style="width: 10.5%" /><col style="width: 11%" /><col style="width: 11.5%" />
+        <col style="width: 8%" /><col style="width: 46%" /><col style="width: 6%" />
+        <col style="width: 8%" /><col style="width: 10%" /><col style="width: 11%" /><col style="width: 11%" />
       </colgroup>
       <thead><tr>
         <th>No.</th><th>Product</th><th>Unit</th><th>Qty</th><th>Unit Price</th><th>Discount<br />Amount</th><th>Amount</th>

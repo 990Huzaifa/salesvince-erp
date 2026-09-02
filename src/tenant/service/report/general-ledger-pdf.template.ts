@@ -93,7 +93,7 @@ export const buildGeneralLedgerPdfHtml = (
     .logo-box img { width:100%; height:100%; object-fit:contain; background:#fff; } .logo-fallback { color:var(--primary-text); font-size:44px; font-weight:700; }
     .company-name { margin-top:4px; font-size:13px; font-weight:500; } .company-line { margin-top:2px; font-size:11px; color:var(--muted); }
     table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:11px; } thead { background:var(--primary); color:var(--primary-text); }
-    th,td { padding:6px; border:1px solid var(--border); } .row-a { background:var(--row-a); } .row-b { background:var(--row-b); }
+    th { padding:8px 6px; border:1px solid var(--border); } td { padding:6px; border:1px solid var(--border); } .row-a { background:var(--row-a); } .row-b { background:var(--row-b); }
     .number { text-align:right; font-variant-numeric:tabular-nums; } .total-row { background:var(--primary); color:var(--primary-text); font-weight:700; }
     .closing-row { background:var(--surface-muted); font-weight:700; } .prepared-by { margin-top:36px; text-align:right; font-size:11px; font-weight:700; }
   </style></head><body><main class="pdf-content">
