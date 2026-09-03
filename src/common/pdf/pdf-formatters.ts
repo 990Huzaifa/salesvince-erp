@@ -5,6 +5,8 @@ const asFiniteNumber = (value: unknown, fallback = 0): number => {
 
 export const toFiniteNumber = asFiniteNumber;
 
+const BUSINESS_TIME_ZONE = 'Asia/Karachi';
+
 export const formatPakistaniNumber = (
   value: unknown,
   decimals = 2,
@@ -33,10 +35,10 @@ export const formatDocumentDate = (value?: string | Date | null): string => {
     return '';
   }
 
-  // Document dates are calendar values from the API. Preserve their date
-  // portion instead of letting a runtime timezone reinterpret the timestamp.
+  // Preserve genuine date-only values. Timestamp values represent instants
+  // and are rendered in the Pakistan business timezone.
   if (typeof value === 'string') {
-    const apiDate = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T|\s)/);
+    const apiDate = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (apiDate) {
       return `${apiDate[2]}/${apiDate[3]}/${apiDate[1]}`;
     }
@@ -46,14 +48,17 @@ export const formatDocumentDate = (value?: string | Date | null): string => {
   if (Number.isNaN(date.getTime())) {
     return typeof value === 'string' ? value : '';
   }
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  return `${month}/${day}/${date.getUTCFullYear()}`;
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: BUSINESS_TIME_ZONE,
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
+  }).format(date);
 };
 
 export const formatPrintedAt = (value: Date = new Date()): string =>
   new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Karachi',
+    timeZone: BUSINESS_TIME_ZONE,
     month: '2-digit',
     day: '2-digit',
     year: 'numeric',
