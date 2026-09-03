@@ -628,7 +628,7 @@ export class SaleInvoiceService {
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,
-      enforceSinglePage: true,
+      enforceSinglePage: false,
     });
 
     await this.activityLogService.recordActivityLog(tenantDb, {

@@ -596,7 +596,9 @@ export class PurchaseInvoiceService {
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,
-      enforceSinglePage: true,
+      // Invoice content can legitimately span pages when the line items or
+      // party details are long. Let Chromium paginate it like frontend print.
+      enforceSinglePage: false,
     });
 
     await this.activityLogService.recordActivityLog(tenantDb, {
