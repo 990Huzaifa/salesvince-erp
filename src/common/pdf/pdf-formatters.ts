@@ -32,6 +32,16 @@ export const formatDocumentDate = (value?: string | Date | null): string => {
   if (!value) {
     return '';
   }
+
+  // Document dates are calendar values from the API. Preserve their date
+  // portion instead of letting a runtime timezone reinterpret the timestamp.
+  if (typeof value === 'string') {
+    const apiDate = value.match(/^(\d{4})-(\d{2})-(\d{2})(?:$|T|\s)/);
+    if (apiDate) {
+      return `${apiDate[2]}/${apiDate[3]}/${apiDate[1]}`;
+    }
+  }
+
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return typeof value === 'string' ? value : '';
