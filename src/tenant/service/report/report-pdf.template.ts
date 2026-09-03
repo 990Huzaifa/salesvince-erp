@@ -117,6 +117,9 @@ const renderSummary = (report: ReportPdfDocument): string => {
 };
 
 const renderSection = (report: ReportPdfDocument, section: ReportPdfSection): string => {
+  const columnWidths = section.columns
+    .map((column) => `<col style="width:${column.width || 'auto'}" />`)
+    .join('');
   const headers = section.columns.map((column) => `<th style="width:${column.width || 'auto'};text-align:${column.align || 'left'}">${text(column.label)}</th>`).join('');
   const rows = section.rows.map((row, index) => `<tr class="${index % 2 === 0 ? 'row-a' : 'row-b'}">${section.columns.map((column) => `<td style="text-align:${column.align || 'left'}">${cellValue(row, column)}</td>`).join('')}</tr>`);
 
@@ -129,7 +132,7 @@ const renderSection = (report: ReportPdfDocument, section: ReportPdfSection): st
     }
   }
 
-  return `<section class="report-section">${section.title ? `<h2>${text(section.title)}</h2>` : ''}<table><thead><tr>${headers}</tr></thead><tbody>${rows.join('')}</tbody></table></section>`;
+  return `<section class="report-section">${section.title ? `<h2>${text(section.title)}</h2>` : ''}<table><colgroup>${columnWidths}</colgroup><thead><tr>${headers}</tr></thead><tbody>${rows.join('')}</tbody></table></section>`;
 };
 
 const renderFooter = (report: ReportPdfDocument, printedAt: Date): string => {
@@ -146,7 +149,7 @@ export const buildReportPdfHtml = (report: ReportPdfDocument, printedAt: Date = 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>${text(report.title)}</title><style>
     @page{size:A4 landscape;margin:10mm}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     html,body{margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;color:${FOREGROUND};font-size:11px}body{font-size:11px}
-    .pdf-content{width:210mm;margin:0 auto}.header{border-bottom:3px solid ${PRIMARY};padding-bottom:10px;margin-bottom:${isSummary ? '14px' : '16px'}}
+    .pdf-content{width:210mm;margin:0 auto;padding:10mm}.header{border-bottom:3px solid ${PRIMARY};padding-bottom:10px;margin-bottom:${isSummary ? '14px' : '16px'}}
     .header-main{display:flex;justify-content:space-between;align-items:${isSummary ? 'flex-start' : 'flex-end'};gap:16px}.title{flex:1}.title h1{margin:0;font-size:${isPartyLedger ? '68px' : isSummary ? '44px' : '48px'};line-height:${isPartyLedger ? '.9' : '.95'};font-weight:300;color:${FOREGROUND}}.subtitle{margin-top:6px;font-size:12px;color:${MUTED}}
     .meta{margin-top:10px;font-size:12px;line-height:${isBalance ? '1.6' : '1.5'}}.company{min-width:${isBalance ? '140px' : '130px'};text-align:center}.logo-box{margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;background:transparent}.logo-box-solid{background:${PRIMARY}}.logo-box img{width:100%;height:100%;object-fit:contain;background:#fff}.logo-fallback{color:${PRIMARY};font-size:44px;line-height:1;font-weight:700}.logo-box-solid .logo-fallback{color:#fff}.company-name{margin-top:4px;font-size:13px;line-height:1.2;font-weight:${isBalance ? '600' : '500'}}.company-line{margin-top:${isBalance ? '3px' : '2px'};color:${MUTED};font-size:11px}
     .summary{display:grid;gap:8px;margin-bottom:14px}.summary-card{border:1px solid ${BORDER};border-radius:${isSummary ? '8px' : '0'};padding:${isBalance ? '9px 11px' : '10px 12px'};background:#fff}.summary-label{color:${MUTED};font-size:${isBalance ? '10px' : '11px'}}.summary-value{margin-top:${isBalance ? '3px' : '4px'};font-size:${isBalance ? '17px' : '18px'};font-weight:700}

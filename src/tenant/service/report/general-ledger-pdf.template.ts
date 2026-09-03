@@ -104,7 +104,7 @@ export const buildGeneralLedgerPdfHtml = (
     </div></div><div class="company"><div class="logo-box">
       ${logoDataUri ? `<img src="${text(logoDataUri)}" alt="Logo" />` : `<span class="logo-fallback">${text(initials)}</span>`}
     </div><div class="company-name">${text(businessName)}</div><div class="company-line">${text(businessAddress)}</div></div></div></header>
-    <table><thead><tr><th style="width:10%">Date</th><th style="width:10%">Type</th><th style="width:10%">Vr.#</th><th style="width:40%">Narration</th><th style="width:10%">Debit</th><th style="width:10%">Credit</th><th style="width:10%">Balance</th></tr></thead>
+    <table><colgroup><col style="width:10%" /><col style="width:10%" /><col style="width:10%" /><col style="width:40%" /><col style="width:10%" /><col style="width:10%" /><col style="width:10%" /></colgroup><thead><tr><th style="width:10%">Date</th><th style="width:10%">Type</th><th style="width:10%">Vr.#</th><th style="width:40%">Narration</th><th style="width:10%">Debit</th><th style="width:10%">Credit</th><th style="width:10%">Balance</th></tr></thead>
     <tbody>${rows}${blanks}<tr class="total-row"><td colspan="4" style="text-align:center">Total</td><td class="number">${money(ledger.totalDebit)}</td><td class="number">${money(ledger.totalCredit)}</td><td>&nbsp;</td></tr>
     <tr class="closing-row"><td colspan="6">Closing Balance</td><td class="number">${money(ledger.closingBalance)}</td></tr></tbody></table>
     <div class="prepared-by">Prepared By: ${text(ledger.preparedBy)}</div>
