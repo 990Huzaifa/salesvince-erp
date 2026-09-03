@@ -1,4 +1,4 @@
-import { formatPakistaniNumber, formatPrintedAt } from 'src/common/pdf';
+import { formatDocumentDate, formatPakistaniNumber, formatPrintedAt } from 'src/common/pdf';
 import { escapeHtml } from 'src/common/pdf';
 import type { BusinessPdfContext } from 'src/common/pdf';
 
@@ -219,7 +219,7 @@ export const buildPurchaseInvoicePdfHtml = (
       <div class="invoice-info">
         <div class="section-title">Invoice</div>
         <div class="info-list">
-          ${renderInfoRow('Date', formatDate(invoice.invoiceDate))}
+          ${renderInfoRow('Date', formatDocumentDate(invoice.invoiceDate))}
           ${renderInfoRow('Order No', invoice.purchaseOrder?.orderNumber)}
         </div>
       </div>
@@ -263,10 +263,4 @@ export const buildPurchaseInvoicePdfHtml = (
   </main>
 </body>
 </html>`;
-};
-
-const formatDate = (value: string | Date): string => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return valueOrEmpty(value);
-  return `${String(date.getUTCMonth() + 1).padStart(2, '0')}/${String(date.getUTCDate()).padStart(2, '0')}/${date.getUTCFullYear()}`;
 };
