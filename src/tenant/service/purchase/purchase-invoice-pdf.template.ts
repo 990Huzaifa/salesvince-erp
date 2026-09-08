@@ -1,4 +1,8 @@
-import { formatDocumentDate, formatPakistaniNumber, formatPrintedAt } from 'src/common/pdf';
+import {
+  formatDocumentDate,
+  formatPakistaniNumber,
+  formatPrintedAt,
+} from 'src/common/pdf';
 import { escapeHtml } from 'src/common/pdf';
 import type { BusinessPdfContext } from 'src/common/pdf';
 
@@ -58,16 +62,26 @@ const valueOrEmpty = (value: unknown): string => {
   }
 };
 
-const renderItemRow = (item: PurchaseInvoicePdfItem, index: number): string => `
+const renderItemRow = (item: PurchaseInvoicePdfItem, index: number): string => {
+  const quantity = Number(item.quantity || 0);
+  const unitPrice = Number(item.purchaseUnitPrice || 0);
+  const discountAmount = Number(item.discountAmount || 0);
+  const discountedUnitPrice =
+    quantity > 0
+      ? Math.max(0, unitPrice - discountAmount / quantity)
+      : unitPrice;
+
+  return `
   <tr class="item-row ${index % 2 === 0 ? 'row-a' : 'row-b'}">
     <td class="center">${index + 1}</td>
     <td>${escapeHtml(valueOrEmpty(item.product?.name))}</td>
     <td class="center">${escapeHtml(valueOrEmpty(item.uom?.name))}</td>
     <td class="center">${escapeHtml(formatPakistaniNumber(item.quantity, 0))}</td>
     <td class="number">${money(item.purchaseUnitPrice)}</td>
-    <td class="number">${money(item.discountAmount)}</td>
+    <td class="center">${money(discountedUnitPrice)}</td>
     <td class="number">${money(item.totalAmount)}</td>
   </tr>`;
+};
 
 const renderEmptyRow = (index: number): string => `
   <tr class="item-row empty-row ${index % 2 === 0 ? 'row-a' : 'row-b'}">
@@ -227,11 +241,11 @@ export const buildPurchaseInvoicePdfHtml = (
 
     <table class="items-table">
       <colgroup>
-        <col style="width: 8%" /><col style="width: 46%" /><col style="width: 6%" />
-        <col style="width: 8%" /><col style="width: 10%" /><col style="width: 11%" /><col style="width: 11%" />
+        <col style="width: 8%" /><col style="width: 42%" /><col style="width: 6%" />
+        <col style="width: 8%" /><col style="width: 10%" /><col style="width: 15%" /><col style="width: 11%" />
       </colgroup>
       <thead><tr>
-        <th>No.</th><th>Product</th><th>Unit</th><th>Qty</th><th>Unit Price</th><th>Discount<br />Amount</th><th>Amount</th>
+        <th>No.</th><th>Product</th><th>Unit</th><th>Qty</th><th>Unit Price</th><th>Discounted<br />Unit Price</th><th>Amount</th>
       </tr></thead>
       <tbody>${rows.join('')}</tbody>
     </table>

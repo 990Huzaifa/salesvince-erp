@@ -60,16 +60,26 @@ const renderInfoRow = (label: string, value: unknown): string => `
     <span>${escapeHtml(valueOrEmpty(value))}</span>
   </div>`;
 
-const renderItemRow = (item: SaleInvoicePdfItem, index: number): string => `
+const renderItemRow = (item: SaleInvoicePdfItem, index: number): string => {
+  const quantity = Number(item.quantity || 0);
+  const unitPrice = Number(item.saleUnitPrice || 0);
+  const discountAmount = Number(item.discountAmount || 0);
+  const discountedUnitPrice =
+    quantity > 0
+      ? Math.max(0, unitPrice - discountAmount / quantity)
+      : unitPrice;
+
+  return `
   <tr class="item-row ${index % 2 === 0 ? 'row-a' : 'row-b'}">
     <td class="center">${index + 1}</td>
     <td>${escapeHtml(valueOrEmpty(item.product?.name))}</td>
     <td class="center">${escapeHtml(valueOrEmpty(item.uom?.name))}</td>
     <td class="center">${escapeHtml(formatPakistaniNumber(item.quantity, 0))}</td>
     <td class="number">${money(item.saleUnitPrice)}</td>
-    <td class="number">${money(item.discountAmount)}</td>
+    <td class="center">${money(discountedUnitPrice)}</td>
     <td class="number">${money(item.totalAmount)}</td>
   </tr>`;
+};
 
 const renderEmptyRow = (index: number): string => `
   <tr class="item-row empty-row ${index % 2 === 0 ? 'row-a' : 'row-b'}">
@@ -185,8 +195,8 @@ export const buildSaleInvoicePdfHtml = (
   </div></div><div class="invoice-info"><div class="section-title">${escapeHtml(documentTitle)}</div><div class="info-list">
     ${renderInfoRow('Date', formatDocumentDate(invoice.invoiceDate))}${renderInfoRow('Order No', orderNumber)}
   </div></div></section>
-  <table class="items-table"><colgroup><col style="width:8%"/><col style="width:46%"/><col style="width:6%"/><col style="width:8%"/><col style="width:10%"/><col style="width:11%"/><col style="width:11%"/></colgroup>
-    <thead><tr><th>No.</th><th>Product</th><th>Unit</th><th>Qty</th><th>Unit Price</th><th>Discount<br/>Amount</th><th>Amount</th></tr></thead><tbody>${rows.join('')}</tbody>
+  <table class="items-table"><colgroup><col style="width:8%"/><col style="width:42%"/><col style="width:6%"/><col style="width:8%"/><col style="width:10%"/><col style="width:15%"/><col style="width:11%"/></colgroup>
+    <thead><tr><th>No.</th><th>Product</th><th>Unit</th><th>Qty</th><th>Unit Price</th><th>Discounted<br/>Unit Price</th><th>Amount</th></tr></thead><tbody>${rows.join('')}</tbody>
   </table>
   <div class="quantity-wrap"><table class="quantity-table"><colgroup><col style="width:75%"/><col style="width:25%"/></colgroup><tbody><tr><td>Total Quantity</td><td class="number">${escapeHtml(formatPakistaniNumber(overallQuantity, 0))}</td></tr></tbody></table></div>
   <section class="summary">${showBalanceDetails ? `<div class="balances"><div class="balance-row"><span>Previous Balance:</span><span>${money(previousBalance)}</span></div><div class="balance-row"><span>This Bill:</span><span>${money(invoice.totalAmount)}</span></div><div class="balance-row"><span>Current Balance:</span><span>${money(currentBalance)}</span></div></div>` : ''}
