@@ -7,10 +7,7 @@ export const toFiniteNumber = asFiniteNumber;
 
 const BUSINESS_TIME_ZONE = 'Asia/Karachi';
 
-export const formatPakistaniNumber = (
-  value: unknown,
-  decimals = 2,
-): string => {
+export const formatPakistaniNumber = (value: unknown, decimals = 2): string => {
   const fixed = asFiniteNumber(value).toFixed(decimals);
   const [signedInteger, fraction] = fixed.split('.');
   const negative = signedInteger.startsWith('-');
@@ -27,7 +24,8 @@ export const formatPakistaniNumber = (
     grouped = `${groups.join(',')},${lastThree}`;
   }
 
-  return `${negative ? '-' : ''}${grouped}${decimals > 0 ? `.${fraction}` : ''}`;
+  const trimmedFraction = fraction?.replace(/0+$/, '') || '';
+  return `${negative ? '-' : ''}${grouped}${trimmedFraction ? `.${trimmedFraction}` : ''}`;
 };
 
 export const formatDocumentDate = (value?: string | Date | null): string => {
