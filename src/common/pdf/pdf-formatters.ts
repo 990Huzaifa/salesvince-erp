@@ -25,7 +25,10 @@ export const formatPakistaniNumber = (value: unknown, decimals = 2): string => {
   }
 
   const trimmedFraction = fraction?.replace(/0+$/, '') || '';
-  return `${negative ? '-' : ''}${grouped}${trimmedFraction ? `.${trimmedFraction}` : ''}`;
+  const normalizedFraction = trimmedFraction
+    ? trimmedFraction.padEnd(2, '0')
+    : '';
+  return `${negative ? '-' : ''}${grouped}${normalizedFraction ? `.${normalizedFraction}` : ''}`;
 };
 
 export const formatDocumentDate = (value?: string | Date | null): string => {
