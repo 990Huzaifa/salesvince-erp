@@ -214,12 +214,9 @@ export class ReportService {
       id: party.id,
       name: party.name,
       accId: account?.id ?? null,
-      accountCode: account?.code ?? null,
       code: party.code,
-      address: party.address,
       openingBalance,
       currentBalance,
-      partyType: party.type,
       balanceType: mode,
     };
   }
@@ -686,7 +683,13 @@ export class ReportService {
       ),
     };
 
-    const { items: data, meta } = this.applyListPagination(allData, options);
+    const { items: pagedData, meta } = this.applyListPagination(allData, options);
+    const data = pagedData.map((row, index) => ({
+      ...row,
+      serial: (meta.page != null && meta.limit != null)
+        ? (meta.page - 1) * meta.limit + index + 1
+        : index + 1,
+    }));
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
@@ -811,7 +814,13 @@ export class ReportService {
       ),
     };
 
-    const { items: data, meta } = this.applyListPagination(allData, options);
+    const { items: pagedData, meta } = this.applyListPagination(allData, options);
+    const data = pagedData.map((row, index) => ({
+      ...row,
+      serial: (meta.page != null && meta.limit != null)
+        ? (meta.page - 1) * meta.limit + index + 1
+        : index + 1,
+    }));
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,

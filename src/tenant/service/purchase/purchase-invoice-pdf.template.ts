@@ -1,4 +1,8 @@
-import { formatPakistaniNumber, formatPrintedAt } from 'src/common/pdf';
+import {
+  formatDocumentDate,
+  formatPakistaniNumber,
+  formatPrintedAt,
+} from 'src/common/pdf';
 import { escapeHtml } from 'src/common/pdf';
 import type { BusinessPdfContext } from 'src/common/pdf';
 
@@ -58,16 +62,26 @@ const valueOrEmpty = (value: unknown): string => {
   }
 };
 
-const renderItemRow = (item: PurchaseInvoicePdfItem, index: number): string => `
+const renderItemRow = (item: PurchaseInvoicePdfItem, index: number): string => {
+  const quantity = Number(item.quantity || 0);
+  const unitPrice = Number(item.purchaseUnitPrice || 0);
+  const discountAmount = Number(item.discountAmount || 0);
+  const discountedUnitPrice =
+    quantity > 0
+      ? Math.max(0, unitPrice - discountAmount / quantity)
+      : unitPrice;
+
+  return `
   <tr class="item-row ${index % 2 === 0 ? 'row-a' : 'row-b'}">
     <td class="center">${index + 1}</td>
     <td>${escapeHtml(valueOrEmpty(item.product?.name))}</td>
     <td class="center">${escapeHtml(valueOrEmpty(item.uom?.name))}</td>
     <td class="center">${escapeHtml(formatPakistaniNumber(item.quantity, 0))}</td>
     <td class="number">${money(item.purchaseUnitPrice)}</td>
-    <td class="number">${money(item.discountAmount)}</td>
+    <td class="center">${money(discountedUnitPrice)}</td>
     <td class="number">${money(item.totalAmount)}</td>
   </tr>`;
+};
 
 const renderEmptyRow = (index: number): string => `
   <tr class="item-row empty-row ${index % 2 === 0 ? 'row-a' : 'row-b'}">
@@ -142,7 +156,7 @@ export const buildPurchaseInvoicePdfHtml = (
     * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     html, body { margin: 0; padding: 0; background: #ffffff; font-family: Arial, sans-serif; color: #000000; }
     body { width: 190mm; }
-    .pdf-content { width: 190mm; min-height: 0; padding: 10mm; position: relative; }
+    .pdf-content { width: 190mm; min-height: 0; margin: 0 auto; padding: 0; position: relative; }
     .document-header { border-bottom: 3px solid var(--primary); padding-bottom: 10px; margin-bottom: 14px; }
     .document-header-main { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; }
     .document-heading { flex: 1; }
@@ -163,7 +177,7 @@ export const buildPurchaseInvoicePdfHtml = (
     table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     .items-table { font-size: 11px; }
     .items-table thead { background: var(--primary); color: var(--primary-text); }
-    .items-table th { padding: 8px 6px; border: 1px solid var(--border); font-weight: 700; }
+    .items-table th { padding: 8px 6px; border: 1px solid var(--primary); font-weight: 700; }
     .items-table td { height: 24px; padding: 5.7px 6px; border: 1px solid var(--border); line-height: 1.15; vertical-align: middle; }
     .items-table td:nth-child(2) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .row-a { background: var(--row-a); }
@@ -171,17 +185,17 @@ export const buildPurchaseInvoicePdfHtml = (
     .center { text-align: center; }
     .number { text-align: right; font-variant-numeric: tabular-nums; }
     .quantity-wrap { display: flex; justify-content: flex-start; margin-top: 10px; }
-    .quantity-table { max-width: 260px; font-size: 12px; }
+    .quantity-table { width: 260px; max-width: 260px; font-size: 12px; }
     .quantity-table td { padding: 8px 10px; border: 1px solid var(--border); background: var(--surface-muted); font-weight: 700; }
     .summary { display: flex; justify-content: ${showBalanceDetails ? 'space-between' : 'flex-end'}; align-items: flex-end; gap: 16px; margin-top: 22px; }
     .balances { max-width: 340px; flex: 1 1 0; font-size: 12px; }
     .balance-row { display: grid; grid-template-columns: 1fr auto; padding: 4px 0; font-weight: 700; }
-    .totals-table { max-width: 350px; font-size: 12px; }
+    .totals-table { width: 350px; max-width: 350px; font-size: 12px; }
     .totals-table td { padding: 6px 10px; border: 2px solid var(--border); }
     .totals-table .total-label { border-color: var(--primary); background: var(--primary); color: var(--primary-text); font-weight: 700; }
     .totals-table .total-value { border-color: var(--primary); }
     .totals-table .muted-cell { background: var(--surface-muted); }
-    .prepared-by { margin-top: 20px; text-align: right; font-size: 11px; font-weight: 700; }
+    .prepared-by { margin-top: 36px; text-align: right; font-size: 11px; font-weight: 700; }
   </style>
 </head>
 <body>
@@ -219,7 +233,7 @@ export const buildPurchaseInvoicePdfHtml = (
       <div class="invoice-info">
         <div class="section-title">Invoice</div>
         <div class="info-list">
-          ${renderInfoRow('Date', formatDate(invoice.invoiceDate))}
+          ${renderInfoRow('Date', formatDocumentDate(invoice.invoiceDate))}
           ${renderInfoRow('Order No', invoice.purchaseOrder?.orderNumber)}
         </div>
       </div>
@@ -227,17 +241,17 @@ export const buildPurchaseInvoicePdfHtml = (
 
     <table class="items-table">
       <colgroup>
-        <col style="width: 9%" /><col style="width: 42%" /><col style="width: 7%" />
-        <col style="width: 9%" /><col style="width: 10.5%" /><col style="width: 11%" /><col style="width: 11.5%" />
+        <col style="width: 8%" /><col style="width: 42%" /><col style="width: 6%" />
+        <col style="width: 8%" /><col style="width: 10%" /><col style="width: 15%" /><col style="width: 11%" />
       </colgroup>
       <thead><tr>
-        <th>No.</th><th>Product</th><th>Unit</th><th>Qty</th><th>Unit Price</th><th>Discount<br />Amount</th><th>Amount</th>
+        <th>No.</th><th>Product</th><th>Unit</th><th>Qty</th><th>Unit Price</th><th>Discounted<br />Unit Price</th><th>Amount</th>
       </tr></thead>
       <tbody>${rows.join('')}</tbody>
     </table>
 
     <div class="quantity-wrap">
-      <table class="quantity-table"><tbody><tr>
+      <table class="quantity-table"><colgroup><col style="width:75%" /><col style="width:25%" /></colgroup><tbody><tr>
         <td>Total Quantity</td><td class="number">${escapeHtml(formatPakistaniNumber(overallQuantity, 0))}</td>
       </tr></tbody></table>
     </div>
@@ -252,7 +266,7 @@ export const buildPurchaseInvoicePdfHtml = (
       </div>`
           : ''
       }
-      <table class="totals-table"><tbody>
+      <table class="totals-table"><colgroup><col style="width:56%" /><col style="width:44%" /></colgroup><tbody>
         <tr><td class="total-label">Total</td><td class="number total-value">${money(subTotal)}</td></tr>
         <tr><td class="muted-cell">Less Discount</td><td class="number muted-cell">${money(invoice.totalDiscountAmount)}</td></tr>
         <tr><td class="muted-cell"><strong>Total Amount</strong></td><td class="number muted-cell"><strong>${money(invoice.totalAmount)}</strong></td></tr>
@@ -263,10 +277,4 @@ export const buildPurchaseInvoicePdfHtml = (
   </main>
 </body>
 </html>`;
-};
-
-const formatDate = (value: string | Date): string => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return valueOrEmpty(value);
-  return `${String(date.getUTCMonth() + 1).padStart(2, '0')}/${String(date.getUTCDate()).padStart(2, '0')}/${date.getUTCFullYear()}`;
 };

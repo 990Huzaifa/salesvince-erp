@@ -86,14 +86,14 @@ export const buildGeneralLedgerPdfHtml = (
     :root { --primary:#9786ee; --primary-text:#fff; --foreground:#17182a; --muted:#667085; --border:#e5e8f0; --row-a:rgba(151,134,238,.06); --row-b:rgba(151,134,238,.03); --surface-muted:#f7f8fc; }
     @page { size:A4 portrait; margin:10mm; } * { box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     html,body { margin:0; padding:0; background:#fff; font-family:Arial,sans-serif; color:#000; } body { width:190mm; }
-    .pdf-content { width:190mm; padding:10mm; } .document-header { border-bottom:3px solid var(--primary); padding-bottom:10px; margin-bottom:16px; }
+    .pdf-content { width:190mm; margin:0 auto; padding:0; } .document-header { border-bottom:3px solid var(--primary); padding-bottom:10px; margin-bottom:16px; }
     .document-header-main { display:flex; justify-content:space-between; gap:16px; } h1 { margin:0; font-size:48px; line-height:.9; font-weight:300; color:var(--foreground); }
     .document-meta { margin-top:10px; font-size:12px; line-height:1.5; } .company { text-align:center; min-width:130px; }
     .logo-box { width:96px; height:96px; margin:0 auto; background:var(--primary); display:flex; align-items:center; justify-content:center; overflow:hidden; }
     .logo-box img { width:100%; height:100%; object-fit:contain; background:#fff; } .logo-fallback { color:var(--primary-text); font-size:44px; font-weight:700; }
     .company-name { margin-top:4px; font-size:13px; font-weight:500; } .company-line { margin-top:2px; font-size:11px; color:var(--muted); }
     table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:11px; } thead { background:var(--primary); color:var(--primary-text); }
-    th,td { padding:6px; border:1px solid var(--border); } .row-a { background:var(--row-a); } .row-b { background:var(--row-b); }
+    th { padding:8px 6px; border:1px solid var(--border); } td { padding:6px; border:1px solid var(--border); } .row-a { background:var(--row-a); } .row-b { background:var(--row-b); }
     .number { text-align:right; font-variant-numeric:tabular-nums; } .total-row { background:var(--primary); color:var(--primary-text); font-weight:700; }
     .closing-row { background:var(--surface-muted); font-weight:700; } .prepared-by { margin-top:36px; text-align:right; font-size:11px; font-weight:700; }
   </style></head><body><main class="pdf-content">
@@ -104,7 +104,7 @@ export const buildGeneralLedgerPdfHtml = (
     </div></div><div class="company"><div class="logo-box">
       ${logoDataUri ? `<img src="${text(logoDataUri)}" alt="Logo" />` : `<span class="logo-fallback">${text(initials)}</span>`}
     </div><div class="company-name">${text(businessName)}</div><div class="company-line">${text(businessAddress)}</div></div></div></header>
-    <table><thead><tr><th style="width:10%">Date</th><th style="width:10%">Type</th><th style="width:10%">Vr.#</th><th style="width:40%">Narration</th><th style="width:10%">Debit</th><th style="width:10%">Credit</th><th style="width:10%">Balance</th></tr></thead>
+    <table><colgroup><col style="width:10%" /><col style="width:10%" /><col style="width:10%" /><col style="width:40%" /><col style="width:10%" /><col style="width:10%" /><col style="width:10%" /></colgroup><thead><tr><th style="width:10%">Date</th><th style="width:10%">Type</th><th style="width:10%">Vr.#</th><th style="width:40%">Narration</th><th style="width:10%">Debit</th><th style="width:10%">Credit</th><th style="width:10%">Balance</th></tr></thead>
     <tbody>${rows}${blanks}<tr class="total-row"><td colspan="4" style="text-align:center">Total</td><td class="number">${money(ledger.totalDebit)}</td><td class="number">${money(ledger.totalCredit)}</td><td>&nbsp;</td></tr>
     <tr class="closing-row"><td colspan="6">Closing Balance</td><td class="number">${money(ledger.closingBalance)}</td></tr></tbody></table>
     <div class="prepared-by">Prepared By: ${text(ledger.preparedBy)}</div>
