@@ -870,25 +870,12 @@ export class ReportService {
       .addOrderBy('invoice.createdAt', 'ASC')
       .getMany();
 
-    const allData: Array<{
-      totalSale: number;
-      totalCost: number;
-      profit: number;
-      profitPercentage: number;
-    }> =
+    const totals = this.computeOverallProfitTotals(invoices);
+
+    const allData =
       viewType === ReportProfitViewType.CUSTOMER
         ? this.buildCustomerProfitRows(invoices)
         : this.buildProductProfitRows(invoices);
-
-    const totals = allData.reduce(
-      (sum, row) => {
-        sum.totalSale = this.roundAmount(sum.totalSale + row.totalSale);
-        sum.totalCost = this.roundAmount(sum.totalCost + row.totalCost);
-        sum.profit = this.roundAmount(sum.totalSale - sum.totalCost);
-        return sum;
-      },
-      { totalSale: 0, totalCost: 0, profit: 0 },
-    );
 
     const { items: data, meta } = this.applyListPagination(allData, options);
 
@@ -915,6 +902,36 @@ export class ReportService {
       },
       data,
       meta,
+    };
+  }
+
+  private computeOverallProfitTotals(invoices: SaleInvoice[]) {
+    let totalSale = 0;
+    let totalCost = 0;
+
+    for (const invoice of invoices) {
+      const costSnapshots = this.buildCostSnapshots(invoice);
+
+      for (const item of invoice.items ?? []) {
+        const costSnapshot = costSnapshots.get(
+          this.saleLineKey(item.productId, item.uomId, item.productFlavourId),
+        );
+        const quantity = Number(item.quantity ?? 0);
+        totalSale = this.roundAmount(
+          totalSale + Number(item.totalAmount ?? 0),
+        );
+        totalCost = this.roundAmount(
+          totalCost + (costSnapshot?.purchaseUnitPrice ?? 0) * quantity,
+        );
+      }
+    }
+
+    const profit = this.roundAmount(totalSale - totalCost);
+
+    return {
+      totalSale,
+      totalCost,
+      profit,
     };
   }
 
