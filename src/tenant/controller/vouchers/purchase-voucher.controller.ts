@@ -116,12 +116,23 @@ export class PurchaseVoucherController {
     @Query('limit') limit: number = 10,
     @Query('search') search?: string,
     @Query('status') status?: VoucherStatus,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('paymentMethod') paymentMethod?: string,
   ) {
     const user = req.user as TenantRequestUser;
     return this.purchaseVoucherService.list(
       tenantDb,
       user.businessId!,
-      { page: Number(page), limit: Number(limit), search, status },
+      {
+        page: Number(page),
+        limit: Number(limit),
+        search,
+        status,
+        startDate,
+        endDate,
+        paymentMethod: paymentMethod?.trim().toUpperCase(),
+      },
       user.userId,
     );
   }

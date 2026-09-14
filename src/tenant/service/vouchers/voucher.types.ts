@@ -136,6 +136,9 @@ export type VoucherListOptions = {
   limit: number;
   search?: string;
   status?: VoucherStatus;
+  paymentMethod?: string;
+  startDate?: string;
+  endDate?: string;
 };
 
 export type VoucherConfig<T extends VoucherEntity> = {

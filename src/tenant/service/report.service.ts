@@ -886,7 +886,10 @@ export class ReportService {
         ? this.buildCustomerProfitRows(invoices)
         : this.buildProductProfitRows(invoices);
 
-    const { items: data, meta } = this.applyListPagination(allData, options);
+    const { items: data, meta } = this.applyListPagination(
+      [...allData],
+      options,
+    );
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
