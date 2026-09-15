@@ -22,6 +22,11 @@ import { ActivityLogService } from '../activity-log.service';
 import {
   ListAnalyticsService,
 } from '../list-analytics.service';
+import {
+  endOfDay,
+  parseDateRange,
+  startOfDay,
+} from '../report/report-query.helper';
 import { TransactionService } from '../transaction.service';
 import {
   ContraVoucherPayload,
@@ -827,6 +832,22 @@ export class VoucherOperationsService {
     const page = Math.max(1, Number(options.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(options.limit) || 30));
     const alias = 'voucher';
+    const { startDate: parsedStartDate, endDate: parsedEndDate } =
+      parseDateRange(options.startDate, options.endDate);
+    const normalizedPaymentMethod = options.paymentMethod
+      ? String(options.paymentMethod).trim().toUpperCase()
+      : undefined;
+
+    if (
+      normalizedPaymentMethod &&
+      !Object.values(PaymentMethod).includes(
+        normalizedPaymentMethod as PaymentMethod,
+      )
+    ) {
+      throw new BadRequestException(
+        `Invalid paymentMethod. Use one of: ${Object.values(PaymentMethod).join(', ')}`,
+      );
+    }
 
     const qb = tenantDb
       .getRepository(config.entity)
@@ -862,6 +883,21 @@ export class VoucherOperationsService {
     if (options.search?.trim()) {
       qb.andWhere(`${alias}.voucherNumber ILIKE :search`, {
         search: `%${options.search.trim()}%`,
+      });
+    }
+    if (normalizedPaymentMethod) {
+      qb.andWhere(`${alias}.paymentMethod = :paymentMethod`, {
+        paymentMethod: normalizedPaymentMethod,
+      });
+    }
+    if (parsedStartDate) {
+      qb.andWhere(`${alias}.paymentDate >= :startDate`, {
+        startDate: startOfDay(parsedStartDate),
+      });
+    }
+    if (parsedEndDate) {
+      qb.andWhere(`${alias}.paymentDate <= :endDate`, {
+        endDate: endOfDay(parsedEndDate),
       });
     }
 
