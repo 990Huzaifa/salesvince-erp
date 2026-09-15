@@ -69,9 +69,12 @@ export class TransactionService {
       return word;
     }
 
-    const grnDnCodeMatch = /^((?:GRN|DN|PO|SO))(-.*)?$/i.exec(word);
-    if (grnDnCodeMatch) {
-      return grnDnCodeMatch[1].toUpperCase() + (grnDnCodeMatch[2] ?? '');
+    // Keep document/voucher codes uppercase (e.g. PV-00059, not Pv-00059).
+    // Longer prefixes first so PRV/SRV/etc. match before PV/RV.
+    const codeMatch =
+      /^((?:PRV|SRV|LRV|LPV|GRN|PV|RV|EV|CV|SV|DN|PO|SO))(-.*)?$/i.exec(word);
+    if (codeMatch) {
+      return codeMatch[1].toUpperCase() + (codeMatch[2] ?? '');
     }
 
     return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
