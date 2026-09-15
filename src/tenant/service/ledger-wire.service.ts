@@ -24,13 +24,22 @@ export class LedgerWireService {
     private readonly salaryVoucherService: SalaryVoucherService,
   ) {}
 
+  private normalizeCode(code: string): string {
+    return code?.toUpperCase();
+  }
+
   getSaleOrderByCode(
     tenantDb: DataSource,
     businessId: string | undefined,
     code: string,
     userId: string,
   ) {
-    return this.saleOrderService.viewByCode(tenantDb, businessId, code, userId);
+    return this.saleOrderService.viewByCode(
+      tenantDb,
+      businessId,
+      this.normalizeCode(code),
+      userId,
+    );
   }
 
   getPurchaseOrderByCode(
@@ -42,7 +51,7 @@ export class LedgerWireService {
     return this.purchaseOrderService.viewByCode(
       tenantDb,
       businessId,
-      code,
+      this.normalizeCode(code),
       userId,
     );
   }
@@ -57,7 +66,7 @@ export class LedgerWireService {
       tenantDb,
       businessId,
       SALE_VOUCHER_CONFIG,
-      code,
+      this.normalizeCode(code),
       userId,
     );
   }
@@ -72,7 +81,7 @@ export class LedgerWireService {
       tenantDb,
       businessId,
       PURCHASE_VOUCHER_CONFIG,
-      code,
+      this.normalizeCode(code),
       userId,
     );
   }
@@ -87,7 +96,7 @@ export class LedgerWireService {
       tenantDb,
       businessId,
       SALE_RETURN_VOUCHER_CONFIG,
-      code,
+      this.normalizeCode(code),
       userId,
     );
   }
@@ -102,7 +111,7 @@ export class LedgerWireService {
       tenantDb,
       businessId,
       PURCHASE_RETURN_VOUCHER_CONFIG,
-      code,
+      this.normalizeCode(code),
       userId,
     );
   }
@@ -117,7 +126,7 @@ export class LedgerWireService {
       tenantDb,
       businessId,
       EXPENSE_VOUCHER_CONFIG,
-      code,
+      this.normalizeCode(code),
       userId,
     );
   }
@@ -132,7 +141,7 @@ export class LedgerWireService {
       tenantDb,
       businessId,
       CONTRA_VOUCHER_CONFIG,
-      code,
+      this.normalizeCode(code),
       userId,
     );
   }
@@ -147,7 +156,7 @@ export class LedgerWireService {
       tenantDb,
       businessId,
       LOAN_RECEIPT_VOUCHER_CONFIG,
-      code,
+      this.normalizeCode(code),
       userId,
     );
   }
@@ -162,7 +171,7 @@ export class LedgerWireService {
       tenantDb,
       businessId,
       LOAN_PAYMENT_VOUCHER_CONFIG,
-      code,
+      this.normalizeCode(code),
       userId,
     );
   }
@@ -176,7 +185,7 @@ export class LedgerWireService {
     return this.salaryVoucherService.getByCode(
       tenantDb,
       businessId,
-      code,
+      this.normalizeCode(code),
       userId,
     );
   }
