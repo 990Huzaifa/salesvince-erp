@@ -813,23 +813,25 @@ export class DeliveryNoteService {
       dto.saleOrderId,
     );
 
-    const taxPercentage = this.roundAmount(
-      dto.taxPercentage ?? Number(order.taxPercentage),
-    );
+    // Create payload only supplies saleOrderId + deliveryNoteDate (+ status for
+    // create-and-approve). Header amounts, notes, and lines always come from SO.
+    const taxPercentage = this.roundAmount(Number(order.taxPercentage));
+    const discountPercentage = Number(order.discountPercentage);
+    const deliveryCost = this.roundAmount(Number(order.deliveryCost ?? 0));
     const priorDelivered = await this.getApprovedDeliveredBySaleOrderItem(
       tenantDb.manager,
       order.id,
     );
     const resolvedLines = this.resolveCreateLines(
       order,
-      dto.items,
+      undefined,
       priorDelivered,
       taxPercentage,
     );
     const totals = this.computeDeliveryNoteTotals(resolvedLines, {
-      deliveryCost: dto.deliveryCost,
+      deliveryCost,
       taxPercentage,
-      discountPercentage: dto.discountPercentage ?? Number(order.discountPercentage),
+      discountPercentage,
     });
 
     const targetStatus = this.resolveCreateStatus(dto.status);
@@ -842,9 +844,7 @@ export class DeliveryNoteService {
         )
       : null;
 
-    const deliveryNoteNumber =
-      dto.deliveryNoteNumber?.trim() ||
-      (await this.generateDeliveryNoteNumber(tenantDb));
+    const deliveryNoteNumber = await this.generateDeliveryNoteNumber(tenantDb);
 
     const existingNumber = await tenantDb.getRepository(DeliveryNote).findOne({
       where: { deliveryNoteNumber },
@@ -864,8 +864,8 @@ export class DeliveryNoteService {
           customerId: order.customerId,
           deliveryNoteNumber,
           deliveryNoteDate: new Date(dto.deliveryNoteDate),
-          notes: dto.notes?.trim() || null,
-          deliveryCost: dto.deliveryCost ?? 0,
+          notes: order.notes?.trim() || null,
+          deliveryCost,
           totalTaxAmount: totals.totalTaxAmount,
           totalDiscountAmount: totals.totalDiscountAmount,
           totalAmount: totals.totalAmount,

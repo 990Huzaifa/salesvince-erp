@@ -1,15 +1,47 @@
-import { PartialType } from '@nestjs/mapped-types';
 import {
   ArrayMinSize,
   IsArray,
+  IsDateString,
+  IsNumber,
   IsOptional,
+  IsString,
+  MaxLength,
+  Min,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { CreateDeliveryNoteDto } from './create-delivery-note.dto';
 import { UpdateDeliveryNoteItemDto } from './update-delivery-note-item.dto';
 
-export class UpdateDeliveryNoteDto extends PartialType(CreateDeliveryNoteDto) {
+export class UpdateDeliveryNoteDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  deliveryNoteNumber?: string;
+
+  @IsOptional()
+  @IsDateString()
+  deliveryNoteDate?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  deliveryCost?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  taxPercentage?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  discountPercentage?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  notes?: string;
+
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
