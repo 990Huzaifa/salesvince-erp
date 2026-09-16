@@ -42,6 +42,12 @@ export class CreateSaleOrderDto {
   @Min(0)
   discountPercentage?: number;
 
+  /** Header discount amount; used when discountPercentage is omitted. */
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  discountAmount?: number;
+
   @IsOptional()
   @IsString()
   @MaxLength(2000)

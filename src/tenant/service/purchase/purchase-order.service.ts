@@ -28,6 +28,7 @@ import {
   ProductPricing,
   Uom,
 } from 'src/tenant-db/entities/product.entity';
+import { resolveDiscountFromAmountOrPercentage } from 'src/common/discount/resolve-discount';
 import { CreatePurchaseOrderDto } from '../../dto/purchase-order/create-purchase-order.dto';
 import { CreatePurchaseOrderItemDto } from '../../dto/purchase-order/create-purchase-order-item.dto';
 import { CreateSimplePurchaseOrderDto } from '../../dto/purchase-order/create-simple-purchase-order.dto';
@@ -347,11 +348,13 @@ export class PurchaseOrderService {
       lines.reduce((sum, line) => sum + line.totalAmount, 0),
     );
     const deliveryCost = this.roundAmount(Number(options.deliveryCost ?? 0));
-    const discountPercentage = Number(options.discountPercentage ?? 0);
-    const discountAmount =
-      options.discountPercentage != null
-        ? this.roundAmount((orderTotal * Number(options.discountPercentage)) / 100)
-        : this.roundAmount(Number(options.discountAmount ?? 0));
+    const { discountPercentage, discountAmount } =
+      resolveDiscountFromAmountOrPercentage({
+        baseAmount: orderTotal,
+        discountAmount: options.discountAmount,
+        discountPercentage: options.discountPercentage,
+        roundAmount: (value) => this.roundAmount(value),
+      });
     const taxableBase = this.roundAmount(orderTotal - discountAmount);
     const taxPercentage = this.roundAmount(options.taxPercentage ?? 0);
     const taxAmount =

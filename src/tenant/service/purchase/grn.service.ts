@@ -33,6 +33,11 @@ import {
   ListAnalyticsService,
 } from '../list-analytics.service';
 import { StockService } from '../stock.service';
+import {
+  allocateDiscountAmount,
+  isExplicitDiscountPercentage,
+  resolveDiscountFromAmountOrPercentage,
+} from 'src/common/discount/resolve-discount';
 import { TransactionService } from '../transaction.service';
 import { PurchaseInvoiceService } from './purchase-invoice.service';
 
@@ -333,12 +338,42 @@ export class GrnService {
     };
   }
 
+  private lineBaseFromResolvedGrnLines(lines: ResolvedGrnLine[]): number {
+    const lineDiscountTotal = this.roundAmount(
+      lines.reduce((sum, line) => sum + line.discountAmount, 0),
+    );
+    return this.roundAmount(
+      lines.reduce(
+        (sum, line) =>
+          sum + line.purchaseUnitPrice * line.receivedQuantity,
+        0,
+      ) - lineDiscountTotal,
+    );
+  }
+
+  private headerDiscountFromPurchaseOrder(
+    order: PurchaseOrder,
+    lineBase: number,
+  ): number {
+    const poPercentage = Number(order.discountPercentage ?? 0);
+    if (isExplicitDiscountPercentage(poPercentage)) {
+      return this.roundAmount((lineBase * poPercentage) / 100);
+    }
+    return allocateDiscountAmount(
+      Number(order.discountAmount ?? 0),
+      Number(order.orderTotal),
+      lineBase,
+      (value) => this.roundAmount(value),
+    );
+  }
+
   private computeGrnTotals(
     lines: ResolvedGrnLine[],
     options: {
       deliveryCost?: number;
       taxPercentage?: number;
       discountPercentage?: number;
+      headerDiscountAmount?: number;
       totalDiscountAmount?: number;
       totalTaxAmount?: number;
     },
@@ -354,10 +389,13 @@ export class GrnService {
       ) - lineDiscountTotal,
     );
     const deliveryCost = this.roundAmount(options.deliveryCost ?? 0);
-    const discountPercentage = this.roundAmount(options.discountPercentage ?? 0);
-    const headerDiscountAmount = this.roundAmount(
-      (lineBase * discountPercentage) / 100,
-    );
+    const resolvedHeader = resolveDiscountFromAmountOrPercentage({
+      baseAmount: lineBase,
+      discountPercentage: options.discountPercentage,
+      discountAmount: options.headerDiscountAmount,
+      roundAmount: (value) => this.roundAmount(value),
+    });
+    const headerDiscountAmount = resolvedHeader.discountAmount;
     const totalDiscountAmount =
       options.totalDiscountAmount != null
         ? this.roundAmount(options.totalDiscountAmount)
@@ -626,6 +664,10 @@ export class GrnService {
       taxPercentage,
       discountPercentage:
         input.discountPercentage ?? Number(order.discountPercentage),
+      headerDiscountAmount: this.headerDiscountFromPurchaseOrder(
+        order,
+        this.lineBaseFromResolvedGrnLines(resolvedLines),
+      ),
       totalDiscountAmount: input.totalDiscountAmount,
       totalTaxAmount: input.totalTaxAmount,
     });
@@ -807,6 +849,10 @@ export class GrnService {
       taxPercentage,
       discountPercentage:
         dto.discountPercentage ?? Number(order.discountPercentage),
+      headerDiscountAmount: this.headerDiscountFromPurchaseOrder(
+        order,
+        this.lineBaseFromResolvedGrnLines(resolvedLines),
+      ),
       totalDiscountAmount: dto.totalDiscountAmount,
       totalTaxAmount: dto.totalTaxAmount,
     });
@@ -1099,6 +1145,10 @@ export class GrnService {
         taxPercentage,
         discountPercentage:
           dto.discountPercentage ?? Number(order.discountPercentage),
+        headerDiscountAmount: this.headerDiscountFromPurchaseOrder(
+          order,
+          this.lineBaseFromResolvedGrnLines(resolvedLines),
+        ),
         totalDiscountAmount: dto.totalDiscountAmount,
         totalTaxAmount: dto.totalTaxAmount,
       });

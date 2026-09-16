@@ -38,6 +38,7 @@ import { StockService } from '../stock.service';
 import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import { DeliveryNoteService } from './delivery-note.service';
 import { SaleReturnService } from './sale-return.service';
+import { resolveDiscountFromAmountOrPercentage } from 'src/common/discount/resolve-discount';
 import { SaleReturnVoucherService } from '../vouchers/sale-return-voucher.service';
 import {
   PdfLogoService,
@@ -354,12 +355,14 @@ export class SaleOrderService {
       lines.reduce((sum, line) => sum + line.totalAmount, 0),
     );
     const deliveryCost = this.roundAmount(Number(options.deliveryCost ?? 0));
-    // Keep incoming % exact — do not round/ceil/trim; convert directly to amount.
-    const discountPercentage = Number(options.discountPercentage ?? 0);
-    const discountAmount =
-      options.discountPercentage != null
-        ? this.roundAmount((orderTotal * Number(options.discountPercentage)) / 100)
-        : this.roundAmount(Number(options.discountAmount ?? 0));
+    // Amount-first; only explicit user % (1–2 digits, optional 1–2 decimals) drives calc.
+    const { discountPercentage, discountAmount } =
+      resolveDiscountFromAmountOrPercentage({
+        baseAmount: orderTotal,
+        discountAmount: options.discountAmount,
+        discountPercentage: options.discountPercentage,
+        roundAmount: (value) => this.roundAmount(value),
+      });
     const taxableBase = this.roundAmount(orderTotal - discountAmount);
     const taxPercentage = this.roundAmount(options.taxPercentage ?? 0);
     const taxAmount =
@@ -802,6 +805,7 @@ export class SaleOrderService {
         deliveryCost: params.dto.deliveryCost,
         taxPercentage: params.dto.taxPercentage,
         discountPercentage: params.dto.discountPercentage,
+        discountAmount: params.dto.discountAmount,
       });
 
       const orderRepo = manager.getRepository(SaleOrder);
@@ -999,6 +1003,7 @@ export class SaleOrderService {
       deliveryCost: dto.deliveryCost,
       taxPercentage: dto.taxPercentage,
       discountPercentage: dto.discountPercentage,
+      discountAmount: dto.discountAmount,
     });
 
     const created = await tenantDb.transaction(async (manager) => {
@@ -1436,6 +1441,7 @@ export class SaleOrderService {
         taxPercentage: dto.taxPercentage ?? order.taxPercentage,
         discountPercentage:
           dto.discountPercentage ?? order.discountPercentage,
+        discountAmount: dto.discountAmount ?? Number(order.discountAmount),
       });
 
       await manager.getRepository(SaleOrder).update(order.id, {
@@ -1544,6 +1550,7 @@ export class SaleOrderService {
         taxPercentage: dto.taxPercentage ?? order.taxPercentage,
         discountPercentage:
           dto.discountPercentage ?? order.discountPercentage,
+        discountAmount: dto.discountAmount ?? Number(order.discountAmount),
         taxAmount: dto.taxAmount ?? order.taxAmount,
       });
 
@@ -2418,6 +2425,7 @@ export class SaleOrderService {
       deliveryCost: Number(order.deliveryCost),
       taxPercentage: Number(order.taxPercentage),
       discountPercentage: Number(order.discountPercentage),
+      discountAmount: Number(order.discountAmount),
     });
 
     await tenantDb.getRepository(SaleOrder).update(orderId, {

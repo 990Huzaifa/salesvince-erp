@@ -30,6 +30,11 @@ import {
 import { StockService } from '../stock.service';
 import { TransactionService } from '../transaction.service';
 import { SaleInvoiceService } from './sale-invoice.service';
+import {
+  allocateDiscountAmount,
+  isExplicitDiscountPercentage,
+  resolveDiscountFromAmountOrPercentage,
+} from 'src/common/discount/resolve-discount';
 
 const DELIVERY_NOTE_NUMBER_PREFIX = 'DN';
 
@@ -258,15 +263,34 @@ export class DeliveryNoteService {
     };
   }
 
-  private computeDeliveryNoteTotals(
+  /**
+   * Header discount for a DN share of the SO.
+   * Rule: explicit user % (1–2 digits, optional 1–2 decimals) → from %;
+   * otherwise use SO discountAmount proportionally (never re-derive from tiny %).
+   */
+  private headerDiscountFromSaleOrder(
+    order: SaleOrder,
+    lineBase: number,
+  ): number {
+    const soOrderTotal = Number(order.orderTotal);
+    const soPercentage = Number(order.discountPercentage ?? 0);
+
+    if (isExplicitDiscountPercentage(soPercentage)) {
+      return this.roundAmount((lineBase * soPercentage) / 100);
+    }
+
+    return allocateDiscountAmount(
+      Number(order.discountAmount ?? 0),
+      soOrderTotal,
+      lineBase,
+      (value) => this.roundAmount(value),
+    );
+  }
+
+  private lineBaseFromResolvedLines(
     lines: ResolvedDeliveryNoteLine[],
-    options: {
-      deliveryCost?: number;
-      taxPercentage?: number;
-      discountPercentage?: number;
-    },
-  ): DeliveryNoteTotals {
-    const lineBase = this.roundAmount(
+  ): number {
+    return this.roundAmount(
       lines.reduce(
         (sum, line) =>
           sum +
@@ -275,12 +299,26 @@ export class DeliveryNoteService {
         0,
       ),
     );
+  }
+
+  private computeDeliveryNoteTotals(
+    lines: ResolvedDeliveryNoteLine[],
+    options: {
+      deliveryCost?: number;
+      taxPercentage?: number;
+      discountPercentage?: number;
+      headerDiscountAmount?: number;
+    },
+  ): DeliveryNoteTotals {
+    const lineBase = this.lineBaseFromResolvedLines(lines);
     const deliveryCost = this.roundAmount(options.deliveryCost ?? 0);
-    // Keep incoming % exact — do not round/ceil/trim; convert directly to amount.
-    const discountPercentage = Number(options.discountPercentage ?? 0);
-    const totalDiscountAmount = this.roundAmount(
-      (lineBase * discountPercentage) / 100,
-    );
+    const resolved = resolveDiscountFromAmountOrPercentage({
+      baseAmount: lineBase,
+      discountPercentage: options.discountPercentage,
+      discountAmount: options.headerDiscountAmount,
+      roundAmount: (value) => this.roundAmount(value),
+    });
+    const totalDiscountAmount = resolved.discountAmount;
     const taxableBase = this.roundAmount(lineBase - totalDiscountAmount);
     const taxPercentage = this.roundAmount(options.taxPercentage ?? 0);
     const totalTaxAmount = this.roundAmount(
@@ -517,11 +555,13 @@ export class DeliveryNoteService {
       priorDelivered,
       taxPercentage,
     );
+    const lineBase = this.lineBaseFromResolvedLines(resolvedLines);
     const totals = this.computeDeliveryNoteTotals(resolvedLines, {
       deliveryCost: input.deliveryCost ?? Number(order.deliveryCost),
       taxPercentage,
       discountPercentage:
         input.discountPercentage ?? Number(order.discountPercentage),
+      headerDiscountAmount: this.headerDiscountFromSaleOrder(order, lineBase),
     });
     const deliveryNoteNumber = await this.generateDeliveryNoteNumber(manager);
     const existingNumber = await manager.getRepository(DeliveryNote).findOne({
@@ -828,10 +868,12 @@ export class DeliveryNoteService {
       priorDelivered,
       taxPercentage,
     );
+    const lineBase = this.lineBaseFromResolvedLines(resolvedLines);
     const totals = this.computeDeliveryNoteTotals(resolvedLines, {
       deliveryCost,
       taxPercentage,
       discountPercentage,
+      headerDiscountAmount: this.headerDiscountFromSaleOrder(order, lineBase),
     });
 
     const targetStatus = this.resolveCreateStatus(dto.status);
@@ -1211,6 +1253,10 @@ export class DeliveryNoteService {
         taxPercentage,
         discountPercentage:
           dto.discountPercentage ?? Number(order.discountPercentage),
+        headerDiscountAmount: this.headerDiscountFromSaleOrder(
+          order,
+          this.lineBaseFromResolvedLines(resolvedLines),
+        ),
       });
 
       await deliveryNoteRepo.update(deliveryNote.id, {
