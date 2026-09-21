@@ -81,6 +81,7 @@ import { MasterGeoHelperService } from './service/master-geo-helper.service';
 import { SaleOrderController } from './controller/sale/sale-order.controller';
 import { SaleOrderService } from './service/sale/sale-order.service';
 import { SaleOrderReverseService } from './service/sale/sale-order-reverse.service';
+import { PurchaseOrderReverseService } from './service/purchase/purchase-order-reverse.service';
 import { DeliveryNoteController } from './controller/sale/delivery-note.controller';
 import { DeliveryNoteService } from './service/sale/delivery-note.service';
 import { SaleInvoiceController } from './controller/sale/sale-invoice.controller';
@@ -270,6 +271,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     SaleQuotationService,
     SaleOrderService,
     SaleOrderReverseService,
+    PurchaseOrderReverseService,
     DeliveryNoteService,
     SaleInvoiceService,
     SaleReturnService,

@@ -271,6 +271,16 @@ export class GrnService {
     });
   }
 
+  async reverseApproved(
+    manager: EntityManager,
+    businessId: string,
+    grn: Grn,
+  ): Promise<void> {
+    await this.reverseApprovedEffects(manager, businessId, grn);
+    grn.status = GrnStatus.REVERSED;
+    await manager.getRepository(Grn).save(grn);
+  }
+
   private grnRelations() {
     return {
       purchaseOrder: true,

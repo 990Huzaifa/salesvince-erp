@@ -31,6 +31,7 @@ import {
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { OrderStatus } from 'src/tenant-db/entities/purchase-order.entity';
 import { PurchaseOrderService } from '../../service/purchase/purchase-order.service';
+import { PurchaseOrderReverseService } from '../../service/purchase/purchase-order-reverse.service';
 import { CreatePurchaseOrderDto } from '../../dto/purchase-order/create-purchase-order.dto';
 import { CreateSimplePurchaseOrderDto } from '../../dto/purchase-order/create-simple-purchase-order.dto';
 import { UpdatePurchaseOrderDto } from '../../dto/purchase-order/update-purchase-order.dto';
@@ -45,7 +46,10 @@ import { EditApprovedPurchaseOrderDto } from '../../dto/purchase-order/edit-appr
   TenantPermissionGuard,
 )
 export class PurchaseOrderController {
-  constructor(private readonly purchaseOrderService: PurchaseOrderService) {}
+  constructor(
+    private readonly purchaseOrderService: PurchaseOrderService,
+    private readonly purchaseOrderReverseService: PurchaseOrderReverseService,
+  ) {}
 
   @Post('create')
   @RequirePermissions('CREATE_PURCHASE_ORDER')
@@ -256,6 +260,22 @@ export class PurchaseOrderController {
   ) {
     const user = req.user as TenantRequestUser;
     return this.purchaseOrderService.delete(
+      tenantDb,
+      user.businessId,
+      id,
+      user.userId,
+    );
+  }
+
+  @Post('reverse/:id')
+  @RequirePermissions('REVERSE_PURCHASE_ORDER')
+  reverse(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.purchaseOrderReverseService.reverse(
       tenantDb,
       user.businessId,
       id,

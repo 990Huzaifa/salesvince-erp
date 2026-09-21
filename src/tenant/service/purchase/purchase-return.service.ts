@@ -558,6 +558,23 @@ export class PurchaseReturnService {
     businessId: string,
     purchaseReturn: PurchaseReturn,
   ): Promise<void> {
+    await this.reverseApprovedEffects(manager, businessId, purchaseReturn);
+
+    await manager
+      .getRepository(PurchaseReturnItem)
+      .delete({ purchaseReturnId: purchaseReturn.id });
+    await manager.getRepository(PurchaseReturn).delete(purchaseReturn.id);
+  }
+
+  /**
+   * Undoes approved return stock/ledger and marks the return rejected.
+   * Used when cascading from purchase-order reverse (keeps the return row).
+   */
+  async reverseApprovedEffects(
+    manager: EntityManager,
+    businessId: string,
+    purchaseReturn: PurchaseReturn,
+  ): Promise<void> {
     if (purchaseReturn.status === PurchaseReturnStatus.APPROVED) {
       const invoice = await this.findPurchaseInvoiceForReturn(
         manager,
@@ -595,10 +612,10 @@ export class PurchaseReturnService {
       });
     }
 
-    await manager
-      .getRepository(PurchaseReturnItem)
-      .delete({ purchaseReturnId: purchaseReturn.id });
-    await manager.getRepository(PurchaseReturn).delete(purchaseReturn.id);
+    if (purchaseReturn.status !== PurchaseReturnStatus.REJECTED) {
+      purchaseReturn.status = PurchaseReturnStatus.REJECTED;
+      await manager.getRepository(PurchaseReturn).save(purchaseReturn);
+    }
   }
 
   private resolvedLinesFromReturn(

@@ -614,4 +614,22 @@ export class PurchaseInvoiceService {
       filename: `${safePdfFilenamePart(invoice.invoiceNumber)}.pdf`,
     };
   }
+
+  async softDeleteByPurchaseOrder(
+    manager: EntityManager,
+    purchaseOrderId: string,
+  ): Promise<string[]> {
+    const invoices = await manager.getRepository(PurchaseInvoice).find({
+      where: { purchaseOrderId, deletedAt: IsNull() },
+      select: ['id'],
+    });
+
+    if (!invoices.length) {
+      return [];
+    }
+
+    const invoiceIds = invoices.map((invoice) => invoice.id);
+    await manager.getRepository(PurchaseInvoice).softDelete(invoiceIds);
+    return invoiceIds;
+  }
 }
