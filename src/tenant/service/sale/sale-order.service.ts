@@ -38,7 +38,10 @@ import { StockService } from '../stock.service';
 import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import { DeliveryNoteService } from './delivery-note.service';
 import { SaleReturnService } from './sale-return.service';
-import { resolveDiscountFromAmountOrPercentage } from 'src/common/discount/resolve-discount';
+import {
+  isExplicitDiscountPercentage,
+  resolveDiscountFromAmountOrPercentage,
+} from 'src/common/discount/resolve-discount';
 import { SaleReturnVoucherService } from '../vouchers/sale-return-voucher.service';
 import {
   PdfLogoService,
@@ -341,6 +344,46 @@ export class SaleOrderService {
     };
   }
 
+  /**
+   * Header discount inputs for edit:
+   * - DTO only % → use % (explicit / legacy resolve)
+   * - DTO only amount → use amount (do not let stored explicit % override)
+   * - DTO both / neither → pass through; resolve uses explicit % else amount
+   */
+  private resolveHeaderDiscountOptions(
+    dto: { discountPercentage?: number; discountAmount?: number },
+    order: { discountPercentage: number; discountAmount: number },
+  ): { discountPercentage?: number; discountAmount?: number } {
+    const hasPct = dto.discountPercentage !== undefined;
+    const hasAmt = dto.discountAmount !== undefined;
+
+    if (hasPct && !hasAmt) {
+      return { discountPercentage: Number(dto.discountPercentage) };
+    }
+    if (hasAmt && !hasPct) {
+      return { discountAmount: Number(dto.discountAmount) };
+    }
+    if (hasPct && hasAmt) {
+      const pct = Number(dto.discountPercentage);
+      if (isExplicitDiscountPercentage(pct)) {
+        return { discountPercentage: pct };
+      }
+      return {
+        discountPercentage: pct,
+        discountAmount: Number(dto.discountAmount),
+      };
+    }
+
+    const orderPct = Number(order.discountPercentage);
+    if (isExplicitDiscountPercentage(orderPct)) {
+      return { discountPercentage: orderPct };
+    }
+    return {
+      discountPercentage: orderPct,
+      discountAmount: Number(order.discountAmount),
+    };
+  }
+
   private computeOrderTotals(
     lines: ResolvedSaleOrderLine[],
     options: {
@@ -355,7 +398,7 @@ export class SaleOrderService {
       lines.reduce((sum, line) => sum + line.totalAmount, 0),
     );
     const deliveryCost = this.roundAmount(Number(options.deliveryCost ?? 0));
-    // Amount-first; only explicit user % (1–2 digits, optional 1–2 decimals) drives calc.
+    // Explicit % (1–2 digits, optional 1–2 decimals) → from %; else discountAmount.
     const { discountPercentage, discountAmount } =
       resolveDiscountFromAmountOrPercentage({
         baseAmount: orderTotal,
@@ -1439,9 +1482,7 @@ export class SaleOrderService {
             ? dto.deliveryCost
             : Number(order.deliveryCost ?? 0),
         taxPercentage: dto.taxPercentage ?? order.taxPercentage,
-        discountPercentage:
-          dto.discountPercentage ?? order.discountPercentage,
-        discountAmount: dto.discountAmount ?? Number(order.discountAmount),
+        ...this.resolveHeaderDiscountOptions(dto, order),
       });
 
       await manager.getRepository(SaleOrder).update(order.id, {
@@ -1548,9 +1589,7 @@ export class SaleOrderService {
             ? dto.deliveryCost
             : Number(order.deliveryCost ?? 0),
         taxPercentage: dto.taxPercentage ?? order.taxPercentage,
-        discountPercentage:
-          dto.discountPercentage ?? order.discountPercentage,
-        discountAmount: dto.discountAmount ?? Number(order.discountAmount),
+        ...this.resolveHeaderDiscountOptions(dto, order),
         taxAmount: dto.taxAmount ?? order.taxAmount,
       });
 
