@@ -26,6 +26,11 @@ import {
 } from 'src/common/pdf';
 import { Business } from 'src/tenant-db/entities/business.entity';
 import { buildPurchaseInvoicePdfHtml } from './purchase-invoice-pdf.template';
+import {
+  endOfDay,
+  parseDateRange,
+  startOfDay,
+} from '../report/report-query.helper';
 
 const INVOICE_NUMBER_PREFIX = 'PI';
 
@@ -410,6 +415,8 @@ export class PurchaseInvoiceService {
       search?: string;
       grnId?: string;
       purchaseOrderId?: string;
+      startDate?: string;
+      endDate?: string;
     },
     actorUserId: string,
   ) {
@@ -417,6 +424,8 @@ export class PurchaseInvoiceService {
     const page = Math.max(1, options.page);
     const limit = Math.max(1, options.limit);
     const skip = (page - 1) * limit;
+    const { startDate: parsedStartDate, endDate: parsedEndDate } =
+      parseDateRange(options.startDate, options.endDate);
 
     const qb = tenantDb
       .getRepository(PurchaseInvoice)
@@ -440,6 +449,16 @@ export class PurchaseInvoiceService {
     if (options.purchaseOrderId) {
       qb.andWhere('invoice.purchaseOrderId = :purchaseOrderId', {
         purchaseOrderId: options.purchaseOrderId,
+      });
+    }
+    if (parsedStartDate) {
+      qb.andWhere('invoice.invoiceDate >= :startDate', {
+        startDate: startOfDay(parsedStartDate),
+      });
+    }
+    if (parsedEndDate) {
+      qb.andWhere('invoice.invoiceDate <= :endDate', {
+        endDate: endOfDay(parsedEndDate),
       });
     }
 

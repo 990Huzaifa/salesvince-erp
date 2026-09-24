@@ -45,6 +45,8 @@ export class PurchaseInvoiceController {
     @Query('search') search?: string,
     @Query('grnId') grnId?: string,
     @Query('purchaseOrderId') purchaseOrderId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
     const user = req.user as TenantRequestUser;
     return this.purchaseInvoiceService.list(
@@ -56,6 +58,8 @@ export class PurchaseInvoiceController {
         search,
         grnId,
         purchaseOrderId,
+        startDate,
+        endDate,
       },
       user.userId,
     );

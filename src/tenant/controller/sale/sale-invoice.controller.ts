@@ -44,6 +44,8 @@ export class SaleInvoiceController {
     @Query('search') search?: string,
     @Query('deliveryNoteId') deliveryNoteId?: string,
     @Query('saleOrderId') saleOrderId?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
     const user = req.user as TenantRequestUser;
     return this.saleInvoiceService.list(
@@ -55,6 +57,8 @@ export class SaleInvoiceController {
         search,
         deliveryNoteId,
         saleOrderId,
+        startDate,
+        endDate,
       },
       user.userId,
     );

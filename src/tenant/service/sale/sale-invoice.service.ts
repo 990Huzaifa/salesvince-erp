@@ -30,6 +30,11 @@ import {
 } from 'src/common/pdf';
 import { buildSaleInvoicePdfHtml } from './sale-invoice-pdf.template';
 import { Business } from 'src/tenant-db/entities/business.entity';
+import {
+  endOfDay,
+  parseDateRange,
+  startOfDay,
+} from '../report/report-query.helper';
 
 const INVOICE_NUMBER_PREFIX = 'SI';
 
@@ -437,6 +442,8 @@ export class SaleInvoiceService {
       search?: string;
       deliveryNoteId?: string;
       saleOrderId?: string;
+      startDate?: string;
+      endDate?: string;
     },
     actorUserId: string,
   ) {
@@ -444,6 +451,8 @@ export class SaleInvoiceService {
     const page = Math.max(1, options.page);
     const limit = Math.max(1, options.limit);
     const skip = (page - 1) * limit;
+    const { startDate: parsedStartDate, endDate: parsedEndDate } =
+      parseDateRange(options.startDate, options.endDate);
 
     const qb = tenantDb
       .getRepository(SaleInvoice)
@@ -469,6 +478,16 @@ export class SaleInvoiceService {
     if (options.saleOrderId) {
       qb.andWhere('invoice.saleOrderId = :saleOrderId', {
         saleOrderId: options.saleOrderId,
+      });
+    }
+    if (parsedStartDate) {
+      qb.andWhere('invoice.invoiceDate >= :startDate', {
+        startDate: startOfDay(parsedStartDate),
+      });
+    }
+    if (parsedEndDate) {
+      qb.andWhere('invoice.invoiceDate <= :endDate', {
+        endDate: endOfDay(parsedEndDate),
       });
     }
 
