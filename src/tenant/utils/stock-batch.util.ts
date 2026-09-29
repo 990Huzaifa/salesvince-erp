@@ -5,6 +5,7 @@ export type BatchAllocation = {
   batchId: string;
   warehouseId: string;
   quantity: number;
+  purchaseUnitPrice: number;
 };
 
 export type StockPricingSelection = {
@@ -83,6 +84,7 @@ function allocateProportionally(
       batchId: batch.id,
       warehouseId: batch.warehouseId,
       quantity: take,
+      purchaseUnitPrice: Number(batch.purchaseUnitPrice ?? 0),
     });
     remaining -= take;
   }
@@ -125,6 +127,7 @@ export function allocateFromBatches(
       batchId: batch.id,
       warehouseId: batch.warehouseId,
       quantity: take,
+      purchaseUnitPrice: Number(batch.purchaseUnitPrice ?? 0),
     });
     remaining = roundQuantity(remaining - take);
   }
