@@ -2,14 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
 import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity';
-import {
-  SaleReturn,
-  SaleReturnStatus,
-} from 'src/tenant-db/entities/sale-return.entity';
-import {
-  PurchaseReturn,
-  PurchaseReturnStatus,
-} from 'src/tenant-db/entities/purchase-return.entity';
+import { Batch } from 'src/tenant-db/entities/stock.entity';
 import { ActivityLogService } from '../activity-log.service';
 import {
   computeProfitAndLossAmount,
@@ -68,6 +61,8 @@ export class ReportFinancialService {
       metadata: {
         startDate: options.startDate,
         endDate: options.endDate,
+        totalSale: report.totalSale,
+        currentStockValue: report.currentStockValue,
         totalIncome: report.ledger.income.total,
         totalExpenses: report.ledger.expenses.total,
         netProfit: report.ledger.netProfit,
@@ -235,7 +230,13 @@ export class ReportFinancialService {
       endDate,
     );
 
+    // Authoritative total sale = SUM(sale_invoices.totalAmount) in period.
+    const totalSale = operational.sales.totalSale;
+    const currentStockValue = operational.currentStockValue;
+
     return {
+      totalSale,
+      currentStockValue,
       ledger: {
         income: { lines: incomeLines, total: totalIncome },
         expenses: { lines: expenseLines, total: totalExpenses },
@@ -302,7 +303,7 @@ export class ReportFinancialService {
     const saleTotals = await tenantDb
       .getRepository(SaleInvoice)
       .createQueryBuilder('invoice')
-      .select('COALESCE(SUM(invoice.totalAmount), 0)', 'grossSales')
+      .select('COALESCE(SUM(invoice.totalAmount), 0)', 'totalSale')
       .addSelect('COALESCE(SUM(invoice.totalTaxAmount), 0)', 'outputTax')
       .addSelect('COALESCE(SUM(invoice.totalDiscountAmount), 0)', 'salesDiscount')
       .addSelect('COUNT(*)', 'invoiceCount')
@@ -315,7 +316,7 @@ export class ReportFinancialService {
         endDate: endOfDay(endDate),
       })
       .getRawOne<{
-        grossSales: string;
+        totalSale: string;
         outputTax: string;
         salesDiscount: string;
         invoiceCount: string;
@@ -343,7 +344,25 @@ export class ReportFinancialService {
         invoiceCount: string;
       }>();
 
-    const grossSales = roundAmount(Number(saleTotals?.grossSales ?? 0));
+    const stockValueRow = await tenantDb
+      .getRepository(Batch)
+      .createQueryBuilder('batch')
+      .innerJoin('batch.product', 'product')
+      .innerJoin('batch.warehouse', 'warehouse')
+      .select(
+        'COALESCE(SUM(batch.quantity * batch.purchaseUnitPrice), 0)',
+        'currentStockValue',
+      )
+      .where('batch.businessId = :businessId', { businessId })
+      .andWhere('batch.deletedAt IS NULL')
+      .andWhere('batch.quantity > 0')
+      .andWhere('product.isDelete = false')
+      .andWhere('product.isActive = true')
+      .andWhere('warehouse.deletedAt IS NULL')
+      .getRawOne<{ currentStockValue: string }>();
+
+    // Total sale must always be SUM of all sale invoice totalAmount in range.
+    const totalSale = roundAmount(Number(saleTotals?.totalSale ?? 0));
     const outputTax = roundAmount(Number(saleTotals?.outputTax ?? 0));
     const salesDiscount = roundAmount(Number(saleTotals?.salesDiscount ?? 0));
     const grossPurchases = roundAmount(Number(purchaseTotals?.grossPurchases ?? 0));
@@ -351,15 +370,22 @@ export class ReportFinancialService {
     const purchaseDiscount = roundAmount(
       Number(purchaseTotals?.purchaseDiscount ?? 0),
     );
+    const currentStockValue = roundAmount(
+      Number(stockValueRow?.currentStockValue ?? 0),
+    );
 
-    const netSales = roundAmount(grossSales - outputTax);
+    const netSales = roundAmount(totalSale - outputTax);
     const netPurchases = roundAmount(grossPurchases - inputTax);
-    const grossProfit = roundAmount(netSales - netPurchases);
+    // Trading P&L: Sales - (Purchases - Closing Stock). Opening stock not tracked historically.
+    const costOfGoodsSold = roundAmount(netPurchases - currentStockValue);
+    const grossProfit = roundAmount(netSales - costOfGoodsSold);
 
     return {
       sales: {
         invoiceCount: Number(saleTotals?.invoiceCount ?? 0),
-        grossSales,
+        totalSale,
+        // Backward-compatible alias of totalSale (SUM invoice.totalAmount).
+        grossSales: totalSale,
         netSales,
         outputTax,
         discount: salesDiscount,
@@ -371,6 +397,8 @@ export class ReportFinancialService {
         inputTax,
         discount: purchaseDiscount,
       },
+      currentStockValue,
+      costOfGoodsSold,
       grossProfit,
     };
   }
