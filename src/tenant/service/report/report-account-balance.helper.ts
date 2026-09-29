@@ -135,14 +135,18 @@ export function computeProfitAndLossAmount(
   const nature = getAccountBalanceNature(account);
   const movement = computeBalanceMovement(nature, debit, credit);
 
-  if (account.level1 === 4) {
+  // Income (credit nature) and Expenses (debit nature) both surface as
+  // positive amounts when the account moves in its normal direction.
+  if (account.level1 === 4 || account.level1 === 5) {
     return roundAmount(Math.max(movement, 0));
-  }
-  if (account.level1 === 5) {
-    return roundAmount(Math.max(-movement, 0));
   }
 
   return roundAmount(Math.abs(movement));
+}
+
+/** Display amount for expense leaf accounts from signed currentBalance. */
+export function displayExpenseCurrentBalance(signedBalance: number): number {
+  return roundAmount(Math.max(signedBalance, 0));
 }
 
 export function displayBalanceSheetAmount(

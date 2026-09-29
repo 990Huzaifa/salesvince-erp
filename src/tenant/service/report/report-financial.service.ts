@@ -7,6 +7,7 @@ import { ActivityLogService } from '../activity-log.service';
 import {
   computeProfitAndLossAmount,
   displayBalanceSheetAmount,
+  displayExpenseCurrentBalance,
   getBalancesAsOfMap,
   getPeriodMovementsByAccount,
   loadPostableAccountsByLevel,
@@ -18,6 +19,7 @@ import {
   roundAmount,
   startOfDay,
 } from './report-query.helper';
+import { ChartOfAccount } from 'src/tenant-db/entities/chart-of-account.entity';
 
 type FinancialLine = {
   chartOfAccountId: string | null;
@@ -201,20 +203,30 @@ export class ReportFinancialService {
   ) {
     const [incomeAccounts, expenseAccounts] = await Promise.all([
       loadPostableAccountsByLevel(tenantDb, businessId, 4),
+      // Expense head (level1 = 5) ke saare postable/leaf accounts.
       loadPostableAccountsByLevel(tenantDb, businessId, 5),
     ]);
 
-    const allAccounts = [...incomeAccounts, ...expenseAccounts];
-    const movements = await getPeriodMovementsByAccount(
-      tenantDb,
-      businessId,
-      allAccounts.map((account) => account.id),
-      startDate,
-      endDate,
-    );
+    const [incomeMovements, expenseBalances] = await Promise.all([
+      getPeriodMovementsByAccount(
+        tenantDb,
+        businessId,
+        incomeAccounts.map((account) => account.id),
+        startDate,
+        endDate,
+      ),
+      // Expense lines = each leaf account's current balance as of period end.
+      getBalancesAsOfMap(tenantDb, businessId, expenseAccounts, endDate),
+    ]);
 
-    const incomeLines = this.buildProfitAndLossLines(incomeAccounts, movements);
-    const expenseLines = this.buildProfitAndLossLines(expenseAccounts, movements);
+    const incomeLines = this.buildProfitAndLossLines(
+      incomeAccounts,
+      incomeMovements,
+    );
+    const expenseLines = this.buildExpenseLinesFromCurrentBalances(
+      expenseAccounts,
+      expenseBalances,
+    );
 
     const totalIncome = roundAmount(
       incomeLines.reduce((sum, line) => sum + line.amount, 0),
@@ -270,6 +282,24 @@ export class ReportFinancialService {
       })
       .filter((line) => line.amount !== 0)
       .sort((left, right) => right.amount - left.amount);
+  }
+
+  /**
+   * Expense head ke andar jitne leaf (postable) accounts hain, unki
+   * currentBalance lines mein aati hai; total = un balances ka sum.
+   */
+  private buildExpenseLinesFromCurrentBalances(
+    accounts: ChartOfAccount[],
+    balances: Map<string, number>,
+  ): FinancialLine[] {
+    return accounts
+      .map((account) => ({
+        chartOfAccountId: account.id,
+        accountCode: account.code,
+        accountName: account.name,
+        amount: displayExpenseCurrentBalance(balances.get(account.id) ?? 0),
+      }))
+      .sort((left, right) => left.accountCode.localeCompare(right.accountCode));
   }
 
   private buildBalanceSheetSection(
