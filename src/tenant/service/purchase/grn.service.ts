@@ -40,6 +40,7 @@ import {
 } from 'src/common/discount/resolve-discount';
 import { TransactionService } from '../transaction.service';
 import { PurchaseInvoiceService } from './purchase-invoice.service';
+import { resolveInventoryControlAccount } from 'src/tenant-db/helpers/sales-revenue-chart-of-account.helper';
 
 const GRN_NUMBER_PREFIX = 'GRN';
 
@@ -215,17 +216,32 @@ export class GrnService {
         })),
     });
 
-    await this.transactionService.postDirectLedgerEntry(manager, {
+    const amount = this.roundAmount(Number(grn.totalAmount));
+    const inventory = await resolveInventoryControlAccount(manager, businessId);
+    const description = this.grnLedgerDescription(
+      await this.resolvePurchaseOrderNumber(manager, grn),
+    );
+
+    // Dr Inventory (1-1-4) / Cr Vendor Payable.
+    await this.transactionService.postJournal(manager, {
       businessId,
-      chartOfAccountId: vendor.payableAccountId,
       referenceType: AccountTransactionReferenceType.GRN,
       referenceId: grn.id,
       partyId: vendor.id,
       transactionDate: grn.grnDate,
-      description: this.grnLedgerDescription(
-        await this.resolvePurchaseOrderNumber(manager, grn),
-      ),
-      creditAmount: this.roundAmount(Number(grn.totalAmount)),
+      description,
+      lines: [
+        {
+          chartOfAccountId: inventory.id,
+          debitAmount: amount,
+          description,
+        },
+        {
+          chartOfAccountId: vendor.payableAccountId,
+          creditAmount: amount,
+          description,
+        },
+      ],
     });
 
     grn.status = GrnStatus.APPROVED;
@@ -1418,18 +1434,39 @@ export class GrnService {
         );
       }
 
-      await this.transactionService.updateDirectLedgerEntryByReference(
+      const inventory = await resolveInventoryControlAccount(
         manager,
-        {
-          businessId: ledgerBusinessId,
-          chartOfAccountId: vendor.payableAccountId,
-          referenceType: AccountTransactionReferenceType.GRN,
-          referenceId: grn.id,
-          transactionDate: order.orderDate,
-          description: this.grnLedgerDescription(order.orderNumber),
-          creditAmount: headerTotals.totalAmount,
-        },
+        ledgerBusinessId,
       );
+      const description = this.grnLedgerDescription(order.orderNumber);
+
+      // Replace prior GRN ledger with Inventory Dr / Payable Cr.
+      await this.transactionService.deleteLedgerEntriesByReference(manager, {
+        businessId: ledgerBusinessId,
+        referenceType: AccountTransactionReferenceType.GRN,
+        referenceId: grn.id,
+      });
+
+      await this.transactionService.postJournal(manager, {
+        businessId: ledgerBusinessId,
+        referenceType: AccountTransactionReferenceType.GRN,
+        referenceId: grn.id,
+        partyId: vendor.id,
+        transactionDate: order.orderDate,
+        description,
+        lines: [
+          {
+            chartOfAccountId: inventory.id,
+            debitAmount: headerTotals.totalAmount,
+            description,
+          },
+          {
+            chartOfAccountId: vendor.payableAccountId,
+            creditAmount: headerTotals.totalAmount,
+            description,
+          },
+        ],
+      });
 
       grn.items = await manager.getRepository(GrnItem).find({
         where: { grnId: grn.id },

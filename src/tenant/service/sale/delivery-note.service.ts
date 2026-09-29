@@ -31,6 +31,12 @@ import { StockService } from '../stock.service';
 import { TransactionService } from '../transaction.service';
 import { SaleInvoiceService } from './sale-invoice.service';
 import {
+  resolveCogsAccount,
+  resolveInventoryControlAccount,
+  resolveSalesRevenueAccount,
+} from 'src/tenant-db/helpers/sales-revenue-chart-of-account.helper';
+import { BatchAllocation } from '../../utils/stock-batch.util';
+import {
   allocateDiscountAmount,
   isExplicitDiscountPercentage,
   resolveDiscountFromAmountOrPercentage,
@@ -90,6 +96,87 @@ export class DeliveryNoteService {
 
   private roundAmount(value: number): number {
     return Math.round(value * 100) / 100;
+  }
+
+  private computeCogsFromBatchAllocations(
+    results: Array<{ batchAllocations: BatchAllocation[] }>,
+  ): number {
+    let total = 0;
+    for (const result of results) {
+      for (const allocation of result.batchAllocations ?? []) {
+        total +=
+          Number(allocation.quantity ?? 0) *
+          Number(allocation.purchaseUnitPrice ?? 0);
+      }
+    }
+    return this.roundAmount(total);
+  }
+
+  private computeCogsFromDeliveryNoteItems(
+    items: DeliveryNoteItem[],
+  ): number {
+    let total = 0;
+    for (const item of items) {
+      const qty = Number(item.deliveredQuantity ?? 0);
+      if (qty <= 0) {
+        continue;
+      }
+      const unitCost = Number(item.saleOrderItem?.purchaseUnitPrice ?? 0);
+      total += qty * unitCost;
+    }
+    return this.roundAmount(total);
+  }
+
+  private async resolveSaleLedgerAccounts(
+    manager: EntityManager,
+    businessId: string,
+  ) {
+    const [salesRevenue, cogs, inventory] = await Promise.all([
+      resolveSalesRevenueAccount(manager, businessId),
+      resolveCogsAccount(manager, businessId),
+      resolveInventoryControlAccount(manager, businessId),
+    ]);
+    return { salesRevenue, cogs, inventory };
+  }
+
+  private buildSaleJournalLines(params: {
+    receivableAccountId: string;
+    salesRevenueAccountId: string;
+    cogsAccountId: string;
+    inventoryAccountId: string;
+    saleAmount: number;
+    cogsAmount: number;
+    description: string;
+  }) {
+    const lines = [
+      {
+        chartOfAccountId: params.receivableAccountId,
+        debitAmount: params.saleAmount,
+        description: params.description,
+      },
+      {
+        chartOfAccountId: params.salesRevenueAccountId,
+        creditAmount: params.saleAmount,
+        description: params.description,
+      },
+    ];
+
+    if (params.cogsAmount > 0) {
+      lines.push(
+        {
+          chartOfAccountId: params.cogsAccountId,
+          debitAmount: params.cogsAmount,
+          description: params.description,
+        },
+        {
+          chartOfAccountId: params.inventoryAccountId,
+          creditAmount: params.cogsAmount,
+          description: params.description,
+        },
+      );
+    }
+
+    return lines;
   }
 
   private assertPendingStatus(deliveryNote: DeliveryNote): void {
@@ -744,30 +831,47 @@ export class DeliveryNoteService {
       );
     }
 
-    await this.stockService.consumeReservedStockOut(manager, {
-      businessId,
-      referenceType: ReferenceType.SALE,
-      lines: items
-        .filter((item) => item.deliveredQuantity > 0)
-        .map((item) => ({
-          productId: item.productId,
-          uomId: item.uomId,
-          quantity: item.deliveredQuantity,
-          warehouseId: item.warehouseId,
-        })),
-    });
+    const stockResults = await this.stockService.consumeReservedStockOut(
+      manager,
+      {
+        businessId,
+        referenceType: ReferenceType.SALE,
+        lines: items
+          .filter((item) => item.deliveredQuantity > 0)
+          .map((item) => ({
+            productId: item.productId,
+            uomId: item.uomId,
+            quantity: item.deliveredQuantity,
+            warehouseId: item.warehouseId,
+          })),
+      },
+    );
 
-    await this.transactionService.postDirectLedgerEntry(manager, {
+    const saleAmount = this.roundAmount(Number(deliveryNote.totalAmount));
+    const cogsAmount = this.computeCogsFromBatchAllocations(stockResults);
+    const { salesRevenue, cogs, inventory } =
+      await this.resolveSaleLedgerAccounts(manager, businessId);
+    const description = this.deliveryNoteLedgerDescription(
+      await this.resolveSaleOrderNumber(manager, deliveryNote),
+    );
+
+    // Dr Customer AR / Cr Sales Revenue; Dr COGS / Cr Inventory.
+    await this.transactionService.postJournal(manager, {
       businessId,
-      chartOfAccountId: customer.receivableAccountId,
       referenceType: AccountTransactionReferenceType.DELIVERY_NOTE,
       referenceId: deliveryNote.id,
       partyId: customer.id,
       transactionDate: deliveryNote.deliveryNoteDate,
-      description: this.deliveryNoteLedgerDescription(
-        await this.resolveSaleOrderNumber(manager, deliveryNote),
-      ),
-      debitAmount: this.roundAmount(Number(deliveryNote.totalAmount)),
+      description,
+      lines: this.buildSaleJournalLines({
+        receivableAccountId: customer.receivableAccountId,
+        salesRevenueAccountId: salesRevenue.id,
+        cogsAccountId: cogs.id,
+        inventoryAccountId: inventory.id,
+        saleAmount,
+        cogsAmount,
+        description,
+      }),
     });
 
     deliveryNote.status = DeliveryNoteStatus.APPROVED;
@@ -1405,18 +1509,44 @@ export class DeliveryNoteService {
         );
       }
 
-      await this.transactionService.updateDirectLedgerEntryByReference(
-        manager,
-        {
-          businessId: ledgerBusinessId,
-          chartOfAccountId: customer.receivableAccountId,
-          referenceType: AccountTransactionReferenceType.DELIVERY_NOTE,
-          referenceId: deliveryNote.id,
-          transactionDate: order.orderDate,
-          description: this.deliveryNoteLedgerDescription(order.orderNumber),
-          debitAmount: headerTotals.totalAmount,
-        },
+      const { salesRevenue, cogs, inventory } =
+        await this.resolveSaleLedgerAccounts(manager, ledgerBusinessId);
+      const description = this.deliveryNoteLedgerDescription(order.orderNumber);
+      const cogsAmount = this.roundAmount(
+        (deliveryNote.items ?? []).reduce((sum, item) => {
+          const orderItem = soItemById.get(item.saleOrderItemId);
+          const qty = Number(item.deliveredQuantity ?? 0);
+          if (!orderItem || qty <= 0) {
+            return sum;
+          }
+          return sum + qty * Number(orderItem.purchaseUnitPrice ?? 0);
+        }, 0),
       );
+
+      // Replace prior DN ledger with full sale journal (AR/Revenue + COGS/Inventory).
+      await this.transactionService.deleteLedgerEntriesByReference(manager, {
+        businessId: ledgerBusinessId,
+        referenceType: AccountTransactionReferenceType.DELIVERY_NOTE,
+        referenceId: deliveryNote.id,
+      });
+
+      await this.transactionService.postJournal(manager, {
+        businessId: ledgerBusinessId,
+        referenceType: AccountTransactionReferenceType.DELIVERY_NOTE,
+        referenceId: deliveryNote.id,
+        partyId: customer.id,
+        transactionDate: order.orderDate,
+        description,
+        lines: this.buildSaleJournalLines({
+          receivableAccountId: customer.receivableAccountId,
+          salesRevenueAccountId: salesRevenue.id,
+          cogsAccountId: cogs.id,
+          inventoryAccountId: inventory.id,
+          saleAmount: headerTotals.totalAmount,
+          cogsAmount,
+          description,
+        }),
+      });
 
       deliveryNote.items = await manager.getRepository(DeliveryNoteItem).find({
         where: { deliveryNoteId: deliveryNote.id },

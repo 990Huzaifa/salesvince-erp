@@ -27,6 +27,7 @@ import {
 } from '../list-analytics.service';
 import { StockService } from '../stock.service';
 import { TransactionService } from '../transaction.service';
+import { resolveInventoryControlAccount } from 'src/tenant-db/helpers/sales-revenue-chart-of-account.helper';
 
 const RETURN_NUMBER_PREFIX = 'PRT';
 
@@ -423,15 +424,29 @@ export class PurchaseReturnService {
       })),
     });
 
-    await this.transactionService.postDirectLedgerEntry(manager, {
+    const inventory = await resolveInventoryControlAccount(manager, businessId);
+    const description = `Purchase return ${purchaseReturn.returnNumber} - vendor payable reduced`;
+
+    // Dr Vendor Payable / Cr Inventory (reverse GRN).
+    await this.transactionService.postJournal(manager, {
       businessId,
-      chartOfAccountId: vendor.payableAccountId,
       referenceType: AccountTransactionReferenceType.PURCHASE_RETURN,
       referenceId: purchaseReturn.id,
       partyId: vendor.id,
       transactionDate: purchaseReturn.returnDate,
-      description: `Purchase return ${purchaseReturn.returnNumber} - vendor payable reduced`,
-      debitAmount: totalAmount,
+      description,
+      lines: [
+        {
+          chartOfAccountId: vendor.payableAccountId,
+          debitAmount: totalAmount,
+          description,
+        },
+        {
+          chartOfAccountId: inventory.id,
+          creditAmount: totalAmount,
+          description,
+        },
+      ],
     });
 
     purchaseReturn.status = PurchaseReturnStatus.APPROVED;
@@ -540,15 +555,28 @@ export class PurchaseReturnService {
         })),
       });
 
-      await this.transactionService.postDirectLedgerEntry(manager, {
+      const inventory = await resolveInventoryControlAccount(manager, businessId);
+      const description = `Purchase return ${purchaseReturn.returnNumber} reversal`;
+
+      await this.transactionService.postJournal(manager, {
         businessId,
-        chartOfAccountId: vendor.payableAccountId,
         referenceType: AccountTransactionReferenceType.PURCHASE_RETURN,
         referenceId: purchaseReturn.id,
         partyId: vendor.id,
         transactionDate: purchaseReturn.returnDate,
-        description: `Purchase return ${purchaseReturn.returnNumber} reversal`,
-        creditAmount: totalAmount,
+        description,
+        lines: [
+          {
+            chartOfAccountId: vendor.payableAccountId,
+            creditAmount: totalAmount,
+            description,
+          },
+          {
+            chartOfAccountId: inventory.id,
+            debitAmount: totalAmount,
+            description,
+          },
+        ],
       });
     }
   }

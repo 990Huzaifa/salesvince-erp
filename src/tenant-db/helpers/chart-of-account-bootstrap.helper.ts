@@ -88,6 +88,7 @@ export async function seedDefaultChartOfAccountsForBusiness(
 
 /**
  * Inserts any default COA nodes missing for a business (e.g. after chart template updates).
+ * Also syncs name / isPostable / parentCode for existing system template codes.
  */
 export async function ensureDefaultChartOfAccountNodes(
   tenantDb: TenantDb,
@@ -98,9 +99,20 @@ export async function ensureDefaultChartOfAccountNodes(
   for (const item of DEFAULT_CHART_OF_ACCOUNTS) {
     const exists = await coaRepo.findOne({
       where: { businessId, code: item.code, deletedAt: IsNull() },
-      select: ['id'],
+      select: ['id', 'isPostable', 'name', 'parentCode'],
     });
     if (exists) {
+      const needsSync =
+        exists.isPostable !== item.isPostable ||
+        exists.name !== item.name ||
+        exists.parentCode !== item.parentCode;
+      if (needsSync) {
+        await coaRepo.update(exists.id, {
+          isPostable: item.isPostable,
+          name: item.name,
+          parentCode: item.parentCode,
+        });
+      }
       continue;
     }
 

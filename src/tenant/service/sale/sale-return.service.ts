@@ -27,6 +27,11 @@ import {
 } from '../list-analytics.service';
 import { StockService } from '../stock.service';
 import { TransactionService } from '../transaction.service';
+import {
+  resolveCogsAccount,
+  resolveInventoryControlAccount,
+  resolveSalesRevenueAccount,
+} from 'src/tenant-db/helpers/sales-revenue-chart-of-account.helper';
 
 const RETURN_NUMBER_PREFIX = 'SRT';
 
@@ -474,15 +479,56 @@ export class SaleReturnService {
       lines,
     );
 
-    await this.transactionService.postDirectLedgerEntry(manager, {
+    const [salesRevenue, cogs, inventory] = await Promise.all([
+      resolveSalesRevenueAccount(manager, businessId),
+      resolveCogsAccount(manager, businessId),
+      resolveInventoryControlAccount(manager, businessId),
+    ]);
+    const description = `Sale return ${saleReturn.returnNumber} - customer receivable reduced`;
+    const cogsAmount = this.roundAmount(
+      lines.reduce(
+        (sum, line) =>
+          sum + Number(line.quantity) * Number(line.purchaseUnitPrice ?? 0),
+        0,
+      ),
+    );
+
+    // Reverse sale: Cr AR / Dr Sales Revenue; Dr Inventory / Cr COGS.
+    const journalLines = [
+      {
+        chartOfAccountId: customer.receivableAccountId,
+        creditAmount: totalAmount,
+        description,
+      },
+      {
+        chartOfAccountId: salesRevenue.id,
+        debitAmount: totalAmount,
+        description,
+      },
+    ];
+    if (cogsAmount > 0) {
+      journalLines.push(
+        {
+          chartOfAccountId: inventory.id,
+          debitAmount: cogsAmount,
+          description,
+        },
+        {
+          chartOfAccountId: cogs.id,
+          creditAmount: cogsAmount,
+          description,
+        },
+      );
+    }
+
+    await this.transactionService.postJournal(manager, {
       businessId,
-      chartOfAccountId: customer.receivableAccountId,
       referenceType: AccountTransactionReferenceType.SALE_RETURN,
       referenceId: saleReturn.id,
       partyId: customer.id,
       transactionDate: saleReturn.returnDate,
-      description: `Sale return ${saleReturn.returnNumber} - customer receivable reduced`,
-      creditAmount: totalAmount,
+      description,
+      lines: journalLines,
     });
 
     saleReturn.status = SaleReturnStatus.APPROVED;
@@ -577,15 +623,56 @@ export class SaleReturnService {
     if (totalAmount > 0) {
       await this.consumeStockForReturnReversal(manager, businessId, lines);
 
-      await this.transactionService.postDirectLedgerEntry(manager, {
+      const [salesRevenue, cogs, inventory] = await Promise.all([
+        resolveSalesRevenueAccount(manager, businessId),
+        resolveCogsAccount(manager, businessId),
+        resolveInventoryControlAccount(manager, businessId),
+      ]);
+      const description = `Sale return ${saleReturn.returnNumber} reversal`;
+      const cogsAmount = this.roundAmount(
+        lines.reduce(
+          (sum, line) =>
+            sum + Number(line.quantity) * Number(line.purchaseUnitPrice ?? 0),
+          0,
+        ),
+      );
+
+      // Reverse the return journal (re-apply sale sides).
+      const journalLines = [
+        {
+          chartOfAccountId: customer.receivableAccountId,
+          debitAmount: totalAmount,
+          description,
+        },
+        {
+          chartOfAccountId: salesRevenue.id,
+          creditAmount: totalAmount,
+          description,
+        },
+      ];
+      if (cogsAmount > 0) {
+        journalLines.push(
+          {
+            chartOfAccountId: cogs.id,
+            debitAmount: cogsAmount,
+            description,
+          },
+          {
+            chartOfAccountId: inventory.id,
+            creditAmount: cogsAmount,
+            description,
+          },
+        );
+      }
+
+      await this.transactionService.postJournal(manager, {
         businessId,
-        chartOfAccountId: customer.receivableAccountId,
         referenceType: AccountTransactionReferenceType.SALE_RETURN,
         referenceId: saleReturn.id,
         partyId: customer.id,
         transactionDate: saleReturn.returnDate,
-        description: `Sale return ${saleReturn.returnNumber} reversal`,
-        debitAmount: totalAmount,
+        description,
+        lines: journalLines,
       });
     }
   }
