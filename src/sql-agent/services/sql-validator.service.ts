@@ -41,6 +41,14 @@ export class SqlValidatorService {
       };
     }
 
+    if (this.hasUnbalancedQuotes(trimmed)) {
+      return {
+        valid: false,
+        error:
+          'SQL appears truncated (unbalanced quotes). Regenerate a complete query.',
+      };
+    }
+
     for (const keyword of BLOCKED_KEYWORDS) {
       const pattern = new RegExp(`\\b${keyword}\\b`, 'i');
       if (pattern.test(trimmed)) {
@@ -50,6 +58,33 @@ export class SqlValidatorService {
 
     const withLimit = this.ensureLimit(trimmed);
     return { valid: true, sql: withLimit };
+  }
+
+  /** Detects model output cut mid-string (e.g. unfinished UUID literals). */
+  private hasUnbalancedQuotes(sql: string): boolean {
+    let inSingle = false;
+    let inDouble = false;
+
+    for (let i = 0; i < sql.length; i++) {
+      const ch = sql[i];
+      const next = sql[i + 1];
+
+      if (!inDouble && ch === "'") {
+        // Postgres escaped single quote: ''
+        if (inSingle && next === "'") {
+          i += 1;
+          continue;
+        }
+        inSingle = !inSingle;
+        continue;
+      }
+
+      if (!inSingle && ch === '"') {
+        inDouble = !inDouble;
+      }
+    }
+
+    return inSingle || inDouble;
   }
 
   private ensureLimit(sql: string): string {

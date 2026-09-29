@@ -109,13 +109,22 @@ export class AiModelService {
     });
   }
 
+  private getSqlMaxTokens(): number {
+    const raw = this.configService.get<string>('SQL_AGENT_MAX_TOKENS')?.trim();
+    const parsed = raw ? Number.parseInt(raw, 10) : NaN;
+    // CTEs with repeated UUIDs / joins need headroom; GPT-5 may also
+    // spend part of the budget on reasoning tokens.
+    if (Number.isFinite(parsed) && parsed >= 400) {
+      return parsed;
+    }
+    return 2000;
+  }
+
   getSqlModel(): ChatOpenAI {
     return this.buildModel({
       model: this.getSqlModelName(),
       reasoningEffort: this.getSqlReasoningEffort(),
-
-      // SQL and tool calls should normally be short.
-      maxTokens: 400,
+      maxTokens: this.getSqlMaxTokens(),
       temperature: 0,
       streaming: false,
       cacheKey: 'sql-agent-schema-v1',
@@ -129,7 +138,7 @@ export class AiModelService {
       // Used only if ANSWER_MODEL is also GPT-5.
       reasoningEffort: 'minimal',
 
-      maxTokens: 600,
+      maxTokens: 800,
       temperature: 0.2,
       streaming: true,
       cacheKey: 'sql-agent-answer-v1',

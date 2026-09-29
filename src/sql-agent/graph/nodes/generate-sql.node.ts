@@ -16,7 +16,7 @@ export function createGenerateSqlNode(aiModelService: AiModelService) {
     try {
       const model = aiModelService.getSqlModel();
       const businessRule = state.businessId
-        ? `When a table has a "businessId" column, you MUST filter with "businessId" = '${state.businessId}'.`
+        ? `When a table has a "businessId" column, you MUST filter with "businessId" = '${state.businessId}'. Prefer putting that UUID once in a CTE (e.g. params AS (SELECT '${state.businessId}'::uuid AS business_id)) and join/filter from it instead of repeating the literal.`
         : '';
 
       const filteredSchema = state.schemaText ?? '';
@@ -29,6 +29,7 @@ export function createGenerateSqlNode(aiModelService: AiModelService) {
           `You write a single PostgreSQL SELECT (or WITH) query.
 Return ONLY the SQL query with no explanation or markdown unless wrapped in a single \`\`\`sql block.
 Rules: read-only, no semicolons, no comments, one statement only.
+Keep the query complete and as compact as possible; never cut off mid-literal.
 ${POSTGRES_IDENTIFIER_RULES}
 ${businessRule}
 Relevant tables: ${tables}`,
