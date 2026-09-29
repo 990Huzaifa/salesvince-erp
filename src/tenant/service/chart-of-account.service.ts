@@ -245,11 +245,12 @@ export class ChartOfAccountService {
       const childAccounts = childrenByParent.get(account.code) ?? [];
       const children = childAccounts.map((child) => buildNode(child));
       const ownBalance = balances.get(account.id) ?? 0;
-      const rolledBalance = children.length
-        ? this.roundAmount(
-            children.reduce((sum, child) => sum + child.currentBalance, 0),
-          )
-        : ownBalance;
+      const childrenBalance = this.roundAmount(
+        children.reduce((sum, child) => sum + child.currentBalance, 0),
+      );
+      // Postable parents (e.g. Inventory) can hold their own balance while
+      // also having children — include both in the rolled total.
+      const rolledBalance = this.roundAmount(ownBalance + childrenBalance);
 
       const parent = account.parentCode
         ? byCode.get(account.parentCode)
