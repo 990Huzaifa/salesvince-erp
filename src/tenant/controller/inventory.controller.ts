@@ -7,7 +7,10 @@ import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
-import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
+import {
+  TenantCode,
+  TenantConnection,
+} from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { GetStockBalanceDto } from '../dto/inventory/get-stock-balance.dto';
 import { GetBatchDetailDto } from '../dto/inventory/get-batch-detail.dto';
@@ -17,6 +20,7 @@ import { InventoryBalanceService } from '../service/inventory/inventory-balance.
 import { InventoryBatchService } from '../service/inventory/inventory-batch.service';
 import { InventoryMovementService } from '../service/inventory/inventory-movement.service';
 import { ProductMergeService } from '../service/inventory/product-merge.service';
+import { BatchPurchaseLinkBackfillService } from '../service/inventory/batch-purchase-link-backfill.service';
 
 @Controller('tenant/inventory')
 @UseGuards(
@@ -32,6 +36,7 @@ export class InventoryController {
     private readonly inventoryBatchService: InventoryBatchService,
     private readonly inventoryMovementService: InventoryMovementService,
     private readonly productMergeService: ProductMergeService,
+    private readonly batchPurchaseLinkBackfillService: BatchPurchaseLinkBackfillService,
   ) {}
 
   @Get('stock-balance')
@@ -54,6 +59,21 @@ export class InventoryController {
   ) {
     const user = req.user as TenantRequestUser;
     return this.inventoryBatchService.list(tenantDb, user.businessId, query);
+  }
+
+  @Post('batches/backfill-purchase-links')
+  @RequirePermissions('LIST_INVENTORY')
+  backfillBatchPurchaseLinks(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.batchPurchaseLinkBackfillService.startBackfill(
+      tenantDb,
+      tenantCode,
+      user,
+    );
   }
 
   @Get('stock-movements')
