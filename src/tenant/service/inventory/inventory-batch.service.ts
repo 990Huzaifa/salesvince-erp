@@ -34,7 +34,6 @@ export class InventoryBatchService {
         .leftJoin('batch.uom', 'uom')
         .where('batch.businessId = :businessId', { businessId: scopedBusinessId })
         .andWhere('batch.deletedAt IS NULL')
-        .andWhere('batch.quantity > 0')
         .andWhere('product.isDelete = false')
         .andWhere('product.isActive = true');
 
@@ -119,9 +118,11 @@ export class InventoryBatchService {
       .innerJoin('batch.product', 'product')
       .innerJoin('batch.warehouse', 'warehouse')
       .leftJoin('batch.uom', 'uom')
+      .leftJoin('batch.grn', 'grn')
+      .leftJoin('batch.purchaseInvoice', 'purchaseInvoice')
+      .leftJoin('grn.purchaseOrder', 'purchaseOrder')
       .where('batch.businessId = :businessId', { businessId: scopedBusinessId })
       .andWhere('batch.deletedAt IS NULL')
-      .andWhere('batch.quantity > 0')
       .andWhere('product.isDelete = false')
       .andWhere('product.isActive = true')
       .andWhere('warehouse.deletedAt IS NULL');
@@ -158,8 +159,16 @@ export class InventoryBatchService {
       .addSelect('batch.batchDate', 'batchDate')
       .addSelect('batch.expiryDate', 'expiryDate')
       .addSelect('batch.quantity', 'quantity')
+      .addSelect('batch.purchasedQty', 'purchasedQty')
       .addSelect('batch.purchaseUnitPrice', 'purchaseUnitPrice')
       .addSelect('batch.saleUnitPrice', 'saleUnitPrice')
+      .addSelect('batch.grnId', 'grnId')
+      .addSelect('grn.grnNumber', 'grnNumber')
+      .addSelect('batch.purchaseInvoiceId', 'purchaseInvoiceId')
+      .addSelect('purchaseInvoice.invoiceNumber', 'purchaseInvoiceNumber')
+      .addSelect('purchaseOrder.id', 'purchaseOrderId')
+      .addSelect('purchaseOrder.orderNumber', 'poNumber')
+      .addSelect('purchaseOrder.orderDate', 'poDate')
       .addSelect('batch.warehouseId', 'warehouseId')
       .addSelect('warehouse.name', 'warehouseName')
       .addSelect('warehouse.code', 'warehouseCode')
@@ -180,8 +189,16 @@ export class InventoryBatchService {
         batchDate: Date;
         expiryDate: Date | null;
         quantity: string;
+        purchasedQty: string | null;
         purchaseUnitPrice: string;
         saleUnitPrice: string;
+        grnId: string | null;
+        grnNumber: string | null;
+        purchaseInvoiceId: string | null;
+        purchaseInvoiceNumber: string | null;
+        purchaseOrderId: string | null;
+        poNumber: string | null;
+        poDate: Date | null;
         warehouseId: string;
         warehouseName: string;
         warehouseCode: string;
@@ -195,25 +212,42 @@ export class InventoryBatchService {
       }>();
 
     return {
-      data: rows.map((row) => ({
-        id: row.id,
-        batchNumber: row.batchNumber,
-        batchDate: row.batchDate,
-        expiryDate: row.expiryDate,
-        quantity: Number(row.quantity),
-        purchaseUnitPrice: Number(row.purchaseUnitPrice),
-        saleUnitPrice: Number(row.saleUnitPrice),
-        warehouseId: row.warehouseId,
-        warehouseName: row.warehouseName,
-        warehouseCode: row.warehouseCode,
-        productId: row.productId,
-        productName: row.productName,
-        productSkuCode: row.productSkuCode,
-        uomId: row.uomId,
-        uomName: row.uomName,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-      })),
+      data: rows.map((row) => {
+        const purchaseUnitPrice = Number(row.purchaseUnitPrice);
+        const purchasedQty =
+          row.purchasedQty == null ? null : Number(row.purchasedQty);
+        return {
+          id: row.id,
+          batchNumber: row.batchNumber,
+          batchDate: row.batchDate,
+          expiryDate: row.expiryDate,
+          quantity: Number(row.quantity),
+          purchasedQty,
+          purchaseUnitPrice,
+          saleUnitPrice: Number(row.saleUnitPrice),
+          totalPurchaseAmount:
+            purchasedQty == null
+              ? null
+              : Math.round(purchasedQty * purchaseUnitPrice * 100) / 100,
+          grnId: row.grnId,
+          grnNumber: row.grnNumber,
+          purchaseInvoiceId: row.purchaseInvoiceId,
+          purchaseInvoiceNumber: row.purchaseInvoiceNumber,
+          purchaseOrderId: row.purchaseOrderId,
+          poNumber: row.poNumber,
+          poDate: row.poDate,
+          warehouseId: row.warehouseId,
+          warehouseName: row.warehouseName,
+          warehouseCode: row.warehouseCode,
+          productId: row.productId,
+          productName: row.productName,
+          productSkuCode: row.productSkuCode,
+          uomId: row.uomId,
+          uomName: row.uomName,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        };
+      }),
       meta: { total: Number(countRow?.total ?? 0), page, limit, scope },
     };
   }

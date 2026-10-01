@@ -32,6 +32,8 @@ export type ReceiveStockInput = {
   referenceType: ReferenceType;
   batchDate: Date;
   batchNumberPrefix: string;
+  /** Set when receiving from an approved GRN so the batch links to purchase docs. */
+  grnId?: string | null;
   lines: ReceiveStockLineInput[];
 };
 
@@ -508,6 +510,9 @@ export class StockService {
           productId: line.productId,
           uomId: line.uomId,
           quantity,
+          purchasedQty: input.grnId ? quantity : null,
+          grnId: input.grnId ?? null,
+          purchaseInvoiceId: null,
           purchaseUnitPrice: this.roundAmount(line.purchaseUnitPrice),
           saleUnitPrice: this.roundAmount(line.saleUnitPrice),
           batchDate: input.batchDate,

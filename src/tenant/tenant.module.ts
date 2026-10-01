@@ -35,6 +35,7 @@ import { ContraVoucherService } from './service/vouchers/contra-voucher.service'
 import { LoanReceiptVoucherService } from './service/vouchers/loan-receipt-voucher.service';
 import { LoanPaymentVoucherService } from './service/vouchers/loan-payment-voucher.service';
 import { ActivityLogService } from './service/activity-log.service';
+import { ActivityLogController } from './controller/activity-log.controller';
 import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
 import { MailModule } from 'src/common/mail/mail.module';
 import { CommonModule } from 'src/common/common.module';
@@ -222,6 +223,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     LoanController,
     InventoryController,
     InventoryForecastController,
+    ActivityLogController,
     DepartmentController,
     DesignationController,
     EmployeeController,

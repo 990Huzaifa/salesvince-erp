@@ -8,6 +8,7 @@ import {
   Brackets,
   DataSource,
   EntityManager,
+  In,
   IsNull,
 } from 'typeorm';
 import {
@@ -21,7 +22,7 @@ import {
   PurchaseOrderItem,
 } from 'src/tenant-db/entities/purchase-order.entity';
 import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
-import { ReferenceType } from 'src/tenant-db/entities/stock.entity';
+import { Batch, ReferenceType } from 'src/tenant-db/entities/stock.entity';
 import { AccountTransactionReferenceType } from 'src/tenant-db/entities/transaction.entity';
 import { CreateGrnDto } from '../../dto/grn/create-grn.dto';
 import { CreateGrnItemDto } from '../../dto/grn/create-grn-item.dto';
@@ -198,13 +199,14 @@ export class GrnService {
       );
     }
 
-    await this.stockService.receiveStockIn(manager, {
+    const stockResults = await this.stockService.receiveStockIn(manager, {
       businessId,
       warehouseId: grn.warehouseId,
       vendorId: grn.vendorId,
       referenceType: ReferenceType.PURCHASE,
       batchDate: grn.grnDate,
       batchNumberPrefix: grn.grnNumber,
+      grnId: grn.id,
       lines: items
         .filter((item) => item.receivedQuantity > 0)
         .map((item) => ({
@@ -247,7 +249,15 @@ export class GrnService {
     grn.status = GrnStatus.APPROVED;
     await manager.getRepository(Grn).save(grn);
 
-    await this.purchaseInvoiceService.createFromGrn(manager, grn);
+    const invoice = await this.purchaseInvoiceService.createFromGrn(manager, grn);
+
+    const batchIds = stockResults.map((result) => result.batch.id);
+    if (batchIds.length) {
+      await manager.getRepository(Batch).update(
+        { id: In(batchIds) },
+        { purchaseInvoiceId: invoice.id },
+      );
+    }
 
     return manager.getRepository(Grn).findOneOrFail({
       where: { id: grn.id },

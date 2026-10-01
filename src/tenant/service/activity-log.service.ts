@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -18,6 +18,13 @@ export class ActivityLogService {
         @InjectRepository(Tenant)
         private readonly tenantRepo: Repository<Tenant>,
     ) { }
+
+    private assertBusinessId(businessId?: string): string {
+        if (!businessId) {
+            throw new BadRequestException('Business context is required');
+        }
+        return businessId;
+    }
 
     async recordActivityLog(tenantDb: DataSource, payload: CreateActivityLogDto) {
         const activityLogRepo = tenantDb.getRepository(ActivityLog);
@@ -49,16 +56,26 @@ export class ActivityLogService {
         });
     }
 
-    async listActivityLogs(tenantDb: DataSource, page = 1, limit = 10) {
+    async listActivityLogs(
+        tenantDb: DataSource,
+        businessId: string | undefined,
+        page = 1,
+        limit = 10,
+    ) {
+        const scopedBusinessId = this.assertBusinessId(businessId);
         const activityLogRepo = tenantDb.getRepository(ActivityLog);
-        const skip = (page - 1) * limit;
+        const safePage = Math.max(1, Number(page ?? 1));
+        const safeLimit = Math.max(1, Math.min(100, Number(limit ?? 10)));
+        const skip = (safePage - 1) * safeLimit;
         const [logs, total] = await activityLogRepo.findAndCount({
+            where: { businessId: scopedBusinessId },
             order: { createdAt: 'DESC' },
             skip,
-            take: limit,
+            take: safeLimit,
             relations: ['actor'],
             select: {
                 id: true,
+                businessId: true,
                 actorId: true,
                 action: true,
                 description: true,
@@ -78,20 +95,26 @@ export class ActivityLogService {
             data: logs,
             meta: {
                 total,
-                page,
-                limit,
-                totalPages: Math.ceil(total / limit),
+                page: safePage,
+                limit: safeLimit,
+                totalPages: Math.ceil(total / safeLimit),
             },
         };
     }
 
-    async viewActivityLog(tenantDb: DataSource, id: string) {
+    async viewActivityLog(
+        tenantDb: DataSource,
+        businessId: string | undefined,
+        id: string,
+    ) {
+        const scopedBusinessId = this.assertBusinessId(businessId);
         const activityLogRepo = tenantDb.getRepository(ActivityLog);
         const log = await activityLogRepo.findOne({
-            where: { id },
+            where: { id, businessId: scopedBusinessId },
             relations: ['actor'],
             select: {
                 id: true,
+                businessId: true,
                 actorId: true,
                 action: true,
                 description: true,

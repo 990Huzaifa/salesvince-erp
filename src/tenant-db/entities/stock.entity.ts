@@ -3,6 +3,8 @@ import { Business } from "./business.entity";
 import { Warehouse } from "./warehouse.entity";
 import { Product, Uom } from "./product.entity";
 import { Party } from "./party.entity";
+import { Grn } from "./grn.entity";
+import { PurchaseInvoice } from "./purchase-invoice.entity";
 
 export enum StockMovementType {
     IN = 'IN',
@@ -65,6 +67,24 @@ export class Batch {
 
     @Column()
     quantity: number;
+
+    /** Original purchase qty at GRN receive; never updated on stock out. */
+    @Column({ type: 'int', nullable: true })
+    purchasedQty: number | null;
+
+    @Column({ type: 'uuid', nullable: true })
+    grnId: string | null;
+
+    @ManyToOne(() => Grn, { onDelete: 'SET NULL', nullable: true })
+    @JoinColumn({ name: 'grnId' })
+    grn: Grn | null;
+
+    @Column({ type: 'uuid', nullable: true })
+    purchaseInvoiceId: string | null;
+
+    @ManyToOne(() => PurchaseInvoice, { onDelete: 'SET NULL', nullable: true })
+    @JoinColumn({ name: 'purchaseInvoiceId' })
+    purchaseInvoice: PurchaseInvoice | null;
 
     @Column({ type: 'decimal', precision: 18, scale: 2 })
     purchaseUnitPrice: number;
