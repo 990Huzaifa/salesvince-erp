@@ -242,6 +242,24 @@ export class ReportController {
     );
   }
 
+  @Get('receiving/pdf')
+  @RequirePermissions('VIEW_RECEIVING_REPORT')
+  async downloadReceivingReportPdf(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query() query: ReportReceivingQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    const result = await this.reportPdfService.generateReceivingReportPdf(
+      tenantDb,
+      user.businessId,
+      user.userId,
+      query,
+    );
+    sendPdf(res, result);
+  }
+
   @Get('vendor-balances/pdf')
   @RequirePermissions('VIEW_VENDOR_BALANCE_REPORT')
   async downloadVendorBalancesPdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response) {
@@ -645,6 +663,24 @@ export class ReportController {
       },
       user.userId,
     );
+  }
+
+  @Get('financial/report/pdf')
+  @RequirePermissions('VIEW_FINANCIAL_REPORT')
+  async downloadFinancialReportPdf(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query() query: ReportFinancialReportQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    const result = await this.reportPdfService.generateFinancialReportPdf(
+      tenantDb,
+      user.businessId,
+      user.userId,
+      query,
+    );
+    sendPdf(res, result);
   }
 
   @Get('financial/profit-and-loss')

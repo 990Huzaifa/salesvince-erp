@@ -9,9 +9,10 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
 import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
@@ -25,6 +26,8 @@ import { GrnStatus } from 'src/tenant-db/entities/grn.entity';
 import { GrnService } from '../../service/purchase/grn.service';
 import { CreateGrnDto } from '../../dto/grn/create-grn.dto';
 import { UpdateGrnDto } from '../../dto/grn/update-grn.dto';
+import { GrnPdfService } from '../../service/purchase/grn-pdf.service';
+import { sendPdf } from 'src/common/pdf';
 
 @Controller('tenant/grns')
 @UseGuards(
@@ -35,7 +38,10 @@ import { UpdateGrnDto } from '../../dto/grn/update-grn.dto';
   TenantPermissionGuard,
 )
 export class GrnController {
-  constructor(private readonly grnService: GrnService) {}
+  constructor(
+    private readonly grnService: GrnService,
+    private readonly grnPdfService: GrnPdfService,
+  ) {}
 
   @Post('create')
   @RequirePermissions('CREATE_PURCHASE_STOCK')
@@ -97,6 +103,28 @@ export class GrnController {
       },
       user.userId,
     );
+  }
+
+  @Get('pdf')
+  @RequirePermissions('LIST_PURCHASE_STOCK')
+  async downloadListPdf(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query('search') search?: string,
+    @Query('vendorId') vendorId?: string,
+    @Query('warehouseId') warehouseId?: string,
+    @Query('purchaseOrderId') purchaseOrderId?: string,
+    @Query('status') status?: GrnStatus,
+  ) {
+    const user = req.user as TenantRequestUser;
+    const result = await this.grnPdfService.generateListPdf(
+      tenantDb,
+      user.businessId,
+      user.userId,
+      { search, vendorId, warehouseId, purchaseOrderId, status },
+    );
+    sendPdf(res, result);
   }
 
   @Get(':id')

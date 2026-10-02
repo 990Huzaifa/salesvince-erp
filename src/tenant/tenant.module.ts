@@ -104,6 +104,8 @@ import { ReportCustomerLowPaymentService } from './service/report/report-custome
 import { ReportReceivablePayableService } from './service/report/report-receivable-payable.service';
 import { ReportReceivingService } from './service/report/report-receiving.service';
 import { ReportPdfService } from './service/report/report-pdf.service';
+import { OpeningBalancePdfService } from './service/report/opening-balance-pdf.service';
+import { GrnPdfService } from './service/purchase/grn-pdf.service';
 import { DashboardController } from './controller/dashboard.controller';
 import { DashboardService } from './service/dashboard.service';
 import { ListAnalyticsService } from './service/list-analytics.service';
@@ -300,6 +302,8 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     ReportReceivablePayableService,
     ReportReceivingService,
     ReportPdfService,
+    OpeningBalancePdfService,
+    GrnPdfService,
     DashboardService,
     ListAnalyticsService,
     SqlAgentChatService,

@@ -1,5 +1,5 @@
-import { BadRequestException, Controller, Get, Query, Req, UseGuards } from "@nestjs/common";
-import type { Request } from "express";
+import { BadRequestException, Controller, Get, Query, Req, Res, UseGuards } from "@nestjs/common";
+import type { Request, Response } from "express";
 import { TenantJwtAuthGuard } from "src/auth/tenant-jwt-auth.guard";
 import { TenantConnectionGuard } from "src/common/guards/tenant-connection.guard";
 import { TenantJwtGuard } from "src/common/guards/tenant-jwt.guard";
@@ -9,11 +9,16 @@ import { TenantUtilityService } from "../service/tenant-utility.service";
 import type { TenantRequestUser } from "src/auth/tenant-jwt.strategy";
 import { TenantBusinessAccessGuard } from "src/auth/tenant-business-access.guard";
 import { ComponentTypeEnum } from 'src/tenant-db/entities/hr/hr.enums';
+import { sendPdf } from 'src/common/pdf';
+import { OpeningBalancePdfService } from '../service/report/opening-balance-pdf.service';
 
 @Controller('tenant/lists')
 
 export class TenantUtilityController {
-    constructor(private readonly utilityService: TenantUtilityService) {}
+    constructor(
+        private readonly utilityService: TenantUtilityService,
+        private readonly openingBalancePdfService: OpeningBalancePdfService,
+    ) {}
 
     @UseGuards(
         TenantJwtAuthGuard,
@@ -237,6 +242,33 @@ export class TenantUtilityController {
     @Get('account-types')
     async getAccountTypes(@TenantConnection() tenantDb: DataSource) {
         return this.utilityService.getAccountTypes(tenantDb);
+    }
+
+    @UseGuards(
+        TenantJwtAuthGuard,
+        TenantJwtGuard,
+        TenantConnectionGuard,
+        TenantBusinessAccessGuard,
+    )
+    @Get('accounts-list/pdf')
+    async downloadOpeningBalancesPdf(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+        @Res() res: Response,
+        @Query('parentCode') parentCode: string,
+        @Query('name') category: string,
+        @Query('search') search?: string,
+    ) {
+        const user = req.user as TenantRequestUser;
+        const result = await this.openingBalancePdfService.generatePdf(
+            tenantDb,
+            user.businessId,
+            user.userId,
+            parentCode,
+            category,
+            search,
+        );
+        sendPdf(res, result);
     }
 
     @UseGuards(
