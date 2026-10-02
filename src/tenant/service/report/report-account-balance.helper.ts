@@ -135,10 +135,10 @@ export function computeProfitAndLossAmount(
   const nature = getAccountBalanceNature(account);
   const movement = computeBalanceMovement(nature, debit, credit);
 
-  // Income (credit nature) and Expenses (debit nature) both surface as
-  // positive amounts when the account moves in its normal direction.
+  // Income (4): credit − debit. Expense (5): debit − credit.
+  // Keep signed net so sale returns / reversals reduce the period total.
   if (account.level1 === 4 || account.level1 === 5) {
-    return roundAmount(Math.max(movement, 0));
+    return roundAmount(movement);
   }
 
   return roundAmount(Math.abs(movement));

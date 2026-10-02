@@ -3,11 +3,12 @@ import { DataSource } from 'typeorm';
 import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
 import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity';
 import { Batch } from 'src/tenant-db/entities/stock.entity';
+import { ChartOfAccount } from 'src/tenant-db/entities/chart-of-account.entity';
+import { COA_PARENT_CODES } from 'src/tenant-db/chart-of-accounts/constants/coa-parent-codes';
 import { ActivityLogService } from '../activity-log.service';
 import {
   computeProfitAndLossAmount,
   displayBalanceSheetAmount,
-  displayExpenseCurrentBalance,
   getBalancesAsOfMap,
   getPeriodMovementsByAccount,
   loadPostableAccountsByLevel,
@@ -19,13 +20,17 @@ import {
   roundAmount,
   startOfDay,
 } from './report-query.helper';
-import { ChartOfAccount } from 'src/tenant-db/entities/chart-of-account.entity';
 
 type FinancialLine = {
   chartOfAccountId: string | null;
   accountCode: string;
   accountName: string;
   amount: number;
+};
+
+type FinancialSection = {
+  lines: FinancialLine[];
+  total: number;
 };
 
 @Injectable()
@@ -65,6 +70,9 @@ export class ReportFinancialService {
         endDate: options.endDate,
         totalSale: report.totalSale,
         currentStockValue: report.currentStockValue,
+        salesRevenue: report.trading.salesRevenue.total,
+        costOfGoodsSold: report.trading.costOfGoodsSold.total,
+        grossProfit: report.trading.grossProfit,
         totalIncome: report.ledger.income.total,
         totalExpenses: report.ledger.expenses.total,
         netProfit: report.ledger.netProfit,
@@ -195,6 +203,16 @@ export class ReportFinancialService {
     };
   }
 
+  /**
+   * Ledger-based P&L:
+   *   Sales Revenue (4-1 + other income)
+   * − Cost of Goods Sold (5-1)
+   * = Gross Profit
+   * − Operating expenses (level-5 except COGS)
+   * = Net Profit
+   *
+   * Inventory (1-1-4) is a Balance Sheet account and is not included here.
+   */
   private async buildProfitAndLoss(
     tenantDb: DataSource,
     businessId: string,
@@ -203,67 +221,124 @@ export class ReportFinancialService {
   ) {
     const [incomeAccounts, expenseAccounts] = await Promise.all([
       loadPostableAccountsByLevel(tenantDb, businessId, 4),
-      // Expense head (level1 = 5) ke saare postable/leaf accounts.
       loadPostableAccountsByLevel(tenantDb, businessId, 5),
     ]);
 
-    const [incomeMovements, expenseBalances] = await Promise.all([
-      getPeriodMovementsByAccount(
-        tenantDb,
-        businessId,
-        incomeAccounts.map((account) => account.id),
-        startDate,
-        endDate,
-      ),
-      // Expense lines = each leaf account's current balance as of period end.
-      getBalancesAsOfMap(tenantDb, businessId, expenseAccounts, endDate),
-    ]);
+    const allAccountIds = [
+      ...incomeAccounts.map((account) => account.id),
+      ...expenseAccounts.map((account) => account.id),
+    ];
 
-    const incomeLines = this.buildProfitAndLossLines(
-      incomeAccounts,
-      incomeMovements,
+    const movements = await getPeriodMovementsByAccount(
+      tenantDb,
+      businessId,
+      allAccountIds,
+      startDate,
+      endDate,
     );
-    const expenseLines = this.buildExpenseLinesFromCurrentBalances(
+
+    const incomeLines = this.buildProfitAndLossLines(incomeAccounts, movements);
+    const expenseLines = this.buildProfitAndLossLines(
       expenseAccounts,
-      expenseBalances,
+      movements,
     );
 
-    const totalIncome = roundAmount(
-      incomeLines.reduce((sum, line) => sum + line.amount, 0),
+    const salesRevenueLines = incomeLines.filter((line) =>
+      this.isSalesRevenueAccountCode(line.accountCode),
     );
-    const totalExpenses = roundAmount(
-      expenseLines.reduce((sum, line) => sum + line.amount, 0),
+    const otherIncomeLines = incomeLines.filter(
+      (line) => !this.isSalesRevenueAccountCode(line.accountCode),
     );
-    const netProfit = roundAmount(totalIncome - totalExpenses);
+    const cogsLines = expenseLines.filter((line) =>
+      this.isCogsAccountCode(line.accountCode),
+    );
+    const operatingExpenseLines = expenseLines.filter(
+      (line) => !this.isCogsAccountCode(line.accountCode),
+    );
+
+    const salesRevenue = this.toSection(salesRevenueLines);
+    const otherIncome = this.toSection(otherIncomeLines);
+    const income = this.toSection(incomeLines);
+    const costOfGoodsSold = this.toSection(cogsLines);
+    const operatingExpenses = this.toSection(operatingExpenseLines);
+    const expenses = this.toSection(expenseLines);
+
+    const grossProfit = roundAmount(
+      salesRevenue.total - costOfGoodsSold.total,
+    );
+    const netProfit = roundAmount(income.total - expenses.total);
+
+    const currentStockValue = await this.getCurrentStockValue(
+      tenantDb,
+      businessId,
+    );
     const operational = await this.buildOperationalSummary(
       tenantDb,
       businessId,
       startDate,
       endDate,
+      {
+        salesRevenue: salesRevenue.total,
+        costOfGoodsSold: costOfGoodsSold.total,
+        grossProfit,
+        currentStockValue,
+      },
     );
 
-    // Authoritative total sale = SUM(sale_invoices.totalAmount) in period.
-    const totalSale = operational.sales.totalSale;
-    const currentStockValue = operational.currentStockValue;
+    // Authoritative sale figure = Sales Revenue ledger movement in period
+    // (includes opening balance + DN postings − sale returns).
+    const totalSale = salesRevenue.total;
 
     return {
       totalSale,
       currentStockValue,
+      trading: {
+        salesRevenue,
+        otherIncome,
+        costOfGoodsSold,
+        grossProfit,
+      },
       ledger: {
-        income: { lines: incomeLines, total: totalIncome },
-        expenses: { lines: expenseLines, total: totalExpenses },
+        income,
+        expenses,
+        operatingExpenses,
+        grossProfit,
         netProfit,
       },
       operational,
       meta: {
         incomeAccountCount: incomeLines.length,
         expenseAccountCount: expenseLines.length,
+        salesRevenueAccountCount: salesRevenueLines.length,
+        cogsAccountCount: cogsLines.length,
+        operatingExpenseAccountCount: operatingExpenseLines.length,
       },
     };
   }
 
+  private isSalesRevenueAccountCode(code: string): boolean {
+    return (
+      code === COA_PARENT_CODES.SALES_REVENUE ||
+      code.startsWith(`${COA_PARENT_CODES.SALES_REVENUE}-`)
+    );
+  }
+
+  private isCogsAccountCode(code: string): boolean {
+    return (
+      code === COA_PARENT_CODES.COST_OF_GOODS_SOLD ||
+      code.startsWith(`${COA_PARENT_CODES.COST_OF_GOODS_SOLD}-`)
+    );
+  }
+
+  private toSection(lines: FinancialLine[]): FinancialSection {
+    return {
+      lines,
+      total: roundAmount(lines.reduce((sum, line) => sum + line.amount, 0)),
+    };
+  }
+
   private buildProfitAndLossLines(
-    accounts: Awaited<ReturnType<typeof loadPostableAccountsByLevel>>,
+    accounts: ChartOfAccount[],
     movements: Map<string, { debit: number; credit: number }>,
   ): FinancialLine[] {
     return accounts
@@ -281,24 +356,6 @@ export class ReportFinancialService {
         };
       })
       .filter((line) => line.amount !== 0)
-      .sort((left, right) => right.amount - left.amount);
-  }
-
-  /**
-   * Expense head ke andar jitne leaf (postable) accounts hain, unki
-   * currentBalance lines mein aati hai; total = un balances ka sum.
-   */
-  private buildExpenseLinesFromCurrentBalances(
-    accounts: ChartOfAccount[],
-    balances: Map<string, number>,
-  ): FinancialLine[] {
-    return accounts
-      .map((account) => ({
-        chartOfAccountId: account.id,
-        accountCode: account.code,
-        accountName: account.name,
-        amount: displayExpenseCurrentBalance(balances.get(account.id) ?? 0),
-      }))
       .sort((left, right) => left.accountCode.localeCompare(right.accountCode));
   }
 
@@ -324,11 +381,45 @@ export class ReportFinancialService {
     };
   }
 
+  private async getCurrentStockValue(
+    tenantDb: DataSource,
+    businessId: string,
+  ): Promise<number> {
+    const stockValueRow = await tenantDb
+      .getRepository(Batch)
+      .createQueryBuilder('batch')
+      .innerJoin('batch.product', 'product')
+      .innerJoin('batch.warehouse', 'warehouse')
+      .select(
+        'COALESCE(SUM(batch.quantity * batch.purchaseUnitPrice), 0)',
+        'currentStockValue',
+      )
+      .where('batch.businessId = :businessId', { businessId })
+      .andWhere('batch.deletedAt IS NULL')
+      .andWhere('batch.quantity > 0')
+      .andWhere('product.isDelete = false')
+      .andWhere('product.isActive = true')
+      .andWhere('warehouse.deletedAt IS NULL')
+      .getRawOne<{ currentStockValue: string }>();
+
+    return roundAmount(Number(stockValueRow?.currentStockValue ?? 0));
+  }
+
+  /**
+   * Invoice/stock side-stats for UI. Trading P&L figures come from ledger
+   * (Sales Revenue / COGS), not Purchases − Closing Stock.
+   */
   private async buildOperationalSummary(
     tenantDb: DataSource,
     businessId: string,
     startDate: Date,
     endDate: Date,
+    ledgerTrading: {
+      salesRevenue: number;
+      costOfGoodsSold: number;
+      grossProfit: number;
+      currentStockValue: number;
+    },
   ) {
     const saleTotals = await tenantDb
       .getRepository(SaleInvoice)
@@ -374,49 +465,29 @@ export class ReportFinancialService {
         invoiceCount: string;
       }>();
 
-    const stockValueRow = await tenantDb
-      .getRepository(Batch)
-      .createQueryBuilder('batch')
-      .innerJoin('batch.product', 'product')
-      .innerJoin('batch.warehouse', 'warehouse')
-      .select(
-        'COALESCE(SUM(batch.quantity * batch.purchaseUnitPrice), 0)',
-        'currentStockValue',
-      )
-      .where('batch.businessId = :businessId', { businessId })
-      .andWhere('batch.deletedAt IS NULL')
-      .andWhere('batch.quantity > 0')
-      .andWhere('product.isDelete = false')
-      .andWhere('product.isActive = true')
-      .andWhere('warehouse.deletedAt IS NULL')
-      .getRawOne<{ currentStockValue: string }>();
-
-    // Total sale must always be SUM of all sale invoice totalAmount in range.
-    const totalSale = roundAmount(Number(saleTotals?.totalSale ?? 0));
+    const invoiceTotalSale = roundAmount(Number(saleTotals?.totalSale ?? 0));
     const outputTax = roundAmount(Number(saleTotals?.outputTax ?? 0));
     const salesDiscount = roundAmount(Number(saleTotals?.salesDiscount ?? 0));
-    const grossPurchases = roundAmount(Number(purchaseTotals?.grossPurchases ?? 0));
+    const grossPurchases = roundAmount(
+      Number(purchaseTotals?.grossPurchases ?? 0),
+    );
     const inputTax = roundAmount(Number(purchaseTotals?.inputTax ?? 0));
     const purchaseDiscount = roundAmount(
       Number(purchaseTotals?.purchaseDiscount ?? 0),
     );
-    const currentStockValue = roundAmount(
-      Number(stockValueRow?.currentStockValue ?? 0),
-    );
 
-    const netSales = roundAmount(totalSale - outputTax);
+    const netSales = roundAmount(invoiceTotalSale - outputTax);
     const netPurchases = roundAmount(grossPurchases - inputTax);
-    // Trading P&L: Sales - (Purchases - Closing Stock). Opening stock not tracked historically.
-    const costOfGoodsSold = roundAmount(netPurchases - currentStockValue);
-    const grossProfit = roundAmount(netSales - costOfGoodsSold);
 
     return {
       sales: {
         invoiceCount: Number(saleTotals?.invoiceCount ?? 0),
-        totalSale,
-        // Backward-compatible alias of totalSale (SUM invoice.totalAmount).
-        grossSales: totalSale,
+        /** Invoice SUM — may differ from ledger Sales Revenue (DN / openings). */
+        totalSale: invoiceTotalSale,
+        grossSales: invoiceTotalSale,
         netSales,
+        /** Ledger Sales Revenue for the period (authoritative for P&L). */
+        ledgerSalesRevenue: ledgerTrading.salesRevenue,
         outputTax,
         discount: salesDiscount,
       },
@@ -427,9 +498,10 @@ export class ReportFinancialService {
         inputTax,
         discount: purchaseDiscount,
       },
-      currentStockValue,
-      costOfGoodsSold,
-      grossProfit,
+      currentStockValue: ledgerTrading.currentStockValue,
+      /** Ledger COGS (5-1) period movement — not Purchases − Stock. */
+      costOfGoodsSold: ledgerTrading.costOfGoodsSold,
+      grossProfit: ledgerTrading.grossProfit,
     };
   }
 }
