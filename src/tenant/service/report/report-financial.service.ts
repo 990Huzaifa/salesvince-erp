@@ -20,6 +20,10 @@ import {
   roundAmount,
   startOfDay,
 } from './report-query.helper';
+import {
+  aggregateApprovedPurchaseReturns,
+  aggregateApprovedSaleReturns,
+} from './report-returns.helper';
 
 type FinancialLine = {
   chartOfAccountId: string | null;
@@ -443,48 +447,81 @@ export class ReportFinancialService {
         invoiceCount: string;
       }>();
 
-    const purchaseTotals = await tenantDb
-      .getRepository(PurchaseInvoice)
-      .createQueryBuilder('invoice')
-      .select('COALESCE(SUM(invoice.totalAmount), 0)', 'grossPurchases')
-      .addSelect('COALESCE(SUM(invoice.totalTaxAmount), 0)', 'inputTax')
-      .addSelect('COALESCE(SUM(invoice.totalDiscountAmount), 0)', 'purchaseDiscount')
-      .addSelect('COUNT(*)', 'invoiceCount')
-      .where('invoice.businessId = :businessId', { businessId })
-      .andWhere('invoice.deletedAt IS NULL')
-      .andWhere('invoice.invoiceDate >= :startDate', {
-        startDate: startOfDay(startDate),
-      })
-      .andWhere('invoice.invoiceDate <= :endDate', {
-        endDate: endOfDay(endDate),
-      })
-      .getRawOne<{
-        grossPurchases: string;
-        inputTax: string;
-        purchaseDiscount: string;
-        invoiceCount: string;
-      }>();
+    const [purchaseTotals, saleReturns, purchaseReturns] = await Promise.all([
+      tenantDb
+        .getRepository(PurchaseInvoice)
+        .createQueryBuilder('invoice')
+        .select('COALESCE(SUM(invoice.totalAmount), 0)', 'grossPurchases')
+        .addSelect('COALESCE(SUM(invoice.totalTaxAmount), 0)', 'inputTax')
+        .addSelect(
+          'COALESCE(SUM(invoice.totalDiscountAmount), 0)',
+          'purchaseDiscount',
+        )
+        .addSelect('COUNT(*)', 'invoiceCount')
+        .where('invoice.businessId = :businessId', { businessId })
+        .andWhere('invoice.deletedAt IS NULL')
+        .andWhere('invoice.invoiceDate >= :startDate', {
+          startDate: startOfDay(startDate),
+        })
+        .andWhere('invoice.invoiceDate <= :endDate', {
+          endDate: endOfDay(endDate),
+        })
+        .getRawOne<{
+          grossPurchases: string;
+          inputTax: string;
+          purchaseDiscount: string;
+          invoiceCount: string;
+        }>(),
+      aggregateApprovedSaleReturns(tenantDb, businessId, {
+        startDate,
+        endDate,
+      }),
+      aggregateApprovedPurchaseReturns(tenantDb, businessId, {
+        startDate,
+        endDate,
+      }),
+    ]);
 
-    const invoiceTotalSale = roundAmount(Number(saleTotals?.totalSale ?? 0));
-    const outputTax = roundAmount(Number(saleTotals?.outputTax ?? 0));
-    const salesDiscount = roundAmount(Number(saleTotals?.salesDiscount ?? 0));
-    const grossPurchases = roundAmount(
+    const invoiceGrossSale = roundAmount(Number(saleTotals?.totalSale ?? 0));
+    const invoiceOutputTax = roundAmount(Number(saleTotals?.outputTax ?? 0));
+    const invoiceSalesDiscount = roundAmount(
+      Number(saleTotals?.salesDiscount ?? 0),
+    );
+    const invoiceGrossPurchases = roundAmount(
       Number(purchaseTotals?.grossPurchases ?? 0),
     );
-    const inputTax = roundAmount(Number(purchaseTotals?.inputTax ?? 0));
-    const purchaseDiscount = roundAmount(
+    const invoiceInputTax = roundAmount(Number(purchaseTotals?.inputTax ?? 0));
+    const invoicePurchaseDiscount = roundAmount(
       Number(purchaseTotals?.purchaseDiscount ?? 0),
     );
 
-    const netSales = roundAmount(invoiceTotalSale - outputTax);
+    // Net of approved returns (invoice cards should match trading reality).
+    const totalSale = roundAmount(
+      invoiceGrossSale - saleReturns.grossAmount,
+    );
+    const outputTax = roundAmount(invoiceOutputTax - saleReturns.taxAmount);
+    const salesDiscount = roundAmount(
+      invoiceSalesDiscount - saleReturns.discountAmount,
+    );
+    const grossPurchases = roundAmount(
+      invoiceGrossPurchases - purchaseReturns.grossAmount,
+    );
+    const inputTax = roundAmount(invoiceInputTax - purchaseReturns.taxAmount);
+    const purchaseDiscount = roundAmount(
+      invoicePurchaseDiscount - purchaseReturns.discountAmount,
+    );
+
+    const netSales = roundAmount(totalSale - outputTax);
     const netPurchases = roundAmount(grossPurchases - inputTax);
 
     return {
       sales: {
         invoiceCount: Number(saleTotals?.invoiceCount ?? 0),
-        /** Invoice SUM — may differ from ledger Sales Revenue (DN / openings). */
-        totalSale: invoiceTotalSale,
-        grossSales: invoiceTotalSale,
+        returnCount: saleReturns.documentCount,
+        /** Sale invoices − approved sale returns. */
+        totalSale,
+        grossSales: invoiceGrossSale,
+        salesReturns: saleReturns.grossAmount,
         netSales,
         /** Ledger Sales Revenue for the period (authoritative for P&L). */
         ledgerSalesRevenue: ledgerTrading.salesRevenue,
@@ -493,7 +530,11 @@ export class ReportFinancialService {
       },
       purchases: {
         invoiceCount: Number(purchaseTotals?.invoiceCount ?? 0),
+        returnCount: purchaseReturns.documentCount,
+        /** Purchase invoices − approved purchase returns. */
         grossPurchases,
+        invoiceGrossPurchases,
+        purchaseReturns: purchaseReturns.grossAmount,
         netPurchases,
         inputTax,
         discount: purchaseDiscount,

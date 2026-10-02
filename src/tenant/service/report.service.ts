@@ -20,6 +20,11 @@ import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity'
 import { ActivityLogService } from './activity-log.service';
 import { MasterGeoHelperService } from './master-geo-helper.service';
 import { paginateItems } from './report/report-query.helper';
+import {
+  loadApprovedPurchaseReturnLines,
+  loadApprovedSaleReturnLines,
+  MatchedReturnLine,
+} from './report/report-returns.helper';
 import { ReportProfitViewType } from '../dto/report/report-profit.query.dto';
 
 type BalanceRow = {
@@ -267,6 +272,34 @@ export class ReportService {
     };
   }
 
+  private subtractReturnTotalsFromAggregate(
+    row: InvoiceSummaryAggregateRow | null | undefined,
+    returnLines: MatchedReturnLine[],
+  ): InvoiceSummaryAggregateRow {
+    const returnGross = returnLines.reduce(
+      (sum, line) => sum + line.grossAmount,
+      0,
+    );
+    const returnTax = returnLines.reduce((sum, line) => sum + line.taxAmount, 0);
+    const returnDiscount = returnLines.reduce(
+      (sum, line) => sum + line.discountAmount,
+      0,
+    );
+
+    return {
+      invoiceCount: String(row?.invoiceCount ?? 0),
+      totalAmount: String(
+        this.roundAmount(Number(row?.totalAmount ?? 0) - returnGross),
+      ),
+      totalTaxAmount: String(
+        this.roundAmount(Number(row?.totalTaxAmount ?? 0) - returnTax),
+      ),
+      totalDiscountAmount: String(
+        this.roundAmount(Number(row?.totalDiscountAmount ?? 0) - returnDiscount),
+      ),
+    };
+  }
+
   private async resolveCityNameMap(
     cityIds: Array<string | null | undefined>,
   ): Promise<Map<string, string | null>> {
@@ -474,22 +507,51 @@ export class ReportService {
       ...cityRows.map((row) => row.cityId),
     ]);
 
+    const returnLines =
+      kind === 'SALE'
+        ? await loadApprovedSaleReturnLines(tenantDb, scopedBusinessId, {
+            startDate: startDate ?? undefined,
+            endDate: endDate ?? undefined,
+            partyId,
+            cityId,
+          })
+        : await loadApprovedPurchaseReturnLines(tenantDb, scopedBusinessId, {
+            startDate: startDate ?? undefined,
+            endDate: endDate ?? undefined,
+            partyId,
+            cityId,
+          });
+
     const partyWiseAll = partyRows.map((row) => ({
       partyId: row.partyId,
       partyCode: row.partyCode,
       partyName: row.partyName,
       cityId: row.cityId,
       cityName: this.cityDisplayName(row.cityId, cityNames),
-      ...this.mapAggregateTotals(row),
+      ...this.mapAggregateTotals(
+        this.subtractReturnTotalsFromAggregate(
+          row,
+          returnLines.filter((line) => line.partyId === row.partyId),
+        ),
+      ),
     }));
 
     const cityWiseAll = cityRows.map((row) => ({
       cityId: row.cityId,
       cityName: this.cityDisplayName(row.cityId, cityNames),
-      ...this.mapAggregateTotals(row),
+      ...this.mapAggregateTotals(
+        this.subtractReturnTotalsFromAggregate(
+          row,
+          returnLines.filter(
+            (line) => (line.cityId ?? null) === (row.cityId ?? null),
+          ),
+        ),
+      ),
     }));
 
-    const totals = this.mapAggregateTotals(totalsRow);
+    const totals = this.mapAggregateTotals(
+      this.subtractReturnTotalsFromAggregate(totalsRow, returnLines),
+    );
 
     const partyPage = this.applyListPagination(partyWiseAll, options);
     const cityPage = this.applyListPagination(cityWiseAll, options);
@@ -891,12 +953,21 @@ export class ReportService {
       .addOrderBy('invoice.createdAt', 'ASC')
       .getMany();
 
-    const totals = this.computeOverallProfitTotals(invoices);
+    const saleReturnLines = await loadApprovedSaleReturnLines(
+      tenantDb,
+      scopedBusinessId,
+      {
+        startDate: startDate ?? undefined,
+        endDate: endDate ?? undefined,
+      },
+    );
+
+    const totals = this.computeOverallProfitTotals(invoices, saleReturnLines);
 
     const allData =
       viewType === ReportProfitViewType.CUSTOMER
-        ? this.buildCustomerProfitRows(invoices)
-        : this.buildProductProfitRows(invoices);
+        ? this.buildCustomerProfitRows(invoices, saleReturnLines)
+        : this.buildProductProfitRows(invoices, saleReturnLines);
 
     const { items: data, meta } = this.applyListPagination(
       [...allData],
@@ -929,7 +1000,10 @@ export class ReportService {
     };
   }
 
-  private computeOverallProfitTotals(invoices: SaleInvoice[]) {
+  private computeOverallProfitTotals(
+    invoices: SaleInvoice[],
+    saleReturnLines: MatchedReturnLine[] = [],
+  ) {
     let totalSale = 0;
     let totalCost = 0;
 
@@ -950,6 +1024,11 @@ export class ReportService {
       }
     }
 
+    for (const line of saleReturnLines) {
+      totalSale = this.roundAmount(totalSale - line.grossAmount);
+      totalCost = this.roundAmount(totalCost - line.costAmount);
+    }
+
     const profit = this.roundAmount(totalSale - totalCost);
 
     return {
@@ -959,7 +1038,10 @@ export class ReportService {
     };
   }
 
-  private buildProductProfitRows(invoices: SaleInvoice[]) {
+  private buildProductProfitRows(
+    invoices: SaleInvoice[],
+    saleReturnLines: MatchedReturnLine[] = [],
+  ) {
     const reportRows = new Map<
       string,
       {
@@ -1017,7 +1099,41 @@ export class ReportService {
       }
     }
 
+    for (const line of saleReturnLines) {
+      const key = this.profitGroupKey(
+        line.productId,
+        line.uomId,
+        line.productFlavourId,
+      );
+      const existing = reportRows.get(key);
+      const next = existing ?? {
+        productId: line.productId,
+        productName: line.productName,
+        skuCode: line.skuCode,
+        productFlavourId: line.productFlavourId,
+        flavourName: line.flavourName,
+        uomId: line.uomId,
+        uomName: line.uomName,
+        totalQuantity: 0,
+        totalSale: 0,
+        totalCost: 0,
+        profit: 0,
+      };
+
+      next.totalQuantity = this.roundAmount(
+        next.totalQuantity - line.quantity,
+      );
+      next.totalSale = this.roundAmount(next.totalSale - line.grossAmount);
+      next.totalCost = this.roundAmount(next.totalCost - line.costAmount);
+      next.profit = this.roundAmount(next.totalSale - next.totalCost);
+      reportRows.set(key, next);
+    }
+
     return [...reportRows.values()]
+      .filter(
+        (row) =>
+          row.totalSale !== 0 || row.totalCost !== 0 || row.totalQuantity !== 0,
+      )
       .map((row) => ({
         ...row,
         profitPercentage:
@@ -1028,7 +1144,10 @@ export class ReportService {
       .sort((left, right) => right.profit - left.profit);
   }
 
-  private buildCustomerProfitRows(invoices: SaleInvoice[]) {
+  private buildCustomerProfitRows(
+    invoices: SaleInvoice[],
+    saleReturnLines: MatchedReturnLine[] = [],
+  ) {
     const reportRows = new Map<
       string,
       {
@@ -1055,15 +1174,14 @@ export class ReportService {
           invoiceSale + Number(item.totalAmount ?? 0),
         );
         invoiceCost = this.roundAmount(
-          invoiceCost +
-            (costSnapshot?.purchaseUnitPrice ?? 0) * quantity,
+          invoiceCost + (costSnapshot?.purchaseUnitPrice ?? 0) * quantity,
         );
       }
 
-      const key = invoice.customerId;
-      const existing = reportRows.get(key);
+      const customerId = invoice.customerId;
+      const existing = reportRows.get(customerId);
       const next = existing ?? {
-        customerId: invoice.customerId,
+        customerId,
         customerName: invoice.customer?.name ?? '',
         customerCode: invoice.customer?.code ?? '',
         totalSale: 0,
@@ -1074,10 +1192,31 @@ export class ReportService {
       next.totalSale = this.roundAmount(next.totalSale + invoiceSale);
       next.totalCost = this.roundAmount(next.totalCost + invoiceCost);
       next.profit = this.roundAmount(next.totalSale - next.totalCost);
-      reportRows.set(key, next);
+      reportRows.set(customerId, next);
+    }
+
+    for (const line of saleReturnLines) {
+      if (!line.partyId) {
+        continue;
+      }
+      const existing = reportRows.get(line.partyId);
+      const next = existing ?? {
+        customerId: line.partyId,
+        customerName: '',
+        customerCode: '',
+        totalSale: 0,
+        totalCost: 0,
+        profit: 0,
+      };
+
+      next.totalSale = this.roundAmount(next.totalSale - line.grossAmount);
+      next.totalCost = this.roundAmount(next.totalCost - line.costAmount);
+      next.profit = this.roundAmount(next.totalSale - next.totalCost);
+      reportRows.set(line.partyId, next);
     }
 
     return [...reportRows.values()]
+      .filter((row) => row.totalSale !== 0 || row.totalCost !== 0)
       .map((row) => ({
         ...row,
         profitPercentage:

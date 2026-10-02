@@ -14,6 +14,10 @@ import {
   roundAmount,
   startOfDay,
 } from './report-query.helper';
+import {
+  loadApprovedSaleReturnLines,
+  MatchedReturnLine,
+} from './report-returns.helper';
 
 type SaleChartFilters = {
   startDate?: Date;
@@ -120,6 +124,19 @@ export class ReportSaleChartService {
     return roundAmount(value).toFixed(2);
   }
 
+  private async loadReturnLines(
+    tenantDb: DataSource,
+    businessId: string,
+    filters: SaleChartFilters,
+  ): Promise<MatchedReturnLine[]> {
+    return loadApprovedSaleReturnLines(tenantDb, businessId, {
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+      partyId: filters.partyId,
+      cityId: filters.cityId,
+    });
+  }
+
   private applyInvoiceFilters(
     qb: ReturnType<
       ReturnType<DataSource['getRepository']>['createQueryBuilder']
@@ -181,17 +198,46 @@ export class ReportSaleChartService {
       .addGroupBy('uom.name')
       .orderBy('COALESCE(SUM(item.totalAmount), 0)', 'DESC');
 
-    const rows = await qb.getRawMany<{
-      itemName: string;
-      uom: string;
-      totalSales: string;
-    }>();
+    const [rows, returnLines] = await Promise.all([
+      qb.getRawMany<{
+        itemName: string;
+        uom: string;
+        totalSales: string;
+      }>(),
+      this.loadReturnLines(tenantDb, businessId, filters),
+    ]);
 
-    return rows.map((row) => ({
-      itemName: row.itemName,
-      uom: row.uom,
-      totalSales: this.formatAmount(Number(row.totalSales ?? 0)),
-    }));
+    const net = new Map<string, { itemName: string; uom: string; total: number }>();
+
+    for (const row of rows) {
+      const key = `${row.itemName}::${row.uom}`;
+      net.set(key, {
+        itemName: row.itemName,
+        uom: row.uom,
+        total: roundAmount(Number(row.totalSales ?? 0)),
+      });
+    }
+
+    for (const line of returnLines) {
+      const uom = line.uomName ?? '';
+      const key = `${line.productName}::${uom}`;
+      const existing = net.get(key) ?? {
+        itemName: line.productName,
+        uom,
+        total: 0,
+      };
+      existing.total = roundAmount(existing.total - line.grossAmount);
+      net.set(key, existing);
+    }
+
+    return [...net.values()]
+      .filter((row) => row.total !== 0)
+      .sort((left, right) => right.total - left.total)
+      .map((row) => ({
+        itemName: row.itemName,
+        uom: row.uom,
+        totalSales: this.formatAmount(row.total),
+      }));
   }
 
   private async fetchByCustomer(
@@ -209,21 +255,50 @@ export class ReportSaleChartService {
       businessId,
       filters,
     )
-      .select('party.name', 'customerName')
+      .select('party.id', 'customerId')
+      .addSelect('party.name', 'customerName')
       .addSelect('COALESCE(SUM(invoice.totalAmount), 0)', 'totalSales')
       .groupBy('party.id')
       .addGroupBy('party.name')
       .orderBy('COALESCE(SUM(invoice.totalAmount), 0)', 'DESC');
 
-    const rows = await qb.getRawMany<{
-      customerName: string;
-      totalSales: string;
-    }>();
+    const [rows, returnLines] = await Promise.all([
+      qb.getRawMany<{
+        customerId: string;
+        customerName: string;
+        totalSales: string;
+      }>(),
+      this.loadReturnLines(tenantDb, businessId, filters),
+    ]);
 
-    return rows.map((row) => ({
-      customerName: row.customerName,
-      totalSales: this.formatAmount(Number(row.totalSales ?? 0)),
-    }));
+    const net = new Map<string, { customerName: string; total: number }>();
+
+    for (const row of rows) {
+      net.set(row.customerId, {
+        customerName: row.customerName,
+        total: roundAmount(Number(row.totalSales ?? 0)),
+      });
+    }
+
+    for (const line of returnLines) {
+      if (!line.partyId) {
+        continue;
+      }
+      const existing = net.get(line.partyId) ?? {
+        customerName: '',
+        total: 0,
+      };
+      existing.total = roundAmount(existing.total - line.grossAmount);
+      net.set(line.partyId, existing);
+    }
+
+    return [...net.values()]
+      .filter((row) => row.total !== 0)
+      .sort((left, right) => right.total - left.total)
+      .map((row) => ({
+        customerName: row.customerName,
+        totalSales: this.formatAmount(row.total),
+      }));
   }
 
   private async fetchByMonth(
@@ -246,15 +321,33 @@ export class ReportSaleChartService {
       .groupBy(`TO_CHAR(invoice.invoiceDate, 'YYYY-MM')`)
       .orderBy(`TO_CHAR(invoice.invoiceDate, 'YYYY-MM')`, 'ASC');
 
-    const rows = await qb.getRawMany<{
-      month: string;
-      totalSales: string;
-    }>();
+    const [rows, returnLines] = await Promise.all([
+      qb.getRawMany<{
+        month: string;
+        totalSales: string;
+      }>(),
+      this.loadReturnLines(tenantDb, businessId, filters),
+    ]);
 
-    return rows.map((row) => ({
-      month: row.month,
-      totalSales: this.formatAmount(Number(row.totalSales ?? 0)),
-    }));
+    const net = new Map<string, number>();
+
+    for (const row of rows) {
+      net.set(row.month, roundAmount(Number(row.totalSales ?? 0)));
+    }
+
+    for (const line of returnLines) {
+      const date = new Date(line.returnDate);
+      const month = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      net.set(month, roundAmount((net.get(month) ?? 0) - line.grossAmount));
+    }
+
+    return [...net.entries()]
+      .filter(([, total]) => total !== 0)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([month, total]) => ({
+        month,
+        totalSales: this.formatAmount(total),
+      }));
   }
 
   private async fetchByCity(
@@ -277,19 +370,36 @@ export class ReportSaleChartService {
       .groupBy('party.cityId')
       .orderBy('COALESCE(SUM(invoice.totalAmount), 0)', 'DESC');
 
-    const rows = await qb.getRawMany<{
-      cityId: string | null;
-      totalSales: string;
-    }>();
+    const [rows, returnLines] = await Promise.all([
+      qb.getRawMany<{
+        cityId: string | null;
+        totalSales: string;
+      }>(),
+      this.loadReturnLines(tenantDb, businessId, filters),
+    ]);
 
-    const cityNames = await this.resolveCityNameMap(
-      rows.map((row) => row.cityId),
-    );
+    const net = new Map<string, number>();
 
-    return rows.map((row) => ({
-      cityName: this.cityDisplayName(row.cityId, cityNames),
-      totalSales: this.formatAmount(Number(row.totalSales ?? 0)),
-    }));
+    for (const row of rows) {
+      const key = row.cityId ?? '';
+      net.set(key, roundAmount(Number(row.totalSales ?? 0)));
+    }
+
+    for (const line of returnLines) {
+      const key = line.cityId ?? '';
+      net.set(key, roundAmount((net.get(key) ?? 0) - line.grossAmount));
+    }
+
+    const cityIds = [...net.keys()].map((id) => (id ? id : null));
+    const cityNames = await this.resolveCityNameMap(cityIds);
+
+    return [...net.entries()]
+      .filter(([, total]) => total !== 0)
+      .sort(([, left], [, right]) => right - left)
+      .map(([cityId, total]) => ({
+        cityName: this.cityDisplayName(cityId || null, cityNames),
+        totalSales: this.formatAmount(total),
+      }));
   }
 
   private async resolveCityNameMap(

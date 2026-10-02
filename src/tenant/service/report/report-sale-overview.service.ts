@@ -8,6 +8,7 @@ import {
   roundAmount,
   startOfDay,
 } from './report-query.helper';
+import { loadApprovedSaleReturnLines } from './report-returns.helper';
 
 const MONTH_LABELS = [
   'Jan',
@@ -133,46 +134,80 @@ export class ReportSaleOverviewService {
     businessId: string,
     filters: SaleOverviewFilters,
   ): Promise<SaleOverviewData> {
-    const rows = await this.applyInvoiceFilters(
-      tenantDb
-        .getRepository(SaleInvoiceItem)
-        .createQueryBuilder('item')
-        .innerJoin('item.saleInvoice', 'invoice')
-        .innerJoin('invoice.customer', 'party')
-        .innerJoin('item.product', 'product')
-        .andWhere('item.deletedAt IS NULL')
-        .select('EXTRACT(MONTH FROM invoice.invoiceDate)', 'month')
-        .addSelect('product.name', 'itemName')
-        .addSelect('COALESCE(SUM(item.totalAmount), 0)', 'totalSales'),
-      'invoice',
-      'party',
-      businessId,
-      filters,
-    )
-      .groupBy('EXTRACT(MONTH FROM invoice.invoiceDate)')
-      .addGroupBy('product.id')
-      .addGroupBy('product.name')
-      .orderBy('EXTRACT(MONTH FROM invoice.invoiceDate)', 'ASC')
-      .addOrderBy('COALESCE(SUM(item.totalAmount), 0)', 'DESC')
-      .getRawMany<{
-        month: string;
-        itemName: string;
-        totalSales: string;
-      }>();
+    const [rows, returnLines] = await Promise.all([
+      this.applyInvoiceFilters(
+        tenantDb
+          .getRepository(SaleInvoiceItem)
+          .createQueryBuilder('item')
+          .innerJoin('item.saleInvoice', 'invoice')
+          .innerJoin('invoice.customer', 'party')
+          .innerJoin('item.product', 'product')
+          .andWhere('item.deletedAt IS NULL')
+          .select('EXTRACT(MONTH FROM invoice.invoiceDate)', 'month')
+          .addSelect('product.name', 'itemName')
+          .addSelect('COALESCE(SUM(item.totalAmount), 0)', 'totalSales'),
+        'invoice',
+        'party',
+        businessId,
+        filters,
+      )
+        .groupBy('EXTRACT(MONTH FROM invoice.invoiceDate)')
+        .addGroupBy('product.id')
+        .addGroupBy('product.name')
+        .orderBy('EXTRACT(MONTH FROM invoice.invoiceDate)', 'ASC')
+        .addOrderBy('COALESCE(SUM(item.totalAmount), 0)', 'DESC')
+        .getRawMany<{
+          month: string;
+          itemName: string;
+          totalSales: string;
+        }>(),
+      loadApprovedSaleReturnLines(tenantDb, businessId, filters),
+    ]);
+
+    const netByMonthProduct = new Map<string, number>();
+
+    for (const row of rows) {
+      const key = `${Number(row.month)}::${row.itemName}`;
+      netByMonthProduct.set(
+        key,
+        roundAmount(Number(row.totalSales ?? 0)),
+      );
+    }
+
+    for (const line of returnLines) {
+      const month = new Date(line.returnDate).getMonth() + 1;
+      const key = `${month}::${line.productName}`;
+      netByMonthProduct.set(
+        key,
+        roundAmount((netByMonthProduct.get(key) ?? 0) - line.grossAmount),
+      );
+    }
 
     const salesData = this.createEmptySalesData();
 
-    for (const row of rows) {
-      const monthIndex = Number(row.month) - 1;
+    for (const [key, totalSales] of netByMonthProduct.entries()) {
+      if (totalSales === 0) {
+        continue;
+      }
+      const [monthRaw, itemName] = key.split('::');
+      const monthIndex = Number(monthRaw) - 1;
       if (monthIndex < 0 || monthIndex > 11) {
         continue;
       }
 
       const monthLabel = MONTH_LABELS[monthIndex];
       salesData[monthLabel].push({
-        itemName: row.itemName,
-        totalSales: this.formatAmount(Number(row.totalSales ?? 0)),
+        itemName,
+        totalSales: this.formatAmount(totalSales),
       });
+    }
+
+    for (const month of MONTH_LABELS) {
+      salesData[month].sort(
+        (left, right) =>
+          Number(right.totalSales.replace(/,/g, '')) -
+          Number(left.totalSales.replace(/,/g, '')),
+      );
     }
 
     return salesData;
