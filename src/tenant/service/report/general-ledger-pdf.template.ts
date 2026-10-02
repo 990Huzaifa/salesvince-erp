@@ -18,8 +18,6 @@ type GeneralLedgerPdfEntry = {
 };
 
 export type GeneralLedgerPdfDocument = {
-  accountId: string;
-  vendor: string;
   entries: GeneralLedgerPdfEntry[];
   totalDebit: number;
   totalCredit: number;
@@ -82,14 +80,14 @@ export const buildGeneralLedgerPdfHtml = (
   ).join('');
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8" />
-    <title>General Ledger ${text(ledger.accountId)}</title><style>
+    <title>General Ledger</title><style>
     :root { --primary:#9786ee; --primary-text:#fff; --foreground:#17182a; --muted:#667085; --border:#e5e8f0; --row-a:rgba(151,134,238,.06); --row-b:rgba(151,134,238,.03); --surface-muted:#f7f8fc; }
     @page { size:A4 portrait; margin:10mm; } * { box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     html,body { margin:0; padding:0; background:#fff; font-family:Arial,sans-serif; color:#000; } body { width:190mm; }
     .pdf-content { width:190mm; margin:0 auto; padding:0; } .document-header { border-bottom:3px solid var(--primary); padding-bottom:10px; margin-bottom:16px; }
-    .document-header-main { display:flex; justify-content:space-between; gap:16px; } h1 { margin:0; font-size:48px; line-height:.9; font-weight:300; color:var(--foreground); }
+    .document-header-main { display:flex; justify-content:space-between; gap:16px; } h1 { margin:0; font-size:48px; line-height:.9; font-weight:300; color:var(--foreground); white-space:nowrap; }
     .document-meta { margin-top:10px; font-size:12px; line-height:1.5; } .company { text-align:center; min-width:130px; }
-    .logo-box { width:96px; height:96px; margin:0 auto; background:var(--primary); display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    .logo-box { width:100px; height:100px; margin:0 auto; background:var(--primary); display:flex; align-items:center; justify-content:center; overflow:hidden; }
     .logo-box img { width:100%; height:100%; object-fit:contain; background:#fff; } .logo-fallback { color:var(--primary-text); font-size:44px; font-weight:700; }
     .company-name { margin-top:4px; font-size:13px; font-weight:500; } .company-line { margin-top:2px; font-size:11px; color:var(--muted); }
     table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:11px; } thead { background:var(--primary); color:var(--primary-text); }
@@ -98,7 +96,6 @@ export const buildGeneralLedgerPdfHtml = (
     .closing-row { background:var(--surface-muted); font-weight:700; } .prepared-by { margin-top:36px; text-align:right; font-size:11px; font-weight:700; }
   </style></head><body><main class="pdf-content">
     <header class="document-header"><div class="document-header-main"><div><h1>General Ledger</h1><div class="document-meta">
-      <div><strong>Account ID:</strong> ${text(ledger.accountId)}</div><div><strong>Vendor:</strong> ${text(ledger.vendor)}</div>
       ${ledger.business.phone ? `<div><strong>Mobile No :</strong> ${text(ledger.business.phone)}</div>` : ''}
       <div><strong>Printed On:</strong> ${text(formatPrintedAt(printedAt))}</div>
     </div></div><div class="company"><div class="logo-box">

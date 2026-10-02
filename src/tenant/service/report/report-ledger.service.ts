@@ -73,8 +73,6 @@ export class ReportLedgerService {
     const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
     const html = buildGeneralLedgerPdfHtml(
       {
-        accountId: ledger.account.code,
-        vendor: ledger.account.name,
         entries: ledger.entries,
         totalDebit: ledger.totals.periodDebit,
         totalCredit: ledger.totals.periodCredit,

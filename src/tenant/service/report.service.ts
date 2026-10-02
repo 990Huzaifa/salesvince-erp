@@ -36,6 +36,10 @@ type PaginationOptions = {
   limit?: number;
 };
 
+type ReportListOptions = PaginationOptions & {
+  recordActivity?: boolean;
+};
+
 type ProfitReportOptions = {
   type?: ReportProfitViewType;
   startDate?: string;
@@ -580,7 +584,7 @@ export class ReportService {
     tenantDb: DataSource,
     businessId: string | undefined,
     actorUserId: string,
-    options?: PaginationOptions,
+    options?: ReportListOptions,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const accounts = await tenantDb.getRepository(ChartOfAccount).find({
@@ -623,13 +627,15 @@ export class ReportService {
 
     const { items: data, meta } = this.applyListPagination(allData, options);
 
-    await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: actorUserId,
-      businessId: scopedBusinessId,
-      action: 'CASH_BANK_BALANCE_REPORT_VIEWED',
-      description: 'Cash and bank balance report viewed',
-      metadata: { count: meta.total, totals },
-    });
+    if (options?.recordActivity !== false) {
+      await this.activityLogService.recordActivityLog(tenantDb, {
+        actorId: actorUserId,
+        businessId: scopedBusinessId,
+        action: 'CASH_BANK_BALANCE_REPORT_VIEWED',
+        description: 'Cash and bank balance report viewed',
+        metadata: { count: meta.total, totals },
+      });
+    }
 
     return {
       data,
@@ -642,7 +648,7 @@ export class ReportService {
     tenantDb: DataSource,
     businessId: string | undefined,
     actorUserId: string,
-    options?: PaginationOptions,
+    options?: ReportListOptions,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const parties = await tenantDb.getRepository(Party).find({
@@ -691,13 +697,15 @@ export class ReportService {
         : index + 1,
     }));
 
-    await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: actorUserId,
-      businessId: scopedBusinessId,
-      action: 'CUSTOMER_BALANCE_REPORT_VIEWED',
-      description: 'Customer balance report viewed',
-      metadata: { count: meta.total },
-    });
+    if (options?.recordActivity !== false) {
+      await this.activityLogService.recordActivityLog(tenantDb, {
+        actorId: actorUserId,
+        businessId: scopedBusinessId,
+        action: 'CUSTOMER_BALANCE_REPORT_VIEWED',
+        description: 'Customer balance report viewed',
+        metadata: { count: meta.total },
+      });
+    }
 
     return {
       data,
@@ -710,7 +718,7 @@ export class ReportService {
     tenantDb: DataSource,
     businessId: string | undefined,
     actorUserId: string,
-    options?: PaginationOptions,
+    options?: ReportListOptions,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const employees = await tenantDb.getRepository(Employee).find({
@@ -756,13 +764,15 @@ export class ReportService {
 
     const { items: data, meta } = this.applyListPagination(allData, options);
 
-    await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: actorUserId,
-      businessId: scopedBusinessId,
-      action: 'EMPLOYEE_BALANCE_REPORT_VIEWED',
-      description: 'Employee balance report viewed',
-      metadata: { count: meta.total },
-    });
+    if (options?.recordActivity !== false) {
+      await this.activityLogService.recordActivityLog(tenantDb, {
+        actorId: actorUserId,
+        businessId: scopedBusinessId,
+        action: 'EMPLOYEE_BALANCE_REPORT_VIEWED',
+        description: 'Employee balance report viewed',
+        metadata: { count: meta.total },
+      });
+    }
 
     return {
       data,
@@ -775,7 +785,7 @@ export class ReportService {
     tenantDb: DataSource,
     businessId: string | undefined,
     actorUserId: string,
-    options?: PaginationOptions,
+    options?: ReportListOptions,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const parties = await tenantDb.getRepository(Party).find({
@@ -822,13 +832,15 @@ export class ReportService {
         : index + 1,
     }));
 
-    await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: actorUserId,
-      businessId: scopedBusinessId,
-      action: 'VENDOR_BALANCE_REPORT_VIEWED',
-      description: 'Vendor balance report viewed',
-      metadata: { count: meta.total },
-    });
+    if (options?.recordActivity !== false) {
+      await this.activityLogService.recordActivityLog(tenantDb, {
+        actorId: actorUserId,
+        businessId: scopedBusinessId,
+        action: 'VENDOR_BALANCE_REPORT_VIEWED',
+        description: 'Vendor balance report viewed',
+        metadata: { count: meta.total },
+      });
+    }
 
     return {
       data,

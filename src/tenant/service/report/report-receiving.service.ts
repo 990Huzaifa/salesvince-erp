@@ -19,6 +19,8 @@ type ReceivingReportOptions = {
   partyId?: string;
   page?: number;
   limit?: number;
+  allRows?: boolean;
+  recordActivity?: boolean;
 };
 
 type ReceivingReportRow = {
@@ -99,30 +101,32 @@ export class ReportReceivingService {
 
     this.applyFilters(listQb, { partyId, startDate, endDate });
 
-    const rows = await listQb
+    const orderedListQb = listQb
       .orderBy('voucher.paymentDate', 'DESC')
-      .addOrderBy('voucher.createdAt', 'DESC')
-      .offset(skip)
-      .limit(limit)
-      .getRawMany<ReceivingReportRow>();
+      .addOrderBy('voucher.createdAt', 'DESC');
+    const rows = options.allRows
+      ? await orderedListQb.getRawMany<ReceivingReportRow>()
+      : await orderedListQb.offset(skip).limit(limit).getRawMany<ReceivingReportRow>();
 
     const data = rows.map((row) => ({
       ...row,
       paymentAmount: roundAmount(Number(row.paymentAmount ?? 0)),
     }));
 
-    await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: actorUserId,
-      businessId: scopedBusinessId,
-      action: 'RECEIVING_REPORT_VIEWED',
-      description: 'Receiving report viewed',
-      metadata: {
-        startDate: options.startDate ?? null,
-        endDate: options.endDate ?? null,
-        partyId: partyId ?? null,
-        totals,
-      },
-    });
+    if (options.recordActivity !== false) {
+      await this.activityLogService.recordActivityLog(tenantDb, {
+        actorId: actorUserId,
+        businessId: scopedBusinessId,
+        action: 'RECEIVING_REPORT_VIEWED',
+        description: 'Receiving report viewed',
+        metadata: {
+          startDate: options.startDate ?? null,
+          endDate: options.endDate ?? null,
+          partyId: partyId ?? null,
+          totals,
+        },
+      });
+    }
 
     return {
       period: {
@@ -133,8 +137,8 @@ export class ReportReceivingService {
       totals,
       meta: {
         total: totals.voucherCount,
-        page,
-        limit,
+        page: options.allRows ? 1 : page,
+        limit: options.allRows ? Math.max(totals.voucherCount, 1) : limit,
       },
     };
   }

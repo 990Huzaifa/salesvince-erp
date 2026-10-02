@@ -57,7 +57,7 @@ export class ReportFinancialTransactionService {
   async getFinancialReport(
     tenantDb: DataSource,
     businessId: string | undefined,
-    options: { startDate?: string; endDate?: string; page?: number; limit?: number },
+    options: { startDate?: string; endDate?: string; page?: number; limit?: number; allRows?: boolean },
     actorUserId: string,
   ) {
     const scopedBusinessId = assertBusinessId(businessId);
@@ -77,6 +77,7 @@ export class ReportFinancialTransactionService {
       endDate,
       options.page,
       options.limit,
+      options.allRows,
     );
 
     await this.activityLogService.recordActivityLog(tenantDb, {
@@ -105,6 +106,7 @@ export class ReportFinancialTransactionService {
     endDate: Date,
     page?: number,
     limit?: number,
+    allRows = false,
   ) {
     const rows = await tenantDb
       .getRepository(Transaction)
@@ -188,6 +190,13 @@ export class ReportFinancialTransactionService {
     const paginateSection = (
       section: FinancialSectionDraft,
     ): FinancialSection => {
+      if (allRows) {
+        return {
+          data: section.data,
+          total: section.total,
+          meta: { total: section.data.length, page: 1, limit: Math.max(section.data.length, 1) },
+        };
+      }
       const { items, meta } = paginateItems(section.data, page, limit);
       return {
         data: items,
