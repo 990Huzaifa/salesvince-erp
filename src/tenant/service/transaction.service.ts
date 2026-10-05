@@ -64,38 +64,6 @@ export class TransactionService {
     return Math.abs(this.roundAmount(value)) < 0.005;
   }
 
-  private formatTitleCaseWord(word: string): string {
-    if (!word.length) {
-      return word;
-    }
-
-    // Keep document/voucher codes uppercase (e.g. PV-00059, not Pv-00059).
-    // Longer prefixes first so PRV/SRV/etc. match before PV/RV.
-    const codeMatch =
-      /^((?:PRV|SRV|LRV|LPV|GRN|PV|RV|EV|CV|SV|DN|PO|SO))(-.*)?$/i.exec(word);
-    if (codeMatch) {
-      return codeMatch[1].toUpperCase() + (codeMatch[2] ?? '');
-    }
-
-    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
-  }
-
-  private toTitleCase(value: string | null | undefined): string | null {
-    if (value == null) {
-      return null;
-    }
-
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    return trimmed
-      .split(/\s+/)
-      .map((word) => this.formatTitleCaseWord(word))
-      .join(' ');
-  }
-
   validateJournalLines(lines: JournalLineInput[]): void {
     if (!lines.length) {
       throw new BadRequestException('Journal must have at least one line');
@@ -236,7 +204,7 @@ export class TransactionService {
         referenceType: params.referenceType,
         referenceId: params.referenceId ?? null,
         transactionDate: params.transactionDate ?? new Date(),
-        description: this.toTitleCase(params.description),
+        description: params.description ?? null,
         debitAmount: params.debitAmount,
         creditAmount: params.creditAmount,
         currentBalance,
@@ -374,7 +342,7 @@ export class TransactionService {
       transactionDate: params.transactionDate ?? existing.transactionDate,
       description:
         params.description !== undefined
-          ? this.toTitleCase(params.description)
+          ? params.description ?? null
           : existing.description,
       debitAmount: hasDebit ? this.roundAmount(debit) : null,
       creditAmount: hasCredit ? this.roundAmount(credit) : null,
