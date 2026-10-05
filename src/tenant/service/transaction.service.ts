@@ -586,6 +586,7 @@ export class TransactionService {
     .leftJoinAndSelect('t.chartOfAccount', 'coa');
     qb.where('t.businessId = :businessId', { businessId: scopedBusinessId })
     qb.orderBy('t.transactionDate', 'DESC')
+    .addOrderBy('t.createdAt', 'DESC')
     .addOrderBy('t.id', 'DESC')
     .skip(skip)
     .take(limit);
