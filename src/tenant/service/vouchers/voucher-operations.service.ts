@@ -669,7 +669,7 @@ export class VoucherOperationsService {
     items: VoucherCreateInput[],
     userId: string,
   ) {
-    const saved: T[] = [];
+    const savedIds: string[] = [];
 
     for (const dto of items) {
       const voucher = await tenantDb.transaction(async (manager) => {
@@ -678,18 +678,25 @@ export class VoucherOperationsService {
         const entity = this.buildEntityFromCreate(config, payload, userId);
         return this.getRepo(manager, config.entity).save(entity);
       });
-      saved.push(voucher);
+      savedIds.push(voucher.id);
     }
+
+    const vouchers = await this.loadVouchersByIdsInOrder(
+      tenantDb,
+      businessId,
+      config,
+      savedIds,
+    );
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: userId,
       businessId,
       action: `${config.activityKey}_CREATED`,
-      description: `${saved.length} ${config.activityKey}(s) created`,
-      metadata: { voucherIds: saved.map((v) => v.id) },
+      description: `${vouchers.length} ${config.activityKey}(s) created`,
+      metadata: { voucherIds: savedIds },
     });
 
-    return { vouchers: saved };
+    return { vouchers, result: vouchers };
   }
 
   async createAndApprove<T extends VoucherEntity>(
@@ -699,7 +706,7 @@ export class VoucherOperationsService {
     items: VoucherCreateInput[],
     userId: string,
   ) {
-    const saved: T[] = [];
+    const savedIds: string[] = [];
 
     for (const dto of items) {
       const voucher = await tenantDb.transaction(async (manager) => {
@@ -734,18 +741,25 @@ export class VoucherOperationsService {
         );
         return approved;
       });
-      saved.push(voucher);
+      savedIds.push(voucher.id);
     }
+
+    const vouchers = await this.loadVouchersByIdsInOrder(
+      tenantDb,
+      businessId,
+      config,
+      savedIds,
+    );
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: userId,
       businessId,
       action: `${config.activityKey}_CREATED_AND_APPROVED`,
-      description: `${saved.length} ${config.activityKey}(s) created and approved`,
-      metadata: { voucherIds: saved.map((v) => v.id) },
+      description: `${vouchers.length} ${config.activityKey}(s) created and approved`,
+      metadata: { voucherIds: savedIds },
     });
 
-    return { vouchers: saved };
+    return { vouchers, result: vouchers };
   }
 
   async createImportedAndApprove<T extends VoucherEntity>(
@@ -902,6 +916,8 @@ export class VoucherOperationsService {
     }
 
     qb.orderBy(`${alias}.paymentDate`, 'DESC')
+      .addOrderBy(`${alias}.voucherNumber`, 'DESC')
+      .addOrderBy(`${alias}.createdAt`, 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
 
@@ -984,6 +1000,29 @@ export class VoucherOperationsService {
     });
 
     return voucher;
+  }
+
+  /**
+   * Reload vouchers with list relations, preserving the given id order
+   * (bulk create input order).
+   */
+  private async loadVouchersByIdsInOrder<T extends VoucherEntity>(
+    tenantDb: DataSource,
+    businessId: string,
+    config: VoucherConfig<T>,
+    ids: string[],
+  ): Promise<T[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const loaded = await Promise.all(
+      ids.map((id) =>
+        this.findVoucherOrThrow(tenantDb, businessId, config, { id }),
+      ),
+    );
+
+    return loaded;
   }
 
   private async findVoucherOrThrow<T extends VoucherEntity>(
