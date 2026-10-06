@@ -13,7 +13,7 @@ import {
 import type { Request } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
-import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
+import { TenantLoginOnlyGuard } from 'src/auth/tenant-login-only.guard';
 import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
 import { TenantSuperAdminGuard } from 'src/auth/tenant-super-admin.guard';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
@@ -46,13 +46,14 @@ export class DeleteUserRequestController {
     );
   }
 
-  /** Admin list of account deletion requests. */
+  /** Admin list — tenant access/login token (not business token). */
   @Get('delete-user-requests')
   @UseGuards(
     TenantJwtAuthGuard,
     TenantJwtGuard,
     TenantConnectionGuard,
-    TenantBusinessAccessGuard,
+    TenantLoginOnlyGuard,
+    TenantSuperAdminGuard,
     TenantPermissionGuard,
   )
   @RequirePermissions('LIST_DELETE_USER_REQUEST')
@@ -70,12 +71,13 @@ export class DeleteUserRequestController {
     );
   }
 
-  /** Soft-delete a user account (`users.deletedAt`). */
+  /** Soft-delete account — tenant access/login token (not business token). */
   @Delete('users/:id/account')
   @UseGuards(
     TenantJwtAuthGuard,
     TenantJwtGuard,
     TenantConnectionGuard,
+    TenantLoginOnlyGuard,
     TenantSuperAdminGuard,
     TenantPermissionGuard,
   )
