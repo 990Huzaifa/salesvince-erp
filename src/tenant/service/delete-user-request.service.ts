@@ -128,6 +128,45 @@ export class DeleteUserRequestService {
   }
 
   /**
+   * Removes a delete-user request row (admin dismiss / reject request).
+   * Does not delete the user account.
+   */
+  async deleteRequest(
+    tenantDb: DataSource,
+    requestId: string,
+    authUser: { userId: string; businessId?: string },
+  ) {
+    const requestRepo = tenantDb.getRepository(DeleteUserRequest);
+    const request = await requestRepo.findOne({
+      where: { id: requestId },
+      relations: { user: true },
+    });
+    if (!request) {
+      throw new NotFoundException('Delete user request not found');
+    }
+
+    await requestRepo.remove(request);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: authUser.userId,
+      businessId: authUser.businessId ?? null,
+      action: 'DELETE_USER_REQUEST_REMOVED',
+      description: `Delete user request removed for ${request.user?.email ?? request.userId}`,
+      metadata: {
+        requestId: request.id,
+        userId: request.userId,
+        previousStatus: request.status,
+      },
+    });
+
+    return {
+      message: 'Delete user request removed successfully',
+      requestId: request.id,
+      userId: request.userId,
+    };
+  }
+
+  /**
    * Soft-deletes the user account (`users.deletedAt`) and marks related
    * pending deletion requests as COMPLETED.
    */

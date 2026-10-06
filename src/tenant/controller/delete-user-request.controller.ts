@@ -71,6 +71,29 @@ export class DeleteUserRequestController {
     );
   }
 
+  /** Remove a delete-user request (does not delete the user). */
+  @Delete('delete-user-requests/:id')
+  @UseGuards(
+    TenantJwtAuthGuard,
+    TenantJwtGuard,
+    TenantConnectionGuard,
+    TenantLoginOnlyGuard,
+    TenantSuperAdminGuard,
+    TenantPermissionGuard,
+  )
+  @RequirePermissions('LIST_DELETE_USER_REQUEST')
+  deleteRequest(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    return this.deleteUserRequestService.deleteRequest(
+      tenantDb,
+      id,
+      req.user as TenantRequestUser,
+    );
+  }
+
   /** Soft-delete account — tenant access/login token (not business token). */
   @Delete('users/:id/account')
   @UseGuards(
