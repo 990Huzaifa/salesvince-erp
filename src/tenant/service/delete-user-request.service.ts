@@ -61,7 +61,7 @@ export class DeleteUserRequestService {
     const request = await requestRepo.save(
       requestRepo.create({
         userId: user.id,
-        reason: dto.reason.trim(),
+        reason: dto.reason?.trim() || 'no reason',
         businesses,
         status: DeleteUserRequestStatus.PENDING,
       }),
