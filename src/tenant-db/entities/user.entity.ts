@@ -13,6 +13,8 @@ import { Grn } from './grn.entity';
 import { PurchaseOrder } from './purchase-order.entity';
 import { PurchaseQuotation } from './purchase-quotation.entity';
 import { SaleQuotation } from './sale-quotation.entity';
+import { DeleteUserRequest } from './delete-user-request.entity';
+
 export enum UserStatus {
     ACTIVE = 'ACTIVE',
     INACTIVE = 'INACTIVE',
@@ -43,7 +45,6 @@ export class User {
         default: UserStatus.ACTIVE,
     })
     status: UserStatus;
-
 
     @Column({ nullable: true })
     phone: string;
@@ -84,6 +85,9 @@ export class User {
     @OneToMany(() => UserBusiness, (userBusiness) => userBusiness.user)
     userBusinesses: UserBusiness[];
 
+    @OneToMany(() => DeleteUserRequest, (request) => request.user)
+    deleteUserRequests: DeleteUserRequest[];
+
     @CreateDateColumn()
     createdAt: Date;
 
@@ -93,10 +97,9 @@ export class User {
     @DeleteDateColumn({ nullable: true })
     deletedAt: Date | null;
 
-    // relationships
     @OneToMany(() => PurchaseQuotation, (purchaseQuotation) => purchaseQuotation.createdByUser, { onDelete: 'CASCADE' })
     purchaseQuotations: PurchaseQuotation[];
-    
+
     @OneToMany(() => Grn, (grn) => grn.createdByUser, { onDelete: 'CASCADE' })
     grns: Grn[];
 
