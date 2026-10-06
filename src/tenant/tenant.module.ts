@@ -154,10 +154,12 @@ import { MasterTenantDataService } from './service/master-tenant-data.service';
 import { DatabaseBackupController } from './controller/database-backup.controller';
 import { ProfileController } from './controller/profile.controller';
 import { DeleteUserRequestController } from './controller/delete-user-request.controller';
+import { AdminDashboardController } from './controller/admin-dashboard.controller';
 import { TenantDatabaseBackupService } from './service/tenant-database-backup.service';
 import { PgDumpService } from './service/pg-dump.service';
 import { ProfileService } from './service/profile.service';
 import { DeleteUserRequestService } from './service/delete-user-request.service';
+import { AdminDashboardService } from './service/admin-dashboard.service';
 import { TenantSettings } from 'src/master-db/entities/tenant-settings.entity';
 import { TenantGeoPolicy } from 'src/master-db/entities/tenant-geo-policy.entity';
 import { TenantTheme } from 'src/master-db/entities/tenant-themes.entity';
@@ -243,6 +245,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     DatabaseBackupController,
     ProfileController,
     DeleteUserRequestController,
+    AdminDashboardController,
   ],
   providers: [
     TenantAuthService,
@@ -253,6 +256,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     UserService,
     ProfileService,
     DeleteUserRequestService,
+    AdminDashboardService,
     ChartOfAccountService,
     PartyService,
     TransactionService,

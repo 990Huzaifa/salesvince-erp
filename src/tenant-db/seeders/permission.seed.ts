@@ -223,6 +223,7 @@ export const TENANT_PERMISSIONS = [
 
   { key: 'DELETE_USER', name: 'Delete Users' },
   { key: 'LIST_DELETE_USER_REQUEST', name: 'List Delete User Requests' },
+  { key: 'VIEW_ADMIN_DASHBOARD', name: 'View Admin Dashboard' },
   { key: 'DELETE_ROLE', name: 'Delete Role' },
   { key: 'DELETE_DEPARTMENT', name: 'Delete Department' },
   { key: 'DELETE_DESIGNATION', name: 'Delete Designation' },
