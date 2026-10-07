@@ -25,6 +25,7 @@ import {
   safePdfFilenamePart,
 } from 'src/common/pdf';
 import { buildGeneralLedgerPdfHtml } from './general-ledger-pdf.template';
+import { PrintThemeService } from '../print-theme.service';
 
 type PeriodMovementRow = {
   chartOfAccountId: string;
@@ -43,6 +44,7 @@ export class ReportLedgerService {
     private readonly activityLogService: ActivityLogService,
     private readonly pdfRendererService: PdfRendererService,
     private readonly pdfLogoService: PdfLogoService,
+    private readonly printThemeService: PrintThemeService,
   ) {}
 
   async generateGeneralLedgerPdf(
@@ -52,6 +54,7 @@ export class ReportLedgerService {
     actorUserId: string,
     startDate?: string,
     endDate?: string,
+    tenantId?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = assertBusinessId(businessId);
     const [ledger, business] = await Promise.all([
@@ -70,7 +73,10 @@ export class ReportLedgerService {
       throw new NotFoundException('Business not found');
     }
 
-    const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
+    const [logoDataUri, theme] = await Promise.all([
+      this.pdfLogoService.fetchLogoDataUri(business.logo),
+      this.printThemeService.resolveForTenant(tenantId),
+    ]);
     const html = buildGeneralLedgerPdfHtml(
       {
         entries: ledger.entries,
@@ -87,6 +93,8 @@ export class ReportLedgerService {
         preparedBy: 'Admin',
       },
       logoDataUri,
+      new Date(),
+      theme,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

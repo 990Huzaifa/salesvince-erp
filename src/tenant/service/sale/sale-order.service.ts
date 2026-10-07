@@ -54,6 +54,7 @@ import {
   AccountTransactionReferenceType,
   Transaction,
 } from 'src/tenant-db/entities/transaction.entity';
+import { PrintThemeService } from '../print-theme.service';
 
 const ORDER_NUMBER_PREFIX = 'SO';
 
@@ -117,6 +118,7 @@ export class SaleOrderService {
     private readonly listAnalyticsService: ListAnalyticsService,
     private readonly pdfRendererService: PdfRendererService,
     private readonly pdfLogoService: PdfLogoService,
+    private readonly printThemeService: PrintThemeService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -1250,6 +1252,7 @@ export class SaleOrderService {
     orderId: string,
     actorUserId: string,
     showBalanceDetails = true,
+    tenantId?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const order = await this.findOrderForBusiness(
@@ -1268,8 +1271,11 @@ export class SaleOrderService {
       throw new NotFoundException('Business not found');
     }
 
-    const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
     const mappedOrder = this.mapSaleOrder(order, { customerBalance });
+    const [logoDataUri, theme] = await Promise.all([
+      this.pdfLogoService.fetchLogoDataUri(business.logo),
+      this.printThemeService.resolveForTenant(tenantId),
+    ]);
     const html = buildSaleInvoicePdfHtml(
       {
         invoiceNumber: mappedOrder.orderNumber,
@@ -1297,6 +1303,7 @@ export class SaleOrderService {
         orderNumber: mappedOrder.orderNumber,
         watermarkText:
           String(mappedOrder.orderStatus || '').toUpperCase() || 'DRAFT',
+        theme,
       },
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({

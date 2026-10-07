@@ -31,6 +31,7 @@ import {
   parseDateRange,
   startOfDay,
 } from '../report/report-query.helper';
+import { PrintThemeService } from '../print-theme.service';
 
 const INVOICE_NUMBER_PREFIX = 'PI';
 
@@ -53,6 +54,7 @@ export class PurchaseInvoiceService {
     private readonly listAnalyticsService: ListAnalyticsService,
     private readonly pdfRendererService: PdfRendererService,
     private readonly pdfLogoService: PdfLogoService,
+    private readonly printThemeService: PrintThemeService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -560,6 +562,7 @@ export class PurchaseInvoiceService {
     invoiceId: string,
     actorUserId: string,
     showBalanceDetails = true,
+    tenantId?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const invoice = await tenantDb
@@ -600,7 +603,10 @@ export class PurchaseInvoiceService {
       vendorGeoNames,
       vendorBalance,
     });
-    const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
+    const [logoDataUri, theme] = await Promise.all([
+      this.pdfLogoService.fetchLogoDataUri(business.logo),
+      this.printThemeService.resolveForTenant(tenantId),
+    ]);
     const html = buildPurchaseInvoicePdfHtml(
       mappedInvoice,
       {
@@ -612,6 +618,8 @@ export class PurchaseInvoiceService {
       },
       logoDataUri,
       showBalanceDetails,
+      new Date(),
+      theme,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

@@ -151,6 +151,7 @@ import { SalaryVoucherService } from './service/vouchers/salary-voucher.service'
 import { LedgerWireService } from './service/ledger-wire.service';
 import { MasterTenantDataController } from './controller/master-tenant-data.controller';
 import { MasterTenantDataService } from './service/master-tenant-data.service';
+import { PrintThemeService } from './service/print-theme.service';
 import { DatabaseBackupController } from './controller/database-backup.controller';
 import { ProfileController } from './controller/profile.controller';
 import { DeleteUserRequestController } from './controller/delete-user-request.controller';
@@ -337,6 +338,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     SalaryVoucherService,
     LedgerWireService,
     MasterTenantDataService,
+    PrintThemeService,
     TenantDatabaseBackupService,
     PgDumpService,
   ],

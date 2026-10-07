@@ -1,11 +1,14 @@
 import {
+  escapeHtml,
   formatDocumentDate,
   formatPakistaniNumber,
   formatPrintedAt,
   prettifyValue,
+  printThemeCssVars,
+  resolvePrintThemeColors,
+  type BusinessPdfContext,
+  type PrintThemeColors,
 } from 'src/common/pdf';
-import { escapeHtml } from 'src/common/pdf';
-import type { BusinessPdfContext } from 'src/common/pdf';
 
 type GeneralLedgerPdfEntry = {
   transactionDate?: string | Date | null;
@@ -45,6 +48,7 @@ export const buildGeneralLedgerPdfHtml = (
   ledger: GeneralLedgerPdfDocument,
   logoDataUri?: string | null,
   printedAt: Date = new Date(),
+  themeColors?: PrintThemeColors,
 ): string => {
   const businessName = ledger.business.name || 'Eeman Prime';
   const businessAddress = ledger.business.address || 'Shahrah e faisal Karachi';
@@ -56,6 +60,7 @@ export const buildGeneralLedgerPdfHtml = (
       .map((part) => part[0])
       .join('')
       .toUpperCase() || 'EP';
+  const theme = themeColors ?? resolvePrintThemeColors();
   const rows = ledger.entries
     .map(
       (entry, index) => `
@@ -81,7 +86,7 @@ export const buildGeneralLedgerPdfHtml = (
 
   return `<!doctype html><html lang="en"><head><meta charset="utf-8" />
     <title>General Ledger</title><style>
-    :root { --primary:#9786ee; --primary-text:#fff; --foreground:#17182a; --muted:#667085; --border:#e5e8f0; --row-a:rgba(151,134,238,.06); --row-b:rgba(151,134,238,.03); --surface-muted:#f7f8fc; }
+    :root { ${printThemeCssVars(theme)}; --foreground:#17182a; --muted:#667085; --border:#e5e8f0; --surface-muted:#f7f8fc; }
     @page { size:A4 portrait; margin:10mm; } * { box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     html,body { margin:0; padding:0; background:#fff; font-family:Arial,sans-serif; color:#000; } body { width:190mm; }
     .pdf-content { width:190mm; margin:0 auto; padding:0; } .document-header { border-bottom:3px solid var(--primary); padding-bottom:10px; margin-bottom:16px; }

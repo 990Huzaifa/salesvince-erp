@@ -29,3 +29,8 @@ export {
   buildSaleOrderPdfHtml,
 } from './document-pdf-html';
 export type { BusinessPdfContext } from './document-pdf-html';
+export {
+  printThemeCssVars,
+  resolvePrintThemeColors,
+} from './print-theme-colors';
+export type { PrintThemeColors } from './print-theme-colors';

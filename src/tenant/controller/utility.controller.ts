@@ -267,6 +267,7 @@ export class TenantUtilityController {
             parentCode,
             category,
             search,
+            user.tenantId,
         );
         sendPdf(res, result);
     }

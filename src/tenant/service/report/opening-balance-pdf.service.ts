@@ -8,6 +8,7 @@ import { User } from 'src/tenant-db/entities/user.entity';
 import { computeBalanceMovement, getAccountBalanceNature } from 'src/tenant-db/helpers/transaction-balance.helper';
 import { TenantUtilityService } from '../tenant-utility.service';
 import { buildReportPdfHtml, type ReportPdfDocument } from './report-pdf.template';
+import { PrintThemeService } from '../print-theme.service';
 
 @Injectable()
 export class OpeningBalancePdfService {
@@ -15,6 +16,7 @@ export class OpeningBalancePdfService {
     private readonly utilityService: TenantUtilityService,
     private readonly pdfRendererService: PdfRendererService,
     private readonly pdfLogoService: PdfLogoService,
+    private readonly printThemeService: PrintThemeService,
   ) {}
 
   async generatePdf(
@@ -24,16 +26,18 @@ export class OpeningBalancePdfService {
     parentCode: string,
     category: string,
     search?: string,
+    tenantId?: string,
   ) {
     if (!businessId) throw new BadRequestException('Business context is required');
     if (!/^\d(?:-\d+)*$/.test(parentCode)) {
       throw new BadRequestException('A valid account parent code is required');
     }
 
-    const [accountList, business, actor] = await Promise.all([
+    const [accountList, business, actor, theme] = await Promise.all([
       this.utilityService.getAccountList(db, parentCode, businessId),
       db.getRepository(Business).findOne({ where: { id: businessId } }),
       db.getRepository(User).findOne({ where: { id: actorUserId }, select: { id: true, name: true } }),
+      this.printThemeService.resolveForTenant(tenantId),
     ]);
     if (!business) throw new NotFoundException('Business not found');
 
@@ -104,7 +108,7 @@ export class OpeningBalancePdfService {
       preparedBy: actor?.name || 'Admin',
     };
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
-      html: buildReportPdfHtml(document),
+      html: buildReportPdfHtml(document, new Date(), theme),
       enforceSinglePage: false,
     });
 

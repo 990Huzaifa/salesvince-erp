@@ -123,6 +123,7 @@ export class GrnController {
       user.businessId,
       user.userId,
       { search, vendorId, warehouseId, purchaseOrderId, status },
+      user.tenantId,
     );
     sendPdf(res, result);
   }

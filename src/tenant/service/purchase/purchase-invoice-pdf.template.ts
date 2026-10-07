@@ -1,10 +1,13 @@
 import {
+  escapeHtml,
   formatDocumentDate,
   formatPakistaniNumber,
   formatPrintedAt,
+  printThemeCssVars,
+  resolvePrintThemeColors,
+  type BusinessPdfContext,
+  type PrintThemeColors,
 } from 'src/common/pdf';
-import { escapeHtml } from 'src/common/pdf';
-import type { BusinessPdfContext } from 'src/common/pdf';
 
 const MAX_PURCHASE_INVOICE_PDF_ROWS = 15;
 
@@ -95,6 +98,7 @@ export const buildPurchaseInvoicePdfHtml = (
   logoDataUri?: string | null,
   showBalanceDetails = true,
   printedAt: Date = new Date(),
+  themeColors?: PrintThemeColors,
 ): string => {
   const items = Array.isArray(invoice.items) ? invoice.items : [];
   const rows = items.map(renderItemRow);
@@ -134,6 +138,7 @@ export const buildPurchaseInvoicePdfHtml = (
   const currentBalance = Number(
     balance.currentBalance ?? vendor.currentBalance ?? 0,
   );
+  const theme = themeColors ?? resolvePrintThemeColors();
 
   return `<!doctype html>
 <html lang="en">
@@ -143,13 +148,10 @@ export const buildPurchaseInvoicePdfHtml = (
   <title>Purchase Invoice ${escapeHtml(invoice.invoiceNumber)}</title>
   <style>
     :root {
-      --primary: #2d5f3e;
-      --primary-text: #ffffff;
+      ${printThemeCssVars(theme)};
       --foreground: #17182a;
       --muted: #667085;
       --border: #cfd8d4;
-      --row-a: #edf3ef;
-      --row-b: #f6f8f7;
       --surface-muted: #f7f8fb;
     }
     @page { size: A4 portrait; margin: 10mm; }

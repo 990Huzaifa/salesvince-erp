@@ -224,6 +224,7 @@ export class SaleOrderController {
       id,
       user.userId,
       showBalanceDetails,
+      user.tenantId,
     );
     sendPdf(res, { buffer, filename });
   }
