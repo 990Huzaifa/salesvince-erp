@@ -964,9 +964,41 @@ export class PartyService {
     };
   }
 
+  private sanitizeJsonEmptyStrings(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sanitizeJsonEmptyStrings(item));
+    }
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+        out[key] =
+          nested === '' ? null : this.sanitizeJsonEmptyStrings(nested);
+      }
+      return out;
+    }
+    return value;
+  }
+
+  private formatValidationErrors(errors: ReturnType<typeof validateSync>): string {
+    const walk = (list: typeof errors, prefix = ''): string[] => {
+      const messages: string[] = [];
+      for (const error of list) {
+        const path = prefix ? `${prefix}.${error.property}` : error.property;
+        messages.push(...Object.values(error.constraints ?? {}).map((msg) => `${path}: ${msg}`));
+        if (error.children?.length) {
+          messages.push(...walk(error.children, path));
+        }
+      }
+      return messages;
+    };
+    return walk(errors).join('; ');
+  }
+
   private parsePartyJsonImportFile(file: Express.Multer.File): PartyJsonImportDto {
     if (!file?.buffer?.length) {
-      throw new BadRequestException('JSON file is required');
+      throw new BadRequestException(
+        'JSON file is required. Use multipart form-data field "file".',
+      );
     }
 
     let parsed: unknown;
@@ -976,20 +1008,18 @@ export class PartyService {
       throw new BadRequestException('Invalid JSON file');
     }
 
-    const dto = plainToInstance(PartyJsonImportDto, parsed, {
-      enableImplicitConversion: true,
-    });
+    const dto = plainToInstance(
+      PartyJsonImportDto,
+      this.sanitizeJsonEmptyStrings(parsed),
+      { enableImplicitConversion: true },
+    );
     const errors = validateSync(dto, {
       whitelist: true,
-      forbidNonWhitelisted: true,
+      forbidNonWhitelisted: false,
     });
     if (errors.length) {
-      const message = errors
-        .map((error) => Object.values(error.constraints ?? {}).join(', '))
-        .filter(Boolean)
-        .join('; ');
       throw new BadRequestException(
-        message || 'Invalid party JSON import payload',
+        this.formatValidationErrors(errors) || 'Invalid party JSON import payload',
       );
     }
 

@@ -121,6 +121,11 @@ export class PartyController {
     @Req() req: Request,
     @TenantCode() tenantCode: string,
   ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException(
+        'JSON file is required. Use multipart form-data field "file".',
+      );
+    }
     const user = req.user as TenantRequestUser;
     return this.partyService.importPartiesJson(
       tenantDb,

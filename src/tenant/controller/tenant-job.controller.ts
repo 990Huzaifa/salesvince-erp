@@ -1,8 +1,8 @@
 import { Controller, Get, Param, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
+import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
 import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
-import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantCode } from 'src/common/tenant/tenant-connection.decorator';
@@ -13,7 +13,13 @@ type TenantRequestUser = {
 };
 
 @Controller('tenant/jobs')
-@UseGuards(TenantJwtAuthGuard, TenantJwtGuard, TenantConnectionGuard, TenantPermissionGuard)
+@UseGuards(
+  TenantJwtAuthGuard,
+  TenantJwtGuard,
+  TenantConnectionGuard,
+  TenantBusinessAccessGuard,
+  TenantPermissionGuard,
+)
 export class TenantJobController {
   constructor(private readonly tenantJobService: TenantJobService) {}
 

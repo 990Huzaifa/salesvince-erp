@@ -2194,9 +2194,41 @@ export class ProductService {
     };
   }
 
+  private sanitizeJsonEmptyStrings(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sanitizeJsonEmptyStrings(item));
+    }
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+        out[key] =
+          nested === '' ? null : this.sanitizeJsonEmptyStrings(nested);
+      }
+      return out;
+    }
+    return value;
+  }
+
+  private formatValidationErrors(errors: ReturnType<typeof validateSync>): string {
+    const walk = (list: typeof errors, prefix = ''): string[] => {
+      const messages: string[] = [];
+      for (const error of list) {
+        const path = prefix ? `${prefix}.${error.property}` : error.property;
+        messages.push(...Object.values(error.constraints ?? {}).map((msg) => `${path}: ${msg}`));
+        if (error.children?.length) {
+          messages.push(...walk(error.children, path));
+        }
+      }
+      return messages;
+    };
+    return walk(errors).join('; ');
+  }
+
   private parseProductJsonImportFile(file: Express.Multer.File): ProductJsonImportDto {
     if (!file?.buffer?.length) {
-      throw new BadRequestException('JSON file is required');
+      throw new BadRequestException(
+        'JSON file is required. Use multipart form-data field "file".',
+      );
     }
 
     let parsed: unknown;
@@ -2206,26 +2238,19 @@ export class ProductService {
       throw new BadRequestException('Invalid JSON file');
     }
 
-    const dto = plainToInstance(ProductJsonImportDto, parsed, {
-      enableImplicitConversion: true,
-    });
+    const dto = plainToInstance(
+      ProductJsonImportDto,
+      this.sanitizeJsonEmptyStrings(parsed),
+      { enableImplicitConversion: true },
+    );
     const errors = validateSync(dto, {
       whitelist: true,
-      forbidNonWhitelisted: true,
+      forbidNonWhitelisted: false,
     });
     if (errors.length) {
-      const message = errors
-        .flatMap((error) => {
-          const own = Object.values(error.constraints ?? {});
-          const children = (error.children ?? []).flatMap((child) =>
-            Object.values(child.constraints ?? {}),
-          );
-          return [...own, ...children];
-        })
-        .filter(Boolean)
-        .join('; ');
       throw new BadRequestException(
-        message || 'Invalid product JSON import payload',
+        this.formatValidationErrors(errors) ||
+          'Invalid product JSON import payload',
       );
     }
 
