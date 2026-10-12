@@ -13,6 +13,17 @@ import {
 } from 'src/tenant-db/helpers/party-chart-of-account.helper';
 import { CreatePartyDto } from '../dto/party/create-party.dto';
 import { UpdatePartyDto } from '../dto/party/update-party.dto';
+import {
+  PartyJsonImportDto,
+  PartyJsonItemDto,
+} from '../dto/party/party-json-export-import.dto';
+import {
+  JsonExportEntity,
+  JsonImportMode,
+  JsonImportResult,
+  JsonImportResultRow,
+  SALESVINCE_EXPORT_FORMAT,
+} from '../dto/import-export/json-export-envelope.dto';
 import { ActivityLogService } from './activity-log.service';
 import { TransactionService } from './transaction.service';
 import { MasterGeoHelperService } from './master-geo-helper.service';
@@ -886,6 +897,223 @@ export class PartyService {
       status: job.status,
       totalRows: job.totalRows,
       type,
+    };
+  }
+
+  private mapPartyToJsonItem(party: Party): PartyJsonItemDto {
+    return {
+      code: party.code,
+      name: party.name,
+      type: party.type,
+      partyClass: party.partyClass,
+      email: party.email,
+      phone: party.phone,
+      whatsAppNumber: party.whatsAppNumber,
+      alternatePhone: party.alternatePhone,
+      ntnNumber: party.ntnNumber,
+      strnNumber: party.strnNumber,
+      cnic: party.cnic,
+      taxNumber: party.taxNumber,
+      address: party.address,
+      countryId: party.countryId,
+      stateId: party.stateId,
+      cityId: party.cityId,
+      creditLimit: party.creditLimit != null ? Number(party.creditLimit) : null,
+    };
+  }
+
+  async exportPartiesJson(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    actorUserId: string,
+    type?: PartyType,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const qb = tenantDb
+      .getRepository(Party)
+      .createQueryBuilder('p')
+      .where('p.businessId = :businessId', { businessId: scopedBusinessId })
+      .andWhere('p.deletedAt IS NULL')
+      .orderBy('p.code', 'ASC');
+
+    if (type) {
+      qb.andWhere('p.type IN (:...types)', { types: [type, PartyType.BOTH] });
+    }
+
+    const parties = await qb.getMany();
+    const items = parties.map((party) => this.mapPartyToJsonItem(party));
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'PARTY_JSON_EXPORTED',
+      description: 'Parties exported as JSON',
+      metadata: {
+        businessId: scopedBusinessId,
+        count: items.length,
+        type: type ?? 'ALL',
+      },
+    });
+
+    return {
+      format: SALESVINCE_EXPORT_FORMAT,
+      version: 1,
+      entity: JsonExportEntity.PARTIES,
+      exportedAt: new Date().toISOString(),
+      items,
+    };
+  }
+
+  async importPartiesJson(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    dto: PartyJsonImportDto,
+    actorUserId: string,
+  ): Promise<JsonImportResult> {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    if (dto.entity && dto.entity !== JsonExportEntity.PARTIES) {
+      throw new BadRequestException('entity must be "parties" for party JSON import');
+    }
+
+    const mode = dto.options?.mode ?? JsonImportMode.UPSERT;
+    const results: JsonImportResultRow[] = [];
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const [index, item] of dto.items.entries()) {
+      const key = item.code?.trim() || item.name.trim();
+      try {
+        const code = item.code?.trim();
+        let existing: Party | null = null;
+        if (code) {
+          existing = await tenantDb.getRepository(Party).findOne({
+            where: {
+              businessId: scopedBusinessId,
+              code,
+              deletedAt: IsNull(),
+            },
+          });
+        }
+
+        if (existing) {
+          if (mode === JsonImportMode.CREATE_ONLY) {
+            skipped += 1;
+            results.push({
+              index,
+              key,
+              status: 'skipped',
+              message: `Party code ${code} already exists`,
+              id: existing.id,
+            });
+            continue;
+          }
+
+          const updateDto: UpdatePartyDto = {
+            name: item.name,
+            partyClass: item.partyClass ?? undefined,
+            creditLimit: item.creditLimit ?? undefined,
+            email: item.email ?? undefined,
+            phone: item.phone ?? undefined,
+            whatsAppNumber: item.whatsAppNumber ?? undefined,
+            alternatePhone: item.alternatePhone ?? undefined,
+            ntnNumber: item.ntnNumber ?? undefined,
+            strnNumber: item.strnNumber ?? undefined,
+            cnic: item.cnic ?? undefined,
+            taxNumber: item.taxNumber ?? undefined,
+            address: item.address ?? undefined,
+            countryId: item.countryId ?? undefined,
+            stateId: item.stateId ?? undefined,
+            cityId: item.cityId ?? undefined,
+          };
+
+          const updatedParty = await this.updateParty(
+            tenantDb,
+            scopedBusinessId,
+            existing.id,
+            updateDto,
+            actorUserId,
+          );
+          updated += 1;
+          results.push({
+            index,
+            key,
+            status: 'updated',
+            id: updatedParty.data.id,
+          });
+          continue;
+        }
+
+        const createDto: CreatePartyDto = {
+          code: code || undefined,
+          name: item.name,
+          type: item.type,
+          partyClass: item.partyClass ?? undefined,
+          creditLimit: item.creditLimit ?? undefined,
+          email: item.email ?? undefined,
+          phone: item.phone ?? undefined,
+          whatsAppNumber: item.whatsAppNumber ?? undefined,
+          alternatePhone: item.alternatePhone ?? undefined,
+          ntnNumber: item.ntnNumber ?? undefined,
+          strnNumber: item.strnNumber ?? undefined,
+          cnic: item.cnic ?? undefined,
+          taxNumber: item.taxNumber ?? undefined,
+          address: item.address ?? undefined,
+          countryId: item.countryId ?? undefined,
+          stateId: item.stateId ?? undefined,
+          cityId: item.cityId ?? undefined,
+          // Opening balances intentionally omitted (always 0).
+        };
+
+        const createdParty = await this.createParty(
+          tenantDb,
+          scopedBusinessId,
+          createDto,
+          actorUserId,
+        );
+        created += 1;
+        results.push({
+          index,
+          key: createdParty.data.code,
+          status: 'created',
+          id: createdParty.data.id,
+        });
+      } catch (error) {
+        failed += 1;
+        results.push({
+          index,
+          key,
+          status: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'PARTY_JSON_IMPORTED',
+      description: 'Parties imported from JSON',
+      metadata: {
+        businessId: scopedBusinessId,
+        total: dto.items.length,
+        created,
+        updated,
+        skipped,
+        failed,
+        mode,
+      },
+    });
+
+    return {
+      entity: JsonExportEntity.PARTIES,
+      total: dto.items.length,
+      created,
+      updated,
+      skipped,
+      failed,
+      results,
     };
   }
 }

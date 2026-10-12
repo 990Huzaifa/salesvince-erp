@@ -51,6 +51,18 @@ import { CreateProductAsyncDto } from '../dto/product/create-product-async.dto';
 import { CreateProductDto } from '../dto/product/create-product.dto';
 import { UpdateProductAsyncDto } from '../dto/product/update-product-async.dto';
 import { UpdateProductDto } from '../dto/product/update-product.dto';
+import {
+  ProductJsonImportDto,
+  ProductJsonItemDto,
+  ProductJsonPricingItemDto,
+} from '../dto/product/product-json-export-import.dto';
+import {
+  JsonExportEntity,
+  JsonImportMode,
+  JsonImportResult,
+  JsonImportResultRow,
+  SALESVINCE_EXPORT_FORMAT,
+} from '../dto/import-export/json-export-envelope.dto';
 import { BatchPickStrategy } from 'src/tenant-db/entities/product.entity';
 import { generateSequentialCode } from './hr/hr-common.util';
 
@@ -372,6 +384,7 @@ export class ProductService {
     const name = dto.name.trim();
     const description = dto.description?.trim() || null;
     const hsCode = dto.hsCode?.trim() || null;
+    const barcode = dto.barcode?.trim() || null;
     const flavourIds = (dto.flavourIds ?? []).map((id) => id.trim()).filter(Boolean);
     const batchPickStrategy = dto.batchPickStrategy ?? BatchPickStrategy.LIFO;
 
@@ -386,6 +399,7 @@ export class ProductService {
         subCategoryId,
         brandId: brandId || null,
         skuCode,
+        barcode,
         name,
         description,
         hsCode,
@@ -1796,6 +1810,470 @@ export class ProductService {
       jobId: job.id,
       status: job.status,
       totalRows: job.totalRows,
+    };
+  }
+
+  private roundMoney(value: number): number {
+    return Math.round(value * 100) / 100;
+  }
+
+  private resolvePricingMargins(price: ProductJsonPricingItemDto): {
+    purchaseUnitPrice: number;
+    saleUnitMarginAmount: number;
+    saleUnitMarginPercentage: number;
+    quantity: number;
+  } {
+    const purchaseUnitPrice = this.roundMoney(Number(price.purchaseUnitPrice));
+    const quantity = Math.max(1, Number(price.quantity) || 1);
+
+    if (
+      price.saleUnitMarginAmount != null &&
+      price.saleUnitMarginPercentage != null
+    ) {
+      return {
+        purchaseUnitPrice,
+        saleUnitMarginAmount: this.roundMoney(Number(price.saleUnitMarginAmount)),
+        saleUnitMarginPercentage: this.roundMoney(
+          Number(price.saleUnitMarginPercentage),
+        ),
+        quantity,
+      };
+    }
+
+    if (price.saleUnitPrice != null) {
+      const computed = this.computePricingFromCsv(
+        purchaseUnitPrice,
+        Number(price.saleUnitPrice),
+      );
+      return { ...computed, quantity };
+    }
+
+    return {
+      purchaseUnitPrice,
+      saleUnitMarginAmount: this.roundMoney(
+        Number(price.saleUnitMarginAmount ?? 0),
+      ),
+      saleUnitMarginPercentage: this.roundMoney(
+        Number(price.saleUnitMarginPercentage ?? 0),
+      ),
+      quantity,
+    };
+  }
+
+  private mapProductToJsonItem(product: Product): ProductJsonItemDto {
+    return {
+      skuCode: product.skuCode,
+      barcode: product.barcode,
+      name: product.name,
+      description: product.description,
+      hsCode: product.hsCode,
+      isActive: product.isActive,
+      batchPickStrategy: product.batchPickStrategy,
+      category: { name: product.category?.name ?? '' },
+      subCategory: { name: product.subCategory?.name ?? '' },
+      brand: product.brand?.name ? { name: product.brand.name } : null,
+      flavours: (product.flavours ?? [])
+        .map((row) => row.flavour?.name)
+        .filter((name): name is string => Boolean(name))
+        .map((name) => ({ name })),
+      pricing: (product.pricing ?? []).map((row) => {
+        const purchase = Number(row.purchaseUnitPrice);
+        const marginAmount = Number(row.saleUnitMarginAmount);
+        return {
+          uom: { name: row.uom?.name ?? '' },
+          isBase: row.uom?.isBase ?? false,
+          quantity: Number(row.quantity),
+          purchaseUnitPrice: purchase,
+          saleUnitPrice: this.roundMoney(purchase + marginAmount),
+          saleUnitMarginAmount: marginAmount,
+          saleUnitMarginPercentage: Number(row.saleUnitMarginPercentage),
+        };
+      }),
+    };
+  }
+
+  private async findOrCreateFlavour(
+    manager: EntityManager,
+    name: string,
+    user: { businessId: string },
+    cache: Map<string, Flavour>,
+  ): Promise<Flavour> {
+    const cacheKey = name.toLowerCase();
+    const cached = cache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const flavourRepo = manager.getRepository(Flavour);
+    let flavour = await flavourRepo.findOne({
+      where: { name, businessId: user.businessId },
+    });
+    if (!flavour) {
+      flavour = await flavourRepo.save(
+        flavourRepo.create({ name, businessId: user.businessId }),
+      );
+    }
+    cache.set(cacheKey, flavour);
+    return flavour;
+  }
+
+  async exportProductsJson(
+    tenantDb: DataSource,
+    user: { userId: string; businessId: string },
+    options?: { isActive?: boolean },
+  ) {
+    const qb = tenantDb
+      .getRepository(Product)
+      .createQueryBuilder('product')
+      .leftJoinAndSelect('product.category', 'category')
+      .leftJoinAndSelect('product.subCategory', 'subCategory')
+      .leftJoinAndSelect('product.brand', 'brand')
+      .leftJoinAndSelect('product.flavours', 'productFlavours')
+      .leftJoinAndSelect('productFlavours.flavour', 'flavour')
+      .leftJoinAndSelect('product.pricing', 'pricing')
+      .leftJoinAndSelect('pricing.uom', 'uom')
+      .where('product.businessId = :businessId', {
+        businessId: user.businessId,
+      })
+      .andWhere('product.isDelete = :isDelete', { isDelete: false })
+      .orderBy('product.skuCode', 'ASC');
+
+    if (options?.isActive !== undefined) {
+      qb.andWhere('product.isActive = :isActive', {
+        isActive: options.isActive,
+      });
+    }
+
+    const products = await qb.getMany();
+    const items = products.map((product) => this.mapProductToJsonItem(product));
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: user.businessId,
+      action: 'PRODUCT_JSON_EXPORTED',
+      description: 'Products exported as JSON',
+      metadata: {
+        businessId: user.businessId,
+        count: items.length,
+        isActive: options?.isActive ?? null,
+      },
+    });
+
+    return {
+      format: SALESVINCE_EXPORT_FORMAT,
+      version: 1,
+      entity: JsonExportEntity.PRODUCTS,
+      exportedAt: new Date().toISOString(),
+      items,
+    };
+  }
+
+  private async upsertProductFromJsonItem(
+    tenantDb: DataSource,
+    item: ProductJsonItemDto,
+    user: { userId: string; businessId: string },
+    mode: JsonImportMode,
+    caches: {
+      category: Map<string, ProductCategory>;
+      subCategory: Map<string, ProductSubCategory>;
+      brand: Map<string, ProductBrand>;
+      uom: Map<string, Uom>;
+      flavour: Map<string, Flavour>;
+    },
+  ): Promise<JsonImportResultRow & { outcome: 'created' | 'updated' | 'skipped' }> {
+    const name = item.name.trim();
+    const skuCode = item.skuCode?.trim() || null;
+    const barcode = item.barcode?.trim() || null;
+    const key = skuCode || name;
+
+    if (!item.category?.name?.trim() || !item.subCategory?.name?.trim()) {
+      throw new BadRequestException('category.name and subCategory.name are required');
+    }
+    if (!item.pricing?.length) {
+      throw new BadRequestException('At least one pricing row is required');
+    }
+
+    let existing: Product | null = null;
+    if (skuCode) {
+      existing = await tenantDb.getRepository(Product).findOne({
+        where: {
+          businessId: user.businessId,
+          skuCode,
+          isDelete: false,
+        },
+      });
+    }
+
+    if (existing && mode === JsonImportMode.CREATE_ONLY) {
+      return {
+        index: 0,
+        key,
+        status: 'skipped',
+        message: `Product SKU ${skuCode} already exists`,
+        id: existing.id,
+        outcome: 'skipped',
+      };
+    }
+
+    const resolved = await tenantDb.transaction(async (manager) => {
+      const category = await this.findOrCreateCategory(
+        manager,
+        item.category.name.trim(),
+        user,
+        caches.category,
+      );
+      const subCategory = await this.findOrCreateSubCategory(
+        manager,
+        category,
+        item.subCategory.name.trim(),
+        user,
+        caches.subCategory,
+      );
+
+      let brandId: string | undefined;
+      if (item.brand?.name?.trim()) {
+        const brand = await this.findOrCreateBrand(
+          manager,
+          item.brand.name.trim(),
+          user,
+          caches.brand,
+        );
+        brandId = brand.id;
+      }
+
+      const flavourIds: string[] = [];
+      for (const flavourRef of item.flavours ?? []) {
+        const flavourName = flavourRef.name?.trim();
+        if (!flavourName) {
+          continue;
+        }
+        const flavour = await this.findOrCreateFlavour(
+          manager,
+          flavourName,
+          user,
+          caches.flavour,
+        );
+        flavourIds.push(flavour.id);
+      }
+
+      const pricingRows: CreateProductAsyncDto['pricing'] = [];
+      for (const price of item.pricing) {
+        const uomName = price.uom?.name?.trim();
+        if (!uomName) {
+          throw new BadRequestException('pricing.uom.name is required');
+        }
+        const uom = await this.findOrCreateUom(
+          manager,
+          uomName,
+          user,
+          caches.uom,
+        );
+        if (price.isBase === true && !uom.isBase) {
+          uom.isBase = true;
+          await manager.getRepository(Uom).save(uom);
+        }
+        const margins = this.resolvePricingMargins(price);
+        pricingRows.push({
+          uomId: uom.id,
+          purchaseUnitPrice: margins.purchaseUnitPrice,
+          saleUnitMarginAmount: margins.saleUnitMarginAmount,
+          saleUnitMarginPercentage: margins.saleUnitMarginPercentage,
+          quantity: margins.quantity,
+        });
+      }
+
+      return {
+        categoryId: category.id,
+        subCategoryId: subCategory.id,
+        brandId,
+        flavourIds,
+        pricingRows,
+      };
+    });
+
+    if (existing) {
+      if (barcode && barcode !== existing.barcode) {
+        const barcodeOwner = await tenantDb.getRepository(Product).findOne({
+          where: { barcode, isDelete: false },
+          select: ['id'],
+        });
+        if (barcodeOwner && barcodeOwner.id !== existing.id) {
+          throw new ConflictException('Product with this barcode already exists');
+        }
+      }
+
+      await tenantDb.transaction(async (manager) => {
+        const productRepo = manager.getRepository(Product);
+        const product = await productRepo.findOneOrFail({
+          where: { id: existing!.id, isDelete: false },
+        });
+
+        product.name = name;
+        product.description = item.description?.trim() || null;
+        product.hsCode = item.hsCode?.trim() || null;
+        product.barcode = barcode;
+        product.isActive = item.isActive ?? product.isActive;
+        product.batchPickStrategy =
+          item.batchPickStrategy ?? product.batchPickStrategy;
+        product.categoryId = resolved.categoryId;
+        product.subCategoryId = resolved.subCategoryId;
+        product.brandId = resolved.brandId ?? null;
+        await productRepo.save(product);
+
+        const productFlavourRepo = manager.getRepository(ProductFlavour);
+        await productFlavourRepo.delete({ productId: product.id });
+        if (resolved.flavourIds.length) {
+          await productFlavourRepo.save(
+            [...new Set(resolved.flavourIds)].map((flavourId) =>
+              productFlavourRepo.create({
+                productId: product.id,
+                flavourId,
+              }),
+            ),
+          );
+        }
+
+        const productPricingRepo = manager.getRepository(ProductPricing);
+        await productPricingRepo.delete({ productId: product.id });
+        await productPricingRepo.save(
+          resolved.pricingRows.map((price) =>
+            productPricingRepo.create({
+              productId: product.id,
+              uomId: price.uomId,
+              purchaseUnitPrice: price.purchaseUnitPrice,
+              saleUnitMarginAmount: price.saleUnitMarginAmount,
+              saleUnitMarginPercentage: price.saleUnitMarginPercentage,
+              quantity: price.quantity,
+            }),
+          ),
+        );
+      });
+
+      return {
+        index: 0,
+        key,
+        status: 'updated',
+        id: existing.id,
+        outcome: 'updated',
+      };
+    }
+
+    const createDto: CreateProductAsyncDto = {
+      categoryId: resolved.categoryId,
+      subCategoryId: resolved.subCategoryId,
+      brandId: resolved.brandId,
+      skuCode: skuCode ?? undefined,
+      barcode: barcode,
+      name,
+      description: item.description?.trim() || undefined,
+      hsCode: item.hsCode?.trim() || undefined,
+      isActive: item.isActive ?? true,
+      batchPickStrategy: item.batchPickStrategy ?? BatchPickStrategy.LIFO,
+      flavourIds: resolved.flavourIds.length ? resolved.flavourIds : undefined,
+      pricing: resolved.pricingRows,
+    };
+
+    if (barcode) {
+      await this.ensureBarcodeUnique(tenantDb, barcode);
+    }
+
+    const created = await this.createWithImageUrl(
+      tenantDb,
+      createDto,
+      null,
+      user,
+    );
+
+    return {
+      index: 0,
+      key: created.skuCode,
+      status: 'created',
+      id: created.id,
+      outcome: 'created',
+    };
+  }
+
+  async importProductsJson(
+    tenantDb: DataSource,
+    dto: ProductJsonImportDto,
+    user: { userId: string; businessId: string },
+  ): Promise<JsonImportResult> {
+    if (dto.entity && dto.entity !== JsonExportEntity.PRODUCTS) {
+      throw new BadRequestException(
+        'entity must be "products" for product JSON import',
+      );
+    }
+
+    const mode = dto.options?.mode ?? JsonImportMode.UPSERT;
+    const results: JsonImportResultRow[] = [];
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    const caches = {
+      category: new Map<string, ProductCategory>(),
+      subCategory: new Map<string, ProductSubCategory>(),
+      brand: new Map<string, ProductBrand>(),
+      uom: new Map<string, Uom>(),
+      flavour: new Map<string, Flavour>(),
+    };
+
+    for (const [index, item] of dto.items.entries()) {
+      const key = item.skuCode?.trim() || item.name.trim();
+      try {
+        const row = await this.upsertProductFromJsonItem(
+          tenantDb,
+          item,
+          user,
+          mode,
+          caches,
+        );
+        results.push({
+          index,
+          key: row.key,
+          status: row.status,
+          message: row.message,
+          id: row.id,
+        });
+        if (row.outcome === 'created') created += 1;
+        else if (row.outcome === 'updated') updated += 1;
+        else skipped += 1;
+      } catch (error) {
+        failed += 1;
+        results.push({
+          index,
+          key,
+          status: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: user.businessId,
+      action: 'PRODUCT_JSON_IMPORTED',
+      description: 'Products imported from JSON',
+      metadata: {
+        businessId: user.businessId,
+        total: dto.items.length,
+        created,
+        updated,
+        skipped,
+        failed,
+        mode,
+      },
+    });
+
+    return {
+      entity: JsonExportEntity.PRODUCTS,
+      total: dto.items.length,
+      created,
+      updated,
+      skipped,
+      failed,
+      results,
     };
   }
 }

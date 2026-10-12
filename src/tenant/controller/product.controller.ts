@@ -28,6 +28,10 @@ import { CreateProductAsyncDto } from '../dto/product/create-product-async.dto';
 import { CreateProductDto } from '../dto/product/create-product.dto';
 import { UpdateProductAsyncDto } from '../dto/product/update-product-async.dto';
 import { UpdateProductDto } from '../dto/product/update-product.dto';
+import {
+  ProductJsonExportQueryDto,
+  ProductJsonImportDto,
+} from '../dto/product/product-json-export-import.dto';
 import { ProductCreateJobService } from '../service/product-create-job.service';
 import { ProductService } from '../service/product.service';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
@@ -38,6 +42,7 @@ import {
   parseOptionalJsonFormField,
 } from '../utils/parse-json-form-field';
 import { resolveUploadedFile } from '../utils/snapshot-uploaded-file';
+import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 
 @Controller('tenant/products')
 @UseGuards(
@@ -115,6 +120,21 @@ export class ProductController {
     );
   }
 
+  @Get('export')
+  @RequirePermissions('LIST_PRODUCT')
+  exportProductsJson(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ProductJsonExportQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.productService.exportProductsJson(
+      tenantDb,
+      { userId: user.userId, businessId: user.businessId },
+      { isActive: query.isActive },
+    );
+  }
+
   @Post('import')
   @RequirePermissions('CREATE_PRODUCT')
   @UseInterceptors(FileInterceptor('file'))
@@ -125,6 +145,21 @@ export class ProductController {
     @TenantCode() tenantCode: string,
   ) {
     return this.productService.importProducts(tenantDb, file, req.user, tenantCode);
+  }
+
+  @Post('import-json')
+  @RequirePermissions('CREATE_PRODUCT')
+  importProductsJson(
+    @TenantConnection() tenantDb: DataSource,
+    @Body() dto: ProductJsonImportDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.productService.importProductsJson(
+      tenantDb,
+      dto,
+      { userId: user.userId, businessId: user.businessId },
+    );
   }
 
   @Post(':id/images')

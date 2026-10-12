@@ -30,6 +30,10 @@ import { PartyType } from 'src/tenant-db/entities/party.entity';
 import { PartyService } from '../service/party.service';
 import { CreatePartyDto } from '../dto/party/create-party.dto';
 import { UpdatePartyDto } from '../dto/party/update-party.dto';
+import {
+  PartyJsonExportQueryDto,
+  PartyJsonImportDto,
+} from '../dto/party/party-json-export-import.dto';
 
 @Controller('tenant/parties')
 @UseGuards(
@@ -58,6 +62,22 @@ export class PartyController {
       user.businessId,
       { page: Number(page), limit: Number(limit), search, type },
       user.userId,
+    );
+  }
+
+  @Get('export')
+  @RequirePermissions('LIST_PARTY')
+  exportPartiesJson(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: PartyJsonExportQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.partyService.exportPartiesJson(
+      tenantDb,
+      user.businessId,
+      user.userId,
+      query.type,
     );
   }
 
@@ -90,6 +110,22 @@ export class PartyController {
       resolvedType,
       { userId: user.userId, businessId: user.businessId },
       tenantCode,
+    );
+  }
+
+  @Post('import-json')
+  @RequirePermissions('CREATE_PARTY')
+  importPartiesJson(
+    @TenantConnection() tenantDb: DataSource,
+    @Body() dto: PartyJsonImportDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.partyService.importPartiesJson(
+      tenantDb,
+      user.businessId,
+      dto,
+      user.userId,
     );
   }
 
