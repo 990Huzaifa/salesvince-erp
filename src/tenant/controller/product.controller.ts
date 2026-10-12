@@ -28,15 +28,13 @@ import { CreateProductAsyncDto } from '../dto/product/create-product-async.dto';
 import { CreateProductDto } from '../dto/product/create-product.dto';
 import { UpdateProductAsyncDto } from '../dto/product/update-product-async.dto';
 import { UpdateProductDto } from '../dto/product/update-product.dto';
-import {
-  ProductJsonExportQueryDto,
-  ProductJsonImportDto,
-} from '../dto/product/product-json-export-import.dto';
+import { ProductJsonExportQueryDto } from '../dto/product/product-json-export-import.dto';
 import { ProductCreateJobService } from '../service/product-create-job.service';
 import { ProductService } from '../service/product.service';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
 import { productImageUploadOptions } from '../config/product-image-upload.config';
+import { jsonImportUploadOptions } from '../config/json-import-upload.config';
 import {
   parseJsonFormField,
   parseOptionalJsonFormField,
@@ -149,16 +147,21 @@ export class ProductController {
 
   @Post('import-json')
   @RequirePermissions('CREATE_PRODUCT')
+  @UseInterceptors(FileInterceptor('file', jsonImportUploadOptions))
   importProductsJson(
     @TenantConnection() tenantDb: DataSource,
-    @Body() dto: ProductJsonImportDto,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('mode') mode: string | undefined,
     @Req() req: Request,
+    @TenantCode() tenantCode: string,
   ) {
     const user = req.user as TenantRequestUser;
     return this.productService.importProductsJson(
       tenantDb,
-      dto,
+      file,
       { userId: user.userId, businessId: user.businessId },
+      tenantCode,
+      mode,
     );
   }
 

@@ -2,10 +2,19 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { json, urlencoded } from 'express';
 import { join } from 'path';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Disable default ~100kb parser; register larger limits below.
+  // Large master imports should still use multipart file upload.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
+
+  const bodyLimit = process.env.HTTP_BODY_LIMIT ?? '50mb';
+  app.use(json({ limit: bodyLimit }));
+  app.use(urlencoded({ limit: bodyLimit, extended: true }));
 
   // Isse 'uploads' folder public ho jayega
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {

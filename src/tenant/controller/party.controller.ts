@@ -30,10 +30,8 @@ import { PartyType } from 'src/tenant-db/entities/party.entity';
 import { PartyService } from '../service/party.service';
 import { CreatePartyDto } from '../dto/party/create-party.dto';
 import { UpdatePartyDto } from '../dto/party/update-party.dto';
-import {
-  PartyJsonExportQueryDto,
-  PartyJsonImportDto,
-} from '../dto/party/party-json-export-import.dto';
+import { PartyJsonExportQueryDto } from '../dto/party/party-json-export-import.dto';
+import { jsonImportUploadOptions } from '../config/json-import-upload.config';
 
 @Controller('tenant/parties')
 @UseGuards(
@@ -115,17 +113,21 @@ export class PartyController {
 
   @Post('import-json')
   @RequirePermissions('CREATE_PARTY')
+  @UseInterceptors(FileInterceptor('file', jsonImportUploadOptions))
   importPartiesJson(
     @TenantConnection() tenantDb: DataSource,
-    @Body() dto: PartyJsonImportDto,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('mode') mode: string | undefined,
     @Req() req: Request,
+    @TenantCode() tenantCode: string,
   ) {
     const user = req.user as TenantRequestUser;
     return this.partyService.importPartiesJson(
       tenantDb,
-      user.businessId,
-      dto,
-      user.userId,
+      file,
+      { userId: user.userId, businessId: user.businessId },
+      tenantCode,
+      mode,
     );
   }
 

@@ -59,12 +59,13 @@ import {
 import {
   JsonExportEntity,
   JsonImportMode,
-  JsonImportResult,
   JsonImportResultRow,
   SALESVINCE_EXPORT_FORMAT,
 } from '../dto/import-export/json-export-envelope.dto';
 import { BatchPickStrategy } from 'src/tenant-db/entities/product.entity';
 import { generateSequentialCode } from './hr/hr-common.util';
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
 
 const SKU_CODE_PREFIX = 'SKU';
 
@@ -2193,23 +2194,115 @@ export class ProductService {
     };
   }
 
-  async importProductsJson(
-    tenantDb: DataSource,
-    dto: ProductJsonImportDto,
-    user: { userId: string; businessId: string },
-  ): Promise<JsonImportResult> {
+  private parseProductJsonImportFile(file: Express.Multer.File): ProductJsonImportDto {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('JSON file is required');
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(file.buffer.toString('utf8'));
+    } catch {
+      throw new BadRequestException('Invalid JSON file');
+    }
+
+    const dto = plainToInstance(ProductJsonImportDto, parsed, {
+      enableImplicitConversion: true,
+    });
+    const errors = validateSync(dto, {
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
+    if (errors.length) {
+      const message = errors
+        .flatMap((error) => {
+          const own = Object.values(error.constraints ?? {});
+          const children = (error.children ?? []).flatMap((child) =>
+            Object.values(child.constraints ?? {}),
+          );
+          return [...own, ...children];
+        })
+        .filter(Boolean)
+        .join('; ');
+      throw new BadRequestException(
+        message || 'Invalid product JSON import payload',
+      );
+    }
+
     if (dto.entity && dto.entity !== JsonExportEntity.PRODUCTS) {
       throw new BadRequestException(
         'entity must be "products" for product JSON import',
       );
     }
 
-    const mode = dto.options?.mode ?? JsonImportMode.UPSERT;
-    const results: JsonImportResultRow[] = [];
-    let created = 0;
-    let updated = 0;
-    let skipped = 0;
-    let failed = 0;
+    return dto;
+  }
+
+  private resolveJsonImportMode(
+    fileMode: JsonImportMode | undefined,
+    bodyMode?: string,
+  ): JsonImportMode {
+    const raw = bodyMode?.trim() || fileMode;
+    if (!raw) {
+      return JsonImportMode.UPSERT;
+    }
+    if (raw === JsonImportMode.UPSERT || raw === JsonImportMode.CREATE_ONLY) {
+      return raw;
+    }
+    throw new BadRequestException('mode must be upsert or createOnly');
+  }
+
+  private async notifyProductJsonImportCompletion(
+    tenantDb: DataSource,
+    job: TenantJob,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+    status: 'completed' | 'failed',
+  ) {
+    const title =
+      status === 'completed'
+        ? 'Product JSON import completed'
+        : 'Product JSON import failed';
+    const message =
+      status === 'completed'
+        ? `Import finished. Inserted: ${job.inserted}, Failed: ${job.failed}, Total: ${job.totalRows}`
+        : `Import failed for ${job.fileName}. Please review import logs.`;
+
+    await this.notificationService.createNotification(
+      tenantDb,
+      {
+        userId: user.userId,
+        title,
+        businessId: user.businessId,
+        message,
+        type: 'product_json_import',
+      },
+      tenantCode,
+      {
+        job: {
+          id: job.id,
+          jobType: job.jobType,
+          status,
+          fileName: job.fileName,
+          totalRows: job.totalRows,
+          inserted: job.inserted,
+          failed: job.failed,
+          completedAt: job.completedAt,
+          logs: job.logs,
+        },
+      },
+    );
+  }
+
+  private async processProductJsonImportJob(
+    tenantDb: DataSource,
+    jobId: string,
+    items: ProductJsonItemDto[],
+    mode: JsonImportMode,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+  ) {
+    this.tenantJobService.startJob(jobId);
 
     const caches = {
       category: new Map<string, ProductCategory>(),
@@ -2219,7 +2312,11 @@ export class ProductService {
       flavour: new Map<string, Flavour>(),
     };
 
-    for (const [index, item] of dto.items.entries()) {
+    let created = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    for (const [index, item] of items.entries()) {
       const key = item.skuCode?.trim() || item.name.trim();
       try {
         const row = await this.upsertProductFromJsonItem(
@@ -2229,51 +2326,154 @@ export class ProductService {
           mode,
           caches,
         );
-        results.push({
-          index,
-          key: row.key,
-          status: row.status,
-          message: row.message,
-          id: row.id,
-        });
+
+        if (row.outcome === 'skipped') {
+          skipped += 1;
+          this.tenantJobService.appendLog(jobId, {
+            row: index + 1,
+            name: key,
+            status: 'error',
+            error: row.message || 'Already exists',
+            metadata: { outcome: 'skipped', productId: row.id },
+          });
+          continue;
+        }
+
         if (row.outcome === 'created') created += 1;
-        else if (row.outcome === 'updated') updated += 1;
-        else skipped += 1;
+        else updated += 1;
+
+        this.tenantJobService.appendLog(jobId, {
+          row: index + 1,
+          name: row.key,
+          status: 'success',
+          metadata: {
+            outcome: row.outcome,
+            productId: row.id,
+            skuCode: row.key,
+          },
+        });
       } catch (error) {
-        failed += 1;
-        results.push({
-          index,
-          key,
+        this.tenantJobService.appendLog(jobId, {
+          row: index + 1,
+          name: key,
           status: 'error',
-          message: error instanceof Error ? error.message : String(error),
+          error: error instanceof Error ? error.message : String(error),
         });
       }
     }
 
+    const completedJob = this.tenantJobService.completeJob(jobId);
+
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: user.userId,
       businessId: user.businessId,
-      action: 'PRODUCT_JSON_IMPORTED',
-      description: 'Products imported from JSON',
+      action: 'TENANT_JOB_COMPLETED',
+      description: `Product JSON import completed for ${completedJob.fileName}`,
       metadata: {
-        businessId: user.businessId,
-        total: dto.items.length,
+        jobId: completedJob.id,
+        jobType: completedJob.jobType,
+        fileName: completedJob.fileName,
+        totalRows: completedJob.totalRows,
+        inserted: completedJob.inserted,
+        failed: completedJob.failed,
         created,
         updated,
         skipped,
-        failed,
         mode,
       },
     });
 
+    await this.notifyProductJsonImportCompletion(
+      tenantDb,
+      completedJob,
+      user,
+      tenantCode,
+      'completed',
+    );
+  }
+
+  async importProductsJson(
+    tenantDb: DataSource,
+    file: Express.Multer.File,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+    bodyMode?: string,
+  ) {
+    const dto = this.parseProductJsonImportFile(file);
+    const mode = this.resolveJsonImportMode(dto.options?.mode, bodyMode);
+
+    const job = this.tenantJobService.createJob({
+      tenantCode,
+      businessId: user.businessId,
+      jobType: 'PRODUCT_JSON_IMPORT',
+      fileName: file.originalname || 'products.json',
+      createdBy: user.userId,
+      totalRows: dto.items.length,
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: user.businessId,
+      action: 'TENANT_JOB_STARTED',
+      description: `Product JSON import started for ${job.fileName}`,
+      metadata: {
+        jobId: job.id,
+        jobType: job.jobType,
+        fileName: job.fileName,
+        totalRows: job.totalRows,
+        mode,
+      },
+    });
+
+    void this.processProductJsonImportJob(
+      tenantDb,
+      job.id,
+      dto.items,
+      mode,
+      user,
+      tenantCode,
+    ).catch(async (error) => {
+      this.tenantJobService.failJob(job.id);
+      this.tenantJobService.appendLog(job.id, {
+        row: 0,
+        name: '',
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown processing failure',
+      });
+      const failedJob = this.tenantJobService.getJobById(
+        job.id,
+        tenantCode,
+        user.userId,
+      );
+
+      await this.activityLogService.recordActivityLog(tenantDb, {
+        actorId: user.userId,
+        businessId: user.businessId,
+        action: 'TENANT_JOB_FAILED',
+        description: `Product JSON import failed for ${job.fileName}`,
+        metadata: {
+          jobId: job.id,
+          jobType: job.jobType,
+          fileName: job.fileName,
+          error: error instanceof Error ? error.message : String(error),
+          mode,
+        },
+      });
+      await this.notifyProductJsonImportCompletion(
+        tenantDb,
+        failedJob,
+        user,
+        tenantCode,
+        'failed',
+      );
+    });
+
     return {
-      entity: JsonExportEntity.PRODUCTS,
-      total: dto.items.length,
-      created,
-      updated,
-      skipped,
-      failed,
-      results,
+      message: 'Product JSON import started',
+      jobId: job.id,
+      status: job.status,
+      totalRows: job.totalRows,
+      mode,
     };
   }
 }

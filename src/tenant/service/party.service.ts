@@ -20,8 +20,6 @@ import {
 import {
   JsonExportEntity,
   JsonImportMode,
-  JsonImportResult,
-  JsonImportResultRow,
   SALESVINCE_EXPORT_FORMAT,
 } from '../dto/import-export/json-export-envelope.dto';
 import { ActivityLogService } from './activity-log.service';
@@ -30,6 +28,8 @@ import { MasterGeoHelperService } from './master-geo-helper.service';
 import * as XLSX from 'xlsx';
 import { NotificationService } from './notification.service';
 import { TenantJob, TenantJobService } from './tenant-job.service';
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
 
 @Injectable()
 export class PartyService {
@@ -964,25 +964,113 @@ export class PartyService {
     };
   }
 
-  async importPartiesJson(
-    tenantDb: DataSource,
-    businessId: string | undefined,
-    dto: PartyJsonImportDto,
-    actorUserId: string,
-  ): Promise<JsonImportResult> {
-    const scopedBusinessId = this.assertBusinessId(businessId);
+  private parsePartyJsonImportFile(file: Express.Multer.File): PartyJsonImportDto {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('JSON file is required');
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(file.buffer.toString('utf8'));
+    } catch {
+      throw new BadRequestException('Invalid JSON file');
+    }
+
+    const dto = plainToInstance(PartyJsonImportDto, parsed, {
+      enableImplicitConversion: true,
+    });
+    const errors = validateSync(dto, {
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
+    if (errors.length) {
+      const message = errors
+        .map((error) => Object.values(error.constraints ?? {}).join(', '))
+        .filter(Boolean)
+        .join('; ');
+      throw new BadRequestException(
+        message || 'Invalid party JSON import payload',
+      );
+    }
+
     if (dto.entity && dto.entity !== JsonExportEntity.PARTIES) {
       throw new BadRequestException('entity must be "parties" for party JSON import');
     }
 
-    const mode = dto.options?.mode ?? JsonImportMode.UPSERT;
-    const results: JsonImportResultRow[] = [];
+    return dto;
+  }
+
+  private resolveJsonImportMode(
+    fileMode: JsonImportMode | undefined,
+    bodyMode?: string,
+  ): JsonImportMode {
+    const raw = bodyMode?.trim() || fileMode;
+    if (!raw) {
+      return JsonImportMode.UPSERT;
+    }
+    if (raw === JsonImportMode.UPSERT || raw === JsonImportMode.CREATE_ONLY) {
+      return raw;
+    }
+    throw new BadRequestException('mode must be upsert or createOnly');
+  }
+
+  private async notifyPartyJsonImportCompletion(
+    tenantDb: DataSource,
+    job: TenantJob,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+    status: 'completed' | 'failed',
+  ) {
+    const title =
+      status === 'completed'
+        ? 'Party JSON import completed'
+        : 'Party JSON import failed';
+    const message =
+      status === 'completed'
+        ? `Import finished. Inserted: ${job.inserted}, Failed: ${job.failed}, Total: ${job.totalRows}`
+        : `Import failed for ${job.fileName}. Please review import logs.`;
+
+    await this.notificationService.createNotification(
+      tenantDb,
+      {
+        userId: user.userId,
+        title,
+        businessId: user.businessId,
+        message,
+        type: 'party_json_import',
+      },
+      tenantCode,
+      {
+        job: {
+          id: job.id,
+          jobType: job.jobType,
+          status,
+          fileName: job.fileName,
+          totalRows: job.totalRows,
+          inserted: job.inserted,
+          failed: job.failed,
+          completedAt: job.completedAt,
+          logs: job.logs,
+        },
+      },
+    );
+  }
+
+  private async processPartyJsonImportJob(
+    tenantDb: DataSource,
+    jobId: string,
+    items: PartyJsonItemDto[],
+    mode: JsonImportMode,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+  ) {
+    this.tenantJobService.startJob(jobId);
+    const scopedBusinessId = user.businessId;
     let created = 0;
     let updated = 0;
     let skipped = 0;
-    let failed = 0;
 
-    for (const [index, item] of dto.items.entries()) {
+    for (const [index, item] of items.entries()) {
       const key = item.code?.trim() || item.name.trim();
       try {
         const code = item.code?.trim();
@@ -1000,12 +1088,12 @@ export class PartyService {
         if (existing) {
           if (mode === JsonImportMode.CREATE_ONLY) {
             skipped += 1;
-            results.push({
-              index,
-              key,
-              status: 'skipped',
-              message: `Party code ${code} already exists`,
-              id: existing.id,
+            this.tenantJobService.appendLog(jobId, {
+              row: index + 1,
+              name: key,
+              status: 'error',
+              error: `Party code ${code} already exists`,
+              metadata: { outcome: 'skipped', partyId: existing.id },
             });
             continue;
           }
@@ -1033,14 +1121,18 @@ export class PartyService {
             scopedBusinessId,
             existing.id,
             updateDto,
-            actorUserId,
+            user.userId,
           );
           updated += 1;
-          results.push({
-            index,
-            key,
-            status: 'updated',
-            id: updatedParty.data.id,
+          this.tenantJobService.appendLog(jobId, {
+            row: index + 1,
+            name: key,
+            status: 'success',
+            metadata: {
+              outcome: 'updated',
+              partyId: updatedParty.data.id,
+              code: updatedParty.data.code,
+            },
           });
           continue;
         }
@@ -1070,50 +1162,142 @@ export class PartyService {
           tenantDb,
           scopedBusinessId,
           createDto,
-          actorUserId,
+          user.userId,
         );
         created += 1;
-        results.push({
-          index,
-          key: createdParty.data.code,
-          status: 'created',
-          id: createdParty.data.id,
+        this.tenantJobService.appendLog(jobId, {
+          row: index + 1,
+          name: createdParty.data.code,
+          status: 'success',
+          metadata: {
+            outcome: 'created',
+            partyId: createdParty.data.id,
+            code: createdParty.data.code,
+          },
         });
       } catch (error) {
-        failed += 1;
-        results.push({
-          index,
-          key,
+        this.tenantJobService.appendLog(jobId, {
+          row: index + 1,
+          name: key,
           status: 'error',
-          message: error instanceof Error ? error.message : String(error),
+          error: error instanceof Error ? error.message : String(error),
         });
       }
     }
 
+    const completedJob = this.tenantJobService.completeJob(jobId);
+
     await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: actorUserId,
+      actorId: user.userId,
       businessId: scopedBusinessId,
-      action: 'PARTY_JSON_IMPORTED',
-      description: 'Parties imported from JSON',
+      action: 'TENANT_JOB_COMPLETED',
+      description: `Party JSON import completed for ${completedJob.fileName}`,
       metadata: {
-        businessId: scopedBusinessId,
-        total: dto.items.length,
+        jobId: completedJob.id,
+        jobType: completedJob.jobType,
+        fileName: completedJob.fileName,
+        totalRows: completedJob.totalRows,
+        inserted: completedJob.inserted,
+        failed: completedJob.failed,
         created,
         updated,
         skipped,
-        failed,
         mode,
       },
     });
 
+    await this.notifyPartyJsonImportCompletion(
+      tenantDb,
+      completedJob,
+      user,
+      tenantCode,
+      'completed',
+    );
+  }
+
+  async importPartiesJson(
+    tenantDb: DataSource,
+    file: Express.Multer.File,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+    bodyMode?: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(user.businessId);
+    const dto = this.parsePartyJsonImportFile(file);
+    const mode = this.resolveJsonImportMode(dto.options?.mode, bodyMode);
+
+    const job = this.tenantJobService.createJob({
+      tenantCode,
+      businessId: scopedBusinessId,
+      jobType: 'PARTY_JSON_IMPORT',
+      fileName: file.originalname || 'parties.json',
+      createdBy: user.userId,
+      totalRows: dto.items.length,
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: scopedBusinessId,
+      action: 'TENANT_JOB_STARTED',
+      description: `Party JSON import started for ${job.fileName}`,
+      metadata: {
+        jobId: job.id,
+        jobType: job.jobType,
+        fileName: job.fileName,
+        totalRows: job.totalRows,
+        mode,
+      },
+    });
+
+    void this.processPartyJsonImportJob(
+      tenantDb,
+      job.id,
+      dto.items,
+      mode,
+      user,
+      tenantCode,
+    ).catch(async (error) => {
+      this.tenantJobService.failJob(job.id);
+      this.tenantJobService.appendLog(job.id, {
+        row: 0,
+        name: '',
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown processing failure',
+      });
+      const failedJob = this.tenantJobService.getJobById(
+        job.id,
+        tenantCode,
+        user.userId,
+      );
+
+      await this.activityLogService.recordActivityLog(tenantDb, {
+        actorId: user.userId,
+        businessId: scopedBusinessId,
+        action: 'TENANT_JOB_FAILED',
+        description: `Party JSON import failed for ${job.fileName}`,
+        metadata: {
+          jobId: job.id,
+          jobType: job.jobType,
+          fileName: job.fileName,
+          error: error instanceof Error ? error.message : String(error),
+          mode,
+        },
+      });
+      await this.notifyPartyJsonImportCompletion(
+        tenantDb,
+        failedJob,
+        user,
+        tenantCode,
+        'failed',
+      );
+    });
+
     return {
-      entity: JsonExportEntity.PARTIES,
-      total: dto.items.length,
-      created,
-      updated,
-      skipped,
-      failed,
-      results,
+      message: 'Party JSON import started',
+      jobId: job.id,
+      status: job.status,
+      totalRows: job.totalRows,
+      mode,
     };
   }
 }
