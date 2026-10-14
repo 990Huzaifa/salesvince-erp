@@ -4,6 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
 import {
   Brackets,
   DataSource,
@@ -37,6 +39,15 @@ import { UpdatePurchaseOrderDto } from '../../dto/purchase-order/update-purchase
 import { UpdatePurchaseOrderItemDto } from '../../dto/purchase-order/update-purchase-order-item.dto';
 import { EditApprovedPurchaseOrderDto } from '../../dto/purchase-order/edit-approved-purchase-order.dto';
 import { EditApprovedPurchaseOrderItemDto } from '../../dto/purchase-order/edit-approved-purchase-order-item.dto';
+import {
+  PurchaseOrderJsonImportDto,
+  PurchaseOrderJsonItemDto,
+} from '../../dto/purchase-order/purchase-order-json-export-import.dto';
+import {
+  JsonExportEntity,
+  JsonImportMode,
+  SALESVINCE_EXPORT_FORMAT,
+} from '../../dto/import-export/json-export-envelope.dto';
 import * as XLSX from 'xlsx';
 import { ActivityLogService } from '../activity-log.service';
 import {
@@ -2597,6 +2608,598 @@ export class PurchaseOrderService {
       jobId: job.id,
       status: job.status,
       totalRows: job.totalRows,
+    };
+  }
+
+  private toJsonNumber(value: unknown): number {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  private formatOrderDateForJson(orderDate: Date | string): string {
+    if (typeof orderDate === 'string') {
+      return orderDate.slice(0, 10);
+    }
+    return orderDate.toISOString().slice(0, 10);
+  }
+
+  private mapPurchaseOrderToJsonItem(
+    order: PurchaseOrder,
+  ): PurchaseOrderJsonItemDto {
+    return {
+      orderNumber: order.orderNumber,
+      orderDate: this.formatOrderDateForJson(order.orderDate),
+      vendorCode: order.vendor?.code ?? '',
+      warehouseCode: order.warehouse?.code ?? '',
+      deliveryCost: this.toJsonNumber(order.deliveryCost),
+      taxPercentage: this.toJsonNumber(order.taxPercentage),
+      taxAmount: this.toJsonNumber(order.taxAmount),
+      discountPercentage: this.toJsonNumber(order.discountPercentage),
+      discountAmount: this.toJsonNumber(order.discountAmount),
+      notes: order.notes ?? null,
+      items: (order.items ?? []).map((item) => ({
+        skuCode: item.product?.skuCode ?? '',
+        uomName: item.uom?.name ?? '',
+        productFlavourName: item.productFlavour?.flavour?.name ?? null,
+        quantity: this.toJsonNumber(item.quantity),
+        purchaseUnitPrice: this.toJsonNumber(item.purchaseUnitPrice),
+        saleUnitPrice: this.toJsonNumber(item.saleUnitPrice),
+        discountPercentage: this.toJsonNumber(item.discountPercentage),
+        discountAmount: this.toJsonNumber(item.discountAmount),
+      })),
+    };
+  }
+
+  async exportPurchaseOrdersJson(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const orders = await tenantDb
+      .getRepository(PurchaseOrder)
+      .createQueryBuilder('po')
+      .leftJoinAndSelect('po.vendor', 'vendor')
+      .leftJoinAndSelect('po.warehouse', 'warehouse')
+      .leftJoinAndSelect('po.items', 'items')
+      .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.uom', 'uom')
+      .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
+      .where('po.businessId = :businessId', { businessId: scopedBusinessId })
+      .andWhere('po.orderStatus = :status', { status: OrderStatus.APPROVED })
+      .orderBy('po.orderNumber', 'ASC')
+      .addOrderBy('items.createdAt', 'ASC')
+      .getMany();
+
+    const items = orders.map((order) => this.mapPurchaseOrderToJsonItem(order));
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'PURCHASE_ORDER_JSON_EXPORTED',
+      description: 'Approved purchase orders exported as JSON',
+      metadata: {
+        businessId: scopedBusinessId,
+        count: items.length,
+        orderStatus: OrderStatus.APPROVED,
+      },
+    });
+
+    return {
+      format: SALESVINCE_EXPORT_FORMAT,
+      version: 1,
+      entity: JsonExportEntity.PURCHASE_ORDERS,
+      exportedAt: new Date().toISOString(),
+      items,
+    };
+  }
+
+  private sanitizeJsonEmptyStrings(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sanitizeJsonEmptyStrings(item));
+    }
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [key, nested] of Object.entries(
+        value as Record<string, unknown>,
+      )) {
+        out[key] =
+          nested === '' ? null : this.sanitizeJsonEmptyStrings(nested);
+      }
+      return out;
+    }
+    return value;
+  }
+
+  private formatJsonValidationErrors(
+    errors: ReturnType<typeof validateSync>,
+  ): string {
+    const walk = (list: typeof errors, prefix = ''): string[] => {
+      const messages: string[] = [];
+      for (const error of list) {
+        const path = prefix ? `${prefix}.${error.property}` : error.property;
+        messages.push(
+          ...Object.values(error.constraints ?? {}).map(
+            (msg) => `${path}: ${msg}`,
+          ),
+        );
+        if (error.children?.length) {
+          messages.push(...walk(error.children, path));
+        }
+      }
+      return messages;
+    };
+    return walk(errors).join('; ');
+  }
+
+  private parsePurchaseOrderJsonImportFile(
+    file: Express.Multer.File,
+  ): PurchaseOrderJsonImportDto {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException(
+        'JSON file is required. Use multipart form-data field "file".',
+      );
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(file.buffer.toString('utf8'));
+    } catch {
+      throw new BadRequestException('Invalid JSON file');
+    }
+
+    const dto = plainToInstance(
+      PurchaseOrderJsonImportDto,
+      this.sanitizeJsonEmptyStrings(parsed),
+      { enableImplicitConversion: true },
+    );
+    const errors = validateSync(dto, {
+      whitelist: true,
+      forbidNonWhitelisted: false,
+    });
+    if (errors.length) {
+      throw new BadRequestException(
+        this.formatJsonValidationErrors(errors) ||
+          'Invalid purchase order JSON import payload',
+      );
+    }
+
+    if (dto.entity && dto.entity !== JsonExportEntity.PURCHASE_ORDERS) {
+      throw new BadRequestException(
+        'entity must be "purchaseOrders" for purchase order JSON import',
+      );
+    }
+
+    return dto;
+  }
+
+  /**
+   * Purchase orders are documents: always create-only (skip existing order numbers).
+   * `upsert` is accepted for API symmetry but behaves like createOnly.
+   */
+  private resolvePurchaseOrderJsonImportMode(
+    fileMode: JsonImportMode | undefined,
+    bodyMode?: string,
+  ): JsonImportMode {
+    const raw = bodyMode?.trim() || fileMode;
+    if (!raw) {
+      return JsonImportMode.CREATE_ONLY;
+    }
+    if (raw === JsonImportMode.UPSERT || raw === JsonImportMode.CREATE_ONLY) {
+      return JsonImportMode.CREATE_ONLY;
+    }
+    throw new BadRequestException('mode must be upsert or createOnly');
+  }
+
+  private async findVendorByCode(
+    tenantDb: DataSource,
+    businessId: string,
+    vendorCode: string,
+  ): Promise<Party | null> {
+    return tenantDb.getRepository(Party).findOne({
+      where: {
+        businessId,
+        code: vendorCode,
+        type: In([PartyType.VENDOR, PartyType.BOTH]),
+        deletedAt: IsNull(),
+      },
+      select: ['id', 'code', 'name', 'type'],
+    });
+  }
+
+  private async findWarehouseByCode(
+    tenantDb: DataSource,
+    businessId: string,
+    warehouseCode: string,
+  ): Promise<Warehouse | null> {
+    return tenantDb.getRepository(Warehouse).findOne({
+      where: {
+        businessId,
+        code: warehouseCode,
+        deletedAt: IsNull(),
+      },
+      select: ['id', 'code', 'name'],
+    });
+  }
+
+  private async findProductBySkuCode(
+    tenantDb: DataSource,
+    businessId: string,
+    skuCode: string,
+  ): Promise<Product | null> {
+    return tenantDb.getRepository(Product).findOne({
+      where: { businessId, skuCode, isDelete: false },
+      select: ['id', 'skuCode', 'name'],
+    });
+  }
+
+  private async findUomByNameForBusiness(
+    tenantDb: DataSource,
+    businessId: string,
+    uomName: string,
+  ): Promise<Uom | null> {
+    return tenantDb.getRepository(Uom).findOne({
+      where: { businessId, name: uomName },
+      select: ['id', 'name'],
+    });
+  }
+
+  private async findProductFlavourByName(
+    tenantDb: DataSource,
+    productId: string,
+    flavourName: string,
+  ): Promise<ProductFlavour | null> {
+    return tenantDb
+      .getRepository(ProductFlavour)
+      .createQueryBuilder('pf')
+      .innerJoinAndSelect('pf.flavour', 'flavour')
+      .where('pf.productId = :productId', { productId })
+      .andWhere('flavour.name = :flavourName', { flavourName })
+      .getOne();
+  }
+
+  private async buildCreateDtoFromJsonItem(
+    tenantDb: DataSource,
+    businessId: string,
+    item: PurchaseOrderJsonItemDto,
+  ): Promise<CreatePurchaseOrderDto> {
+    const vendorCode = item.vendorCode.trim();
+    const warehouseCode = item.warehouseCode.trim();
+    const vendor = await this.findVendorByCode(
+      tenantDb,
+      businessId,
+      vendorCode,
+    );
+    if (!vendor) {
+      throw new NotFoundException(`Vendor code ${vendorCode} not found`);
+    }
+
+    const warehouse = await this.findWarehouseByCode(
+      tenantDb,
+      businessId,
+      warehouseCode,
+    );
+    if (!warehouse) {
+      throw new NotFoundException(`Warehouse code ${warehouseCode} not found`);
+    }
+
+    const lineItems: CreatePurchaseOrderItemDto[] = [];
+    for (const [lineIndex, line] of item.items.entries()) {
+      const skuCode = line.skuCode.trim();
+      const uomName = line.uomName.trim();
+      const product = await this.findProductBySkuCode(
+        tenantDb,
+        businessId,
+        skuCode,
+      );
+      if (!product) {
+        throw new NotFoundException(
+          `Line ${lineIndex + 1}: product SKU ${skuCode} not found`,
+        );
+      }
+
+      const uom = await this.findUomByNameForBusiness(
+        tenantDb,
+        businessId,
+        uomName,
+      );
+      if (!uom) {
+        throw new NotFoundException(
+          `Line ${lineIndex + 1}: UOM ${uomName} not found`,
+        );
+      }
+
+      let productFlavourId: string | undefined;
+      const flavourName = line.productFlavourName?.trim();
+      if (flavourName) {
+        const productFlavour = await this.findProductFlavourByName(
+          tenantDb,
+          product.id,
+          flavourName,
+        );
+        if (!productFlavour) {
+          throw new NotFoundException(
+            `Line ${lineIndex + 1}: flavour ${flavourName} not found for product ${skuCode}`,
+          );
+        }
+        productFlavourId = String(productFlavour.id);
+      }
+
+      lineItems.push({
+        productId: product.id,
+        uomId: uom.id,
+        ...(productFlavourId ? { productFlavourId } : {}),
+        quantity: line.quantity,
+        ...(line.purchaseUnitPrice !== undefined
+          ? { purchaseUnitPrice: line.purchaseUnitPrice }
+          : {}),
+        ...(line.saleUnitPrice !== undefined
+          ? { saleUnitPrice: line.saleUnitPrice }
+          : {}),
+        ...(line.discountPercentage !== undefined
+          ? { discountPercentage: line.discountPercentage }
+          : {}),
+        ...(line.discountAmount !== undefined
+          ? { discountAmount: line.discountAmount }
+          : {}),
+      });
+    }
+
+    return {
+      orderNumber: item.orderNumber.trim(),
+      warehouseId: warehouse.id,
+      vendorId: vendor.id,
+      orderDate: item.orderDate,
+      ...(item.deliveryCost !== undefined
+        ? { deliveryCost: item.deliveryCost }
+        : {}),
+      ...(item.taxPercentage !== undefined
+        ? { taxPercentage: item.taxPercentage }
+        : {}),
+      ...(item.taxAmount !== undefined ? { taxAmount: item.taxAmount } : {}),
+      ...(item.discountPercentage !== undefined
+        ? { discountPercentage: item.discountPercentage }
+        : {}),
+      ...(item.discountAmount !== undefined
+        ? { discountAmount: item.discountAmount }
+        : {}),
+      ...(item.notes != null && String(item.notes).trim() !== ''
+        ? { notes: String(item.notes).trim() }
+        : {}),
+      items: lineItems,
+    };
+  }
+
+  private async notifyPurchaseOrderJsonImportCompletion(
+    tenantDb: DataSource,
+    job: TenantJob,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+    status: 'completed' | 'failed',
+  ) {
+    const title =
+      status === 'completed'
+        ? 'Purchase order JSON import completed'
+        : 'Purchase order JSON import failed';
+    const message =
+      status === 'completed'
+        ? `Import finished. Inserted: ${job.inserted}, Failed: ${job.failed}, Total: ${job.totalRows}`
+        : `Import failed for ${job.fileName}. Please review import logs.`;
+
+    await this.notificationService.createNotification(
+      tenantDb,
+      {
+        userId: user.userId,
+        title,
+        businessId: user.businessId,
+        message,
+        type: 'purchase_order_json_import',
+      },
+      tenantCode,
+      {
+        job: {
+          id: job.id,
+          jobType: job.jobType,
+          status,
+          fileName: job.fileName,
+          totalRows: job.totalRows,
+          inserted: job.inserted,
+          failed: job.failed,
+          completedAt: job.completedAt,
+          logs: job.logs,
+        },
+      },
+    );
+  }
+
+  private async processPurchaseOrderJsonImportJob(
+    tenantDb: DataSource,
+    jobId: string,
+    items: PurchaseOrderJsonItemDto[],
+    mode: JsonImportMode,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+  ) {
+    this.tenantJobService.startJob(jobId);
+    const scopedBusinessId = user.businessId;
+    let created = 0;
+    let skipped = 0;
+
+    for (const [index, item] of items.entries()) {
+      const key = item.orderNumber?.trim() || `row-${index + 1}`;
+      try {
+        const orderNumber = item.orderNumber.trim();
+        const existing = await tenantDb.getRepository(PurchaseOrder).findOne({
+          where: { orderNumber },
+          select: ['id', 'orderNumber'],
+        });
+
+        if (existing) {
+          skipped += 1;
+          this.tenantJobService.appendLog(jobId, {
+            row: index + 1,
+            name: key,
+            status: 'error',
+            error: `Purchase order ${orderNumber} already exists`,
+            metadata: {
+              outcome: 'skipped',
+              purchaseOrderId: existing.id,
+              mode,
+            },
+          });
+          continue;
+        }
+
+        const createDto = await this.buildCreateDtoFromJsonItem(
+          tenantDb,
+          scopedBusinessId,
+          item,
+        );
+        const createdOrder = await this.create(
+          tenantDb,
+          scopedBusinessId,
+          createDto,
+          user.userId,
+        );
+        created += 1;
+        this.tenantJobService.appendLog(jobId, {
+          row: index + 1,
+          name: createdOrder.data.orderNumber,
+          status: 'success',
+          metadata: {
+            outcome: 'created',
+            purchaseOrderId: createdOrder.data.id,
+            orderNumber: createdOrder.data.orderNumber,
+            orderStatus: createdOrder.data.orderStatus,
+          },
+        });
+      } catch (error) {
+        this.tenantJobService.appendLog(jobId, {
+          row: index + 1,
+          name: key,
+          status: 'error',
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    const completedJob = this.tenantJobService.completeJob(jobId);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: scopedBusinessId,
+      action: 'TENANT_JOB_COMPLETED',
+      description: `Purchase order JSON import completed for ${completedJob.fileName}`,
+      metadata: {
+        jobId: completedJob.id,
+        jobType: completedJob.jobType,
+        fileName: completedJob.fileName,
+        totalRows: completedJob.totalRows,
+        inserted: completedJob.inserted,
+        failed: completedJob.failed,
+        created,
+        skipped,
+        mode,
+      },
+    });
+
+    await this.notifyPurchaseOrderJsonImportCompletion(
+      tenantDb,
+      completedJob,
+      user,
+      tenantCode,
+      'completed',
+    );
+  }
+
+  async importPurchaseOrdersJson(
+    tenantDb: DataSource,
+    file: Express.Multer.File,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+    bodyMode?: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(user.businessId);
+    const dto = this.parsePurchaseOrderJsonImportFile(file);
+    const mode = this.resolvePurchaseOrderJsonImportMode(
+      dto.options?.mode,
+      bodyMode,
+    );
+
+    const job = this.tenantJobService.createJob({
+      tenantCode,
+      businessId: scopedBusinessId,
+      jobType: 'PURCHASE_ORDER_JSON_IMPORT',
+      fileName: file.originalname || 'purchase-orders.json',
+      createdBy: user.userId,
+      totalRows: dto.items.length,
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: scopedBusinessId,
+      action: 'TENANT_JOB_STARTED',
+      description: `Purchase order JSON import started for ${job.fileName}`,
+      metadata: {
+        jobId: job.id,
+        jobType: job.jobType,
+        fileName: job.fileName,
+        totalRows: job.totalRows,
+        mode,
+      },
+    });
+
+    void this.processPurchaseOrderJsonImportJob(
+      tenantDb,
+      job.id,
+      dto.items,
+      mode,
+      user,
+      tenantCode,
+    ).catch(async (error) => {
+      this.tenantJobService.failJob(job.id);
+      this.tenantJobService.appendLog(job.id, {
+        row: 0,
+        name: '',
+        status: 'error',
+        error:
+          error instanceof Error ? error.message : 'Unknown processing failure',
+      });
+      const failedJob = this.tenantJobService.getJobById(
+        job.id,
+        tenantCode,
+        user.userId,
+      );
+
+      await this.activityLogService.recordActivityLog(tenantDb, {
+        actorId: user.userId,
+        businessId: scopedBusinessId,
+        action: 'TENANT_JOB_FAILED',
+        description: `Purchase order JSON import failed for ${job.fileName}`,
+        metadata: {
+          jobId: job.id,
+          jobType: job.jobType,
+          fileName: job.fileName,
+          error: error instanceof Error ? error.message : String(error),
+          mode,
+        },
+      });
+      await this.notifyPurchaseOrderJsonImportCompletion(
+        tenantDb,
+        failedJob,
+        user,
+        tenantCode,
+        'failed',
+      );
+    });
+
+    return {
+      message: 'Purchase order JSON import started',
+      jobId: job.id,
+      status: job.status,
+      totalRows: job.totalRows,
+      mode,
     };
   }
 }

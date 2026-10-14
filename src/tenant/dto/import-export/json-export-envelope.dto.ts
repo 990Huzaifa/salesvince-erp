@@ -6,6 +6,7 @@ export const SALESVINCE_EXPORT_FORMAT = 'salesvince.export' as const;
 export enum JsonExportEntity {
   PARTIES = 'parties',
   PRODUCTS = 'products',
+  PURCHASE_ORDERS = 'purchaseOrders',
 }
 
 export enum JsonImportMode {

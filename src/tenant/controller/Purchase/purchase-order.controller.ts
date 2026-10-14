@@ -36,6 +36,7 @@ import { CreatePurchaseOrderDto } from '../../dto/purchase-order/create-purchase
 import { CreateSimplePurchaseOrderDto } from '../../dto/purchase-order/create-simple-purchase-order.dto';
 import { UpdatePurchaseOrderDto } from '../../dto/purchase-order/update-purchase-order.dto';
 import { EditApprovedPurchaseOrderDto } from '../../dto/purchase-order/edit-approved-purchase-order.dto';
+import { jsonImportUploadOptions } from '../../config/json-import-upload.config';
 
 @Controller('tenant/purchase-orders')
 @UseGuards(
@@ -168,6 +169,45 @@ export class PurchaseOrderController {
       file,
       { userId: user.userId, businessId: user.businessId },
       tenantCode,
+    );
+  }
+
+  @Get('export')
+  @RequirePermissions('LIST_PURCHASE_ORDER')
+  exportPurchaseOrdersJson(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.purchaseOrderService.exportPurchaseOrdersJson(
+      tenantDb,
+      user.businessId,
+      user.userId,
+    );
+  }
+
+  @Post('import-json')
+  @RequirePermissions('CREATE_PURCHASE_ORDER')
+  @UseInterceptors(FileInterceptor('file', jsonImportUploadOptions))
+  importPurchaseOrdersJson(
+    @TenantConnection() tenantDb: DataSource,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('mode') mode: string | undefined,
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException(
+        'JSON file is required. Use multipart form-data field "file".',
+      );
+    }
+    const user = req.user as TenantRequestUser;
+    return this.purchaseOrderService.importPurchaseOrdersJson(
+      tenantDb,
+      file,
+      { userId: user.userId, businessId: user.businessId },
+      tenantCode,
+      mode,
     );
   }
 
