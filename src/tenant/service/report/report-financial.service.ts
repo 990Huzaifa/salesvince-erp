@@ -216,6 +216,10 @@ export class ReportFinancialService {
    * = Net Profit
    *
    * Inventory (1-1-4) is a Balance Sheet account and is not included here.
+   *
+   * UI: `ledger.expenses` hides COGS (5-1) from the list and expense total.
+   * Net profit still subtracts full expenses including COGS. COGS remains in
+   * `trading.costOfGoodsSold`.
    */
   private async buildProfitAndLoss(
     tenantDb: DataSource,
@@ -265,12 +269,14 @@ export class ReportFinancialService {
     const income = this.toSection(incomeLines);
     const costOfGoodsSold = this.toSection(cogsLines);
     const operatingExpenses = this.toSection(operatingExpenseLines);
-    const expenses = this.toSection(expenseLines);
+    // UI expenses list/total: hide COGS (5-1). Net profit still uses full expense total.
+    const expenses = operatingExpenses;
+    const expensesForNetProfit = this.toSection(expenseLines);
 
     const grossProfit = roundAmount(
       salesRevenue.total - costOfGoodsSold.total,
     );
-    const netProfit = roundAmount(income.total - expenses.total);
+    const netProfit = roundAmount(income.total - expensesForNetProfit.total);
 
     const currentStockValue = await this.getCurrentStockValue(
       tenantDb,
@@ -312,7 +318,7 @@ export class ReportFinancialService {
       operational,
       meta: {
         incomeAccountCount: incomeLines.length,
-        expenseAccountCount: expenseLines.length,
+        expenseAccountCount: operatingExpenseLines.length,
         salesRevenueAccountCount: salesRevenueLines.length,
         cogsAccountCount: cogsLines.length,
         operatingExpenseAccountCount: operatingExpenseLines.length,
