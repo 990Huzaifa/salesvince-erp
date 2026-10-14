@@ -15,6 +15,7 @@ import {
   linkUserToBusiness,
 } from 'src/tenant-db/helpers/tenant-business-bootstrap.helper';
 import { seedDefaultChartOfAccountsForBusiness } from 'src/tenant-db/helpers/chart-of-account-bootstrap.helper';
+import { seedWalkinCustomerForBusiness } from 'src/tenant-db/seeders/walkin-customer.seed';
 import { S3Service } from 'src/common/s3/s3.service';
 import {
   ASSET_RULES,
@@ -201,6 +202,10 @@ export class TenantBusinessService {
         manager,
         business.id,
       );
+      const walkinCustomer = await seedWalkinCustomerForBusiness(
+        manager,
+        business.id,
+      );
       const superAdminRole = await ensureSuperAdminRole(manager);
       const membership = await linkUserToBusiness(
         manager,
@@ -209,7 +214,13 @@ export class TenantBusinessService {
         superAdminRole.id,
       );
 
-      return { business, chartOfAccounts, superAdminRole, membership };
+      return {
+        business,
+        chartOfAccounts,
+        walkinCustomer,
+        superAdminRole,
+        membership,
+      };
     });
 
     await this.activityLogService.recordActivityLog(tenantDb, {
@@ -221,6 +232,8 @@ export class TenantBusinessService {
         businessId: saved.business.id,
         logoAssetId,
         chartOfAccountCount: saved.chartOfAccounts.length,
+        walkinCustomerId: saved.walkinCustomer.id,
+        walkinCustomerCode: saved.walkinCustomer.code,
         roleId: saved.superAdminRole.id,
         userBusinessId: saved.membership.id,
       },
