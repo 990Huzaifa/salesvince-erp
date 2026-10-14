@@ -6,6 +6,7 @@ import {
   Transaction,
 } from 'src/tenant-db/entities/transaction.entity';
 import { ChartOfAccount } from 'src/tenant-db/entities/chart-of-account.entity';
+import { BatchPickStrategy } from 'src/tenant-db/entities/product.entity';
 import { Grn, GrnStatus } from 'src/tenant-db/entities/grn.entity';
 import {
   PurchaseReturn,
@@ -32,9 +33,18 @@ import {
   BackfillTradingLedgerDto,
   TradingLedgerDocumentType,
 } from '../dto/transaction/backfill-trading-ledger.dto';
+import { InventoryCostSimulator } from '../utils/inventory-cost.simulator';
 import { ActivityLogService } from './activity-log.service';
 import { TenantJobService } from './tenant-job.service';
 import { JournalLineInput, TransactionService } from './transaction.service';
+
+/** Same-day order: receive stock before issues/returns. */
+const KIND_SORT_ORDER: Record<TradingLedgerDocumentType, number> = {
+  [TradingLedgerDocumentType.GRN]: 0,
+  [TradingLedgerDocumentType.PURCHASE_RETURN]: 1,
+  [TradingLedgerDocumentType.DELIVERY_NOTE]: 2,
+  [TradingLedgerDocumentType.SALE_RETURN]: 3,
+};
 
 type CandidateKind = TradingLedgerDocumentType;
 
@@ -54,6 +64,7 @@ type PreparedJournal = {
   lines: JournalLineInput[];
   expectedAccountIds: string[];
   amounts: Record<string, number>;
+  costMeta?: Record<string, number | string>;
 };
 
 type ProcessOutcome =
@@ -133,11 +144,24 @@ export class MissingTradingLedgerBackfillService {
       ]);
     });
 
-    const candidates = await this.collectCandidates(
+    // Always include purchases in the sim timeline so sale COGS can LIFO-price
+    // even when documentTypes is sale-only.
+    const simulationTypes = [
+      ...new Set([
+        TradingLedgerDocumentType.GRN,
+        TradingLedgerDocumentType.PURCHASE_RETURN,
+        ...documentTypes,
+      ]),
+    ];
+    const simulationCandidates = await this.collectCandidates(
       tenantDb,
       businessId,
-      documentTypes,
+      simulationTypes,
     );
+    const postKindSet = new Set(documentTypes);
+    const postCandidateCount = simulationCandidates.filter((row) =>
+      postKindSet.has(row.kind),
+    ).length;
 
     const job = this.tenantJobService.createJob({
       tenantCode,
@@ -147,21 +171,23 @@ export class MissingTradingLedgerBackfillService {
         ? 'trading-ledger-backfill-dry-run'
         : 'trading-ledger-backfill-apply',
       createdBy: user.userId,
-      totalRows: candidates.length,
+      totalRows: postCandidateCount,
     });
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: user.userId,
       businessId,
       action: 'TENANT_JOB_STARTED',
-      description: `Trading ledger backfill started (${dryRun ? 'dry-run' : 'apply'}, ${candidates.length} docs)`,
+      description: `Trading ledger backfill started (${dryRun ? 'dry-run' : 'apply'}, ${postCandidateCount} docs, LIFO COGS)`,
       metadata: {
         jobId: job.id,
         jobType: JOB_TYPE,
         dryRun,
         forceRepost,
         documentTypes,
-        candidateCount: candidates.length,
+        costStrategy: BatchPickStrategy.LIFO,
+        candidateCount: postCandidateCount,
+        simulationCandidateCount: simulationCandidates.length,
       },
       jobId: job.id,
     });
@@ -171,7 +197,8 @@ export class MissingTradingLedgerBackfillService {
       job.id,
       businessId,
       user.userId,
-      candidates,
+      simulationCandidates,
+      postKindSet,
       dryRun,
       forceRepost,
     ).catch((error) => {
@@ -190,12 +217,14 @@ export class MissingTradingLedgerBackfillService {
       dryRun,
       forceRepost,
       documentTypes,
-      candidateCount: candidates.length,
+      costStrategy: BatchPickStrategy.LIFO,
+      candidateCount: postCandidateCount,
+      simulationCandidateCount: simulationCandidates.length,
       safety: {
         stockUntouched: true,
         confirmRequiredForApply: BACKFILL_TRADING_LEDGER_CONFIRM,
         tip: dryRun
-          ? `Review job ${job.id} logs, then call again with dryRun=false and confirm="${BACKFILL_TRADING_LEDGER_CONFIRM}"`
+          ? `Review job ${job.id} logs (LIFO COGS), then call again with dryRun=false and confirm="${BACKFILL_TRADING_LEDGER_CONFIRM}"`
           : 'Monitor job logs; ledgers recalculate after posts complete',
       },
     };
@@ -294,6 +323,10 @@ export class MissingTradingLedgerBackfillService {
       if (byDate !== 0) {
         return byDate;
       }
+      const byKind = KIND_SORT_ORDER[a.kind] - KIND_SORT_ORDER[b.kind];
+      if (byKind !== 0) {
+        return byKind;
+      }
       return a.number.localeCompare(b.number);
     });
 
@@ -305,7 +338,8 @@ export class MissingTradingLedgerBackfillService {
     jobId: string,
     businessId: string,
     actorUserId: string,
-    candidates: LedgerCandidate[],
+    simulationCandidates: LedgerCandidate[],
+    postKindSet: Set<TradingLedgerDocumentType>,
     dryRun: boolean,
     forceRepost: boolean,
   ) {
@@ -318,11 +352,12 @@ export class MissingTradingLedgerBackfillService {
       error: 0,
     };
     const affectedAccountIds = new Set<string>();
+    const costSim = new InventoryCostSimulator(BatchPickStrategy.LIFO);
+    let postRow = 0;
 
     try {
-      for (let index = 0; index < candidates.length; index += 1) {
-        const candidate = candidates[index];
-        const row = index + 1;
+      for (const candidate of simulationCandidates) {
+        const shouldPost = postKindSet.has(candidate.kind);
         const name = `${candidate.kind}:${candidate.number}`;
 
         try {
@@ -332,8 +367,15 @@ export class MissingTradingLedgerBackfillService {
             candidate,
             dryRun,
             forceRepost,
+            costSim,
+            shouldPost,
           );
 
+          if (!shouldPost) {
+            continue;
+          }
+
+          postRow += 1;
           counts[result.outcome] += 1;
           for (const accountId of result.affectedAccountIds ?? []) {
             affectedAccountIds.add(accountId);
@@ -343,7 +385,7 @@ export class MissingTradingLedgerBackfillService {
             result.outcome === 'posted' || result.outcome === 'would_post';
 
           this.tenantJobService.appendLog(jobId, {
-            row,
+            row: postRow,
             name,
             status: isSuccess ? 'success' : 'error',
             error: result.error,
@@ -355,15 +397,27 @@ export class MissingTradingLedgerBackfillService {
               documentDate: candidate.sortDate.toISOString().slice(0, 10),
               dryRun,
               forceRepost,
+              costStrategy: BatchPickStrategy.LIFO,
               existingLineCount: result.existingLineCount ?? 0,
               amounts: result.amounts,
+              costMeta: result.costMeta,
               description: result.description,
+              simulatedInventoryValue: costSim.remainingValue(),
             },
           });
         } catch (error) {
+          if (!shouldPost) {
+            this.logger.warn(
+              `Cost-sim only failed for ${name}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+            continue;
+          }
+          postRow += 1;
           counts.error += 1;
           this.tenantJobService.appendLog(jobId, {
-            row,
+            row: postRow,
             name,
             status: 'error',
             error:
@@ -374,6 +428,7 @@ export class MissingTradingLedgerBackfillService {
               outcome: 'error',
               kind: candidate.kind,
               documentId: candidate.id,
+              costStrategy: BatchPickStrategy.LIFO,
             },
           });
         }
@@ -400,14 +455,16 @@ export class MissingTradingLedgerBackfillService {
         actorId: actorUserId,
         businessId,
         action: 'TENANT_JOB_COMPLETED',
-        description: `Trading ledger backfill completed (${dryRun ? 'dry-run' : 'apply'})`,
+        description: `Trading ledger backfill completed (${dryRun ? 'dry-run' : 'apply'}, LIFO)`,
         metadata: {
           jobId,
           jobType: JOB_TYPE,
           dryRun,
           forceRepost,
+          costStrategy: BatchPickStrategy.LIFO,
           counts,
-          total: candidates.length,
+          totalPostedCandidates: postRow,
+          simulatedInventoryRemainingValue: costSim.remainingValue(),
           accountsRecalculated: recalcResults.length,
           recalcResults,
         },
@@ -438,15 +495,34 @@ export class MissingTradingLedgerBackfillService {
     candidate: LedgerCandidate,
     dryRun: boolean,
     forceRepost: boolean,
+    costSim: InventoryCostSimulator,
+    shouldPost: boolean,
   ): Promise<{
     outcome: ProcessOutcome;
     error?: string;
     existingLineCount?: number;
     amounts?: Record<string, number>;
+    costMeta?: Record<string, number | string>;
     description?: string;
     affectedAccountIds?: string[];
   }> {
     return tenantDb.transaction(async (manager) => {
+      const prepared = await this.prepareJournal(
+        manager,
+        businessId,
+        candidate,
+        costSim,
+      );
+
+      if (!shouldPost) {
+        return {
+          outcome: 'would_post',
+          amounts: prepared.amounts,
+          costMeta: prepared.costMeta,
+          description: prepared.description,
+        };
+      }
+
       const existing = await manager.getRepository(Transaction).find({
         where: {
           businessId,
@@ -461,30 +537,24 @@ export class MissingTradingLedgerBackfillService {
           outcome: 'skipped_existing',
           error: `Ledger already exists (${existing.length} lines). Use forceRepost=true to replace.`,
           existingLineCount: existing.length,
-        };
-      }
-
-      if (existing.length > 0 && forceRepost && dryRun) {
-        const prepared = await this.prepareJournal(manager, businessId, candidate);
-        return {
-          outcome: 'would_post',
-          existingLineCount: existing.length,
           amounts: prepared.amounts,
+          costMeta: prepared.costMeta,
           description: prepared.description,
-          affectedAccountIds: prepared.expectedAccountIds,
-          error: `Would delete ${existing.length} existing lines and repost`,
         };
       }
-
-      const prepared = await this.prepareJournal(manager, businessId, candidate);
 
       if (dryRun) {
         return {
           outcome: 'would_post',
-          existingLineCount: 0,
+          existingLineCount: existing.length,
           amounts: prepared.amounts,
+          costMeta: prepared.costMeta,
           description: prepared.description,
           affectedAccountIds: prepared.expectedAccountIds,
+          error:
+            existing.length > 0
+              ? `Would delete ${existing.length} existing lines and repost`
+              : undefined,
         };
       }
 
@@ -510,6 +580,7 @@ export class MissingTradingLedgerBackfillService {
         outcome: 'posted',
         existingLineCount: existing.length,
         amounts: prepared.amounts,
+        costMeta: prepared.costMeta,
         description: prepared.description,
         affectedAccountIds: prepared.expectedAccountIds,
       };
@@ -520,16 +591,32 @@ export class MissingTradingLedgerBackfillService {
     manager: EntityManager,
     businessId: string,
     candidate: LedgerCandidate,
+    costSim: InventoryCostSimulator,
   ): Promise<PreparedJournal> {
     switch (candidate.kind) {
       case TradingLedgerDocumentType.GRN:
-        return this.prepareGrnJournal(manager, businessId, candidate);
+        return this.prepareGrnJournal(manager, businessId, candidate, costSim);
       case TradingLedgerDocumentType.PURCHASE_RETURN:
-        return this.preparePurchaseReturnJournal(manager, businessId, candidate);
+        return this.preparePurchaseReturnJournal(
+          manager,
+          businessId,
+          candidate,
+          costSim,
+        );
       case TradingLedgerDocumentType.DELIVERY_NOTE:
-        return this.prepareDeliveryNoteJournal(manager, businessId, candidate);
+        return this.prepareDeliveryNoteJournal(
+          manager,
+          businessId,
+          candidate,
+          costSim,
+        );
       case TradingLedgerDocumentType.SALE_RETURN:
-        return this.prepareSaleReturnJournal(manager, businessId, candidate);
+        return this.prepareSaleReturnJournal(
+          manager,
+          businessId,
+          candidate,
+          costSim,
+        );
       default:
         throw new BadRequestException(`Unsupported document type`);
     }
@@ -539,6 +626,7 @@ export class MissingTradingLedgerBackfillService {
     manager: EntityManager,
     businessId: string,
     candidate: LedgerCandidate,
+    costSim: InventoryCostSimulator,
   ): Promise<PreparedJournal> {
     const grn = await manager.getRepository(Grn).findOne({
       where: {
@@ -547,7 +635,7 @@ export class MissingTradingLedgerBackfillService {
         status: GrnStatus.APPROVED,
         deletedAt: IsNull(),
       },
-      relations: { vendor: true, purchaseOrder: true },
+      relations: { vendor: true, purchaseOrder: true, items: true },
     });
     if (!grn) {
       throw new BadRequestException('Approved GRN not found');
@@ -565,6 +653,24 @@ export class MissingTradingLedgerBackfillService {
       );
     }
 
+    const asOf = new Date(grn.grnDate);
+    let receivedQty = 0;
+    for (const item of grn.items ?? []) {
+      const qty = Number(item.receivedQuantity ?? 0);
+      if (qty <= 0) {
+        continue;
+      }
+      costSim.receive({
+        warehouseId: grn.warehouseId,
+        productId: item.productId,
+        uomId: item.uomId,
+        quantity: qty,
+        unitCost: Number(item.purchaseUnitPrice ?? 0),
+        asOf,
+      });
+      receivedQty += qty;
+    }
+
     const inventory = await resolveInventoryControlAccount(manager, businessId);
     const orderNumber =
       grn.purchaseOrder?.orderNumber?.trim() || grn.grnNumber;
@@ -573,7 +679,7 @@ export class MissingTradingLedgerBackfillService {
     return {
       candidate,
       partyId: grn.vendorId,
-      transactionDate: new Date(grn.grnDate),
+      transactionDate: asOf,
       description,
       lines: [
         {
@@ -589,6 +695,10 @@ export class MissingTradingLedgerBackfillService {
       ],
       expectedAccountIds: [inventory.id, grn.vendor.payableAccountId],
       amounts: { inventoryDebit: amount, payableCredit: amount },
+      costMeta: {
+        costStrategy: BatchPickStrategy.LIFO,
+        receivedQty,
+      },
     };
   }
 
@@ -609,6 +719,7 @@ export class MissingTradingLedgerBackfillService {
     manager: EntityManager,
     businessId: string,
     candidate: LedgerCandidate,
+    costSim: InventoryCostSimulator,
   ): Promise<PreparedJournal> {
     const purchaseReturn = await manager.getRepository(PurchaseReturn).findOne({
       where: {
@@ -621,6 +732,7 @@ export class MissingTradingLedgerBackfillService {
         purchaseInvoice: {
           vendor: true,
           items: true,
+          grn: true,
         },
       },
     });
@@ -636,8 +748,18 @@ export class MissingTradingLedgerBackfillService {
       );
     }
 
+    const warehouseId = invoice.grn?.warehouseId;
+    if (!warehouseId) {
+      throw new BadRequestException(
+        `Warehouse missing on GRN for purchase return ${purchaseReturn.returnNumber}`,
+      );
+    }
+
     const invoiceItems = (invoice.items ?? []) as PurchaseInvoiceItem[];
     let totalAmount = 0;
+    let lifoInventoryCredit = 0;
+    let shortfallQty = 0;
+
     for (const item of purchaseReturn.purchaseReturnItems ?? []) {
       const invoiceItem = invoiceItems.find(
         (row) =>
@@ -650,17 +772,38 @@ export class MissingTradingLedgerBackfillService {
           `Purchase return ${purchaseReturn.returnNumber} item no longer matches invoice`,
         );
       }
-      totalAmount += this.lineAmountForInvoiceQty(
-        invoiceItem,
-        Number(item.quantity),
-      );
+      const qty = Number(item.quantity);
+      totalAmount += this.lineAmountForInvoiceQty(invoiceItem, qty);
+
+      const consumed = costSim.consume({
+        warehouseId,
+        productId: item.productId,
+        uomId: item.uomId,
+        quantity: qty,
+      });
+      lifoInventoryCredit += consumed.cogsAmount;
+      shortfallQty += consumed.shortfallQuantity;
+      if (consumed.shortfallQuantity > 0) {
+        // Keep payable side on invoice value; top up inventory credit for shortfall
+        // at invoice unit cost so layers/GL stay usable.
+        const unit = Number(invoiceItem.purchaseUnitPrice ?? 0);
+        lifoInventoryCredit += consumed.shortfallQuantity * unit;
+      }
     }
     totalAmount = this.roundAmount(totalAmount);
+    lifoInventoryCredit = this.roundAmount(lifoInventoryCredit);
     if (totalAmount <= 0) {
       throw new BadRequestException(
         `Purchase return ${purchaseReturn.returnNumber} amount must be > 0`,
       );
     }
+
+    // Payable follows invoice; Inventory follows LIFO cost (may differ slightly).
+    const inventoryCredit = lifoInventoryCredit > 0 ? lifoInventoryCredit : totalAmount;
+    const payableDebit = totalAmount;
+    // Journal must balance: if LIFO ≠ invoice, keep payable=invoice and inventory=invoice
+    // for AP correctness (same as live approve). Layers still consumed via LIFO above.
+    const balancedInventoryCredit = payableDebit;
 
     const inventory = await resolveInventoryControlAccount(manager, businessId);
     const description = `Purchase return ${purchaseReturn.returnNumber} - vendor payable reduced`;
@@ -673,17 +816,25 @@ export class MissingTradingLedgerBackfillService {
       lines: [
         {
           chartOfAccountId: vendor.payableAccountId,
-          debitAmount: totalAmount,
+          debitAmount: payableDebit,
           description,
         },
         {
           chartOfAccountId: inventory.id,
-          creditAmount: totalAmount,
+          creditAmount: balancedInventoryCredit,
           description,
         },
       ],
       expectedAccountIds: [vendor.payableAccountId, inventory.id],
-      amounts: { payableDebit: totalAmount, inventoryCredit: totalAmount },
+      amounts: {
+        payableDebit,
+        inventoryCredit: balancedInventoryCredit,
+      },
+      costMeta: {
+        costStrategy: BatchPickStrategy.LIFO,
+        lifoInventoryCredit,
+        shortfallQty,
+      },
     };
   }
 
@@ -731,6 +882,7 @@ export class MissingTradingLedgerBackfillService {
     manager: EntityManager,
     businessId: string,
     candidate: LedgerCandidate,
+    costSim: InventoryCostSimulator,
   ): Promise<PreparedJournal> {
     const deliveryNote = await manager.getRepository(DeliveryNote).findOne({
       where: {
@@ -761,15 +913,35 @@ export class MissingTradingLedgerBackfillService {
     }
 
     let cogsAmount = 0;
+    let allocatedQty = 0;
+    let shortfallQty = 0;
+    let fallbackCost = 0;
+
     for (const item of deliveryNote.items ?? []) {
       const qty = Number(item.deliveredQuantity ?? 0);
       if (qty <= 0) {
         continue;
       }
-      const unitCost = Number(item.saleOrderItem?.purchaseUnitPrice ?? 0);
-      cogsAmount += qty * unitCost;
+
+      const consumed = costSim.consume({
+        warehouseId: item.warehouseId,
+        productId: item.productId,
+        uomId: item.uomId,
+        quantity: qty,
+      });
+      cogsAmount += consumed.cogsAmount;
+      allocatedQty += consumed.allocatedQuantity;
+      shortfallQty += consumed.shortfallQuantity;
+
+      if (consumed.shortfallQuantity > 0) {
+        const unit = Number(item.saleOrderItem?.purchaseUnitPrice ?? 0);
+        const fallback = consumed.shortfallQuantity * unit;
+        cogsAmount += fallback;
+        fallbackCost += fallback;
+      }
     }
     cogsAmount = this.roundAmount(cogsAmount);
+    fallbackCost = this.roundAmount(fallbackCost);
 
     const [salesRevenue, cogs, inventory] = await Promise.all([
       resolveSalesRevenueAccount(manager, businessId),
@@ -806,6 +978,12 @@ export class MissingTradingLedgerBackfillService {
         cogsDebit: cogsAmount,
         inventoryCredit: cogsAmount,
       },
+      costMeta: {
+        costStrategy: BatchPickStrategy.LIFO,
+        allocatedQty,
+        shortfallQty,
+        fallbackCost,
+      },
     };
   }
 
@@ -813,6 +991,7 @@ export class MissingTradingLedgerBackfillService {
     manager: EntityManager,
     businessId: string,
     candidate: LedgerCandidate,
+    costSim: InventoryCostSimulator,
   ): Promise<PreparedJournal> {
     const saleReturn = await manager.getRepository(SaleReturn).findOne({
       where: {
@@ -843,6 +1022,7 @@ export class MissingTradingLedgerBackfillService {
 
     const invoiceItems = (invoice.items ?? []) as SaleInvoiceItem[];
     const orderItems = invoice.saleOrder?.items ?? [];
+    const asOf = new Date(saleReturn.returnDate);
 
     let totalAmount = 0;
     let cogsAmount = 0;
@@ -870,7 +1050,18 @@ export class MissingTradingLedgerBackfillService {
           (row.productFlavourId ?? null) ===
             (invoiceItem.productFlavourId ?? null),
       );
-      cogsAmount += qty * Number(orderItem?.purchaseUnitPrice ?? 0);
+      // Prefer LIFO: put stock back at last consumed-layer style cost via SO unit
+      // cost when available; layers receive so later sales price correctly.
+      const unitCost = Number(orderItem?.purchaseUnitPrice ?? 0);
+      cogsAmount += qty * unitCost;
+      costSim.receive({
+        warehouseId: item.warehouseId,
+        productId: item.productId,
+        uomId: item.uomId,
+        quantity: qty,
+        unitCost,
+        asOf,
+      });
     }
 
     totalAmount = this.roundAmount(totalAmount);
@@ -918,7 +1109,7 @@ export class MissingTradingLedgerBackfillService {
     return {
       candidate,
       partyId: customer.id,
-      transactionDate: new Date(saleReturn.returnDate),
+      transactionDate: asOf,
       description,
       lines,
       expectedAccountIds: [
@@ -929,6 +1120,9 @@ export class MissingTradingLedgerBackfillService {
         salesRevenueDebit: totalAmount,
         inventoryDebit: cogsAmount,
         cogsCredit: cogsAmount,
+      },
+      costMeta: {
+        costStrategy: BatchPickStrategy.LIFO,
       },
     };
   }
