@@ -27,6 +27,11 @@ import { UpdateSaleOrderItemDto } from '../../dto/sale-order/update-sale-order-i
 import { EditApprovedSaleOrderDto } from '../../dto/sale-order/edit-approved-sale-order.dto';
 import { EditApprovedSaleOrderItemDto } from '../../dto/sale-order/edit-approved-sale-order-item.dto';
 import * as XLSX from 'xlsx';
+import {
+  endOfDay,
+  parseDateRange,
+  startOfDay,
+} from '../report/report-query.helper';
 import { ActivityLogService } from '../activity-log.service';
 import {
   ListAnalyticsModule,
@@ -1137,6 +1142,8 @@ export class SaleOrderService {
       search?: string;
       customerId?: string;
       orderStatus?: OrderStatus;
+      startDate?: string;
+      endDate?: string;
     },
     actorUserId: string,
   ) {
@@ -1144,6 +1151,8 @@ export class SaleOrderService {
     const page = Math.max(1, options.page);
     const limit = Math.max(1, options.limit);
     const skip = (page - 1) * limit;
+    const { startDate: parsedStartDate, endDate: parsedEndDate } =
+      parseDateRange(options.startDate, options.endDate);
 
     const qb = tenantDb
       .getRepository(SaleOrder)
@@ -1168,6 +1177,18 @@ export class SaleOrderService {
     if (options.orderStatus) {
       qb.andWhere('so.orderStatus = :orderStatus', {
         orderStatus: options.orderStatus,
+      });
+    }
+
+    if (parsedStartDate) {
+      qb.andWhere('so.orderDate >= :startDate', {
+        startDate: startOfDay(parsedStartDate),
+      });
+    }
+
+    if (parsedEndDate) {
+      qb.andWhere('so.orderDate <= :endDate', {
+        endDate: endOfDay(parsedEndDate),
       });
     }
 

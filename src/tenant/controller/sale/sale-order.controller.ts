@@ -166,6 +166,9 @@ export class SaleOrderController {
     @Query('search') search?: string,
     @Query('customerId') customerId?: string,
     @Query('orderStatus') orderStatus?: OrderStatus,
+    @Query('status') status?: OrderStatus,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
     const user = req.user as TenantRequestUser;
     return this.saleOrderService.list(
@@ -176,7 +179,9 @@ export class SaleOrderController {
         limit: Number(limit),
         search,
         customerId,
-        orderStatus,
+        orderStatus: orderStatus ?? status,
+        startDate,
+        endDate,
       },
       user.userId,
     );

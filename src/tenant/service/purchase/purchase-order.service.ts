@@ -31,6 +31,11 @@ import {
   Uom,
 } from 'src/tenant-db/entities/product.entity';
 import { resolveDiscountFromAmountOrPercentage } from 'src/common/discount/resolve-discount';
+import {
+  endOfDay,
+  parseDateRange,
+  startOfDay,
+} from '../report/report-query.helper';
 import { CreatePurchaseOrderDto } from '../../dto/purchase-order/create-purchase-order.dto';
 import { CreatePurchaseOrderItemDto } from '../../dto/purchase-order/create-purchase-order-item.dto';
 import { CreateSimplePurchaseOrderDto } from '../../dto/purchase-order/create-simple-purchase-order.dto';
@@ -1303,6 +1308,8 @@ export class PurchaseOrderService {
       vendorId?: string;
       warehouseId?: string;
       orderStatus?: OrderStatus;
+      startDate?: string;
+      endDate?: string;
     },
     actorUserId: string,
   ) {
@@ -1310,6 +1317,8 @@ export class PurchaseOrderService {
     const page = Math.max(1, options.page);
     const limit = Math.max(1, options.limit);
     const skip = (page - 1) * limit;
+    const { startDate: parsedStartDate, endDate: parsedEndDate } =
+      parseDateRange(options.startDate, options.endDate);
 
     const qb = tenantDb
       .getRepository(PurchaseOrder)
@@ -1338,6 +1347,18 @@ export class PurchaseOrderService {
     if (options.orderStatus) {
       qb.andWhere('po.orderStatus = :orderStatus', {
         orderStatus: options.orderStatus,
+      });
+    }
+
+    if (parsedStartDate) {
+      qb.andWhere('po.orderDate >= :startDate', {
+        startDate: startOfDay(parsedStartDate),
+      });
+    }
+
+    if (parsedEndDate) {
+      qb.andWhere('po.orderDate <= :endDate', {
+        endDate: endOfDay(parsedEndDate),
       });
     }
 

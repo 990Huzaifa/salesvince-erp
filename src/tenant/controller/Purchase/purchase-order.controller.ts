@@ -239,6 +239,9 @@ export class PurchaseOrderController {
     @Query('vendorId') vendorId?: string,
     @Query('warehouseId') warehouseId?: string,
     @Query('orderStatus') orderStatus?: OrderStatus,
+    @Query('status') status?: OrderStatus,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
   ) {
     const user = req.user as TenantRequestUser;
     return this.purchaseOrderService.list(
@@ -250,7 +253,9 @@ export class PurchaseOrderController {
         search,
         vendorId,
         warehouseId,
-        orderStatus,
+        orderStatus: orderStatus ?? status,
+        startDate,
+        endDate,
       },
       user.userId,
     );
