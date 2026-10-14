@@ -7,6 +7,7 @@ export enum JsonExportEntity {
   PARTIES = 'parties',
   PRODUCTS = 'products',
   PURCHASE_ORDERS = 'purchaseOrders',
+  SALE_ORDERS = 'saleOrders',
 }
 
 export enum JsonImportMode {

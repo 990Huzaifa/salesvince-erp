@@ -36,6 +36,8 @@ import { SaleOrderReverseService } from '../../service/sale/sale-order-reverse.s
 import { CreateSaleOrderDto } from '../../dto/sale-order/create-sale-order.dto';
 import { UpdateSaleOrderDto } from '../../dto/sale-order/update-sale-order.dto';
 import { EditApprovedSaleOrderDto } from '../../dto/sale-order/edit-approved-sale-order.dto';
+import { BulkApproveAndSaleSaleOrdersDto } from '../../dto/sale-order/bulk-approve-and-sale-sale-orders.dto';
+import { jsonImportUploadOptions } from '../../config/json-import-upload.config';
 import { sendPdf, parseBooleanQuery } from 'src/common/pdf';
 
 @Controller('tenant/sale-orders')
@@ -153,6 +155,61 @@ export class SaleOrderController {
       user.businessId,
       dto,
       user.userId,
+    );
+  }
+
+  @Post('bulk-approve-and-sale')
+  @RequirePermissions('APPROVE_SALE_ORDER')
+  bulkApproveAndSale(
+    @TenantConnection() tenantDb: DataSource,
+    @Body() dto: BulkApproveAndSaleSaleOrdersDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.saleOrderService.bulkApproveAndSale(
+      tenantDb,
+      user.businessId,
+      dto,
+      user.userId,
+    );
+  }
+
+  @Get('export')
+  @RequirePermissions('LIST_SALE_ORDER')
+  exportSaleOrdersJson(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.saleOrderService.exportSaleOrdersJson(
+      tenantDb,
+      user.businessId,
+      user.userId,
+    );
+  }
+
+  @Post('import-json')
+  @RequirePermissions('CREATE_SALE_ORDER')
+  @UseInterceptors(FileInterceptor('file', jsonImportUploadOptions))
+  importSaleOrdersJson(
+    @TenantConnection() tenantDb: DataSource,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('mode') mode: string | undefined,
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException(
+        'JSON file is required. Use multipart form-data field "file".',
+      );
+    }
+    const user = req.user as TenantRequestUser;
+    return this.saleOrderService.importSaleOrdersJson(
+      tenantDb,
+      file,
+      { userId: user.userId, businessId: user.businessId },
+      tenantCode,
+      mode,
     );
   }
 

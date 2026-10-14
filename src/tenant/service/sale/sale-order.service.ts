@@ -4,6 +4,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
 import { Brackets, DataSource, EntityManager, In, IsNull } from 'typeorm';
 import { OrderStatus, SaleOrder, SaleOrderItem } from 'src/tenant-db/entities/sale-order.entity';
 import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
@@ -26,6 +28,16 @@ import { UpdateSaleOrderDto } from '../../dto/sale-order/update-sale-order.dto';
 import { UpdateSaleOrderItemDto } from '../../dto/sale-order/update-sale-order-item.dto';
 import { EditApprovedSaleOrderDto } from '../../dto/sale-order/edit-approved-sale-order.dto';
 import { EditApprovedSaleOrderItemDto } from '../../dto/sale-order/edit-approved-sale-order-item.dto';
+import { BulkApproveAndSaleSaleOrdersDto } from '../../dto/sale-order/bulk-approve-and-sale-sale-orders.dto';
+import {
+  SaleOrderJsonImportDto,
+  SaleOrderJsonItemDto,
+} from '../../dto/sale-order/sale-order-json-export-import.dto';
+import {
+  JsonExportEntity,
+  JsonImportMode,
+  SALESVINCE_EXPORT_FORMAT,
+} from '../../dto/import-export/json-export-envelope.dto';
 import * as XLSX from 'xlsx';
 import {
   endOfDay,
@@ -1130,6 +1142,214 @@ export class SaleOrderService {
         deliveryNote: this.mapSaleWorkflowDeliveryNote(created.deliveryNote),
         saleInvoice: this.mapSaleWorkflowInvoice(created.saleInvoice),
       },
+    };
+  }
+
+  /**
+   * Approve existing PENDING SOs and create approved delivery note + sale invoice.
+   * Per-id transaction: one failure does not roll back others.
+   */
+  private async approveAndSaleExistingOrder(
+    tenantDb: DataSource,
+    businessId: string,
+    orderId: string,
+    actorUserId: string,
+  ) {
+    return tenantDb.transaction(async (manager) => {
+      const orderRepo = manager.getRepository(SaleOrder);
+      const order = await orderRepo
+        .createQueryBuilder('so')
+        .leftJoinAndSelect('so.customer', 'customer')
+        .leftJoinAndSelect('so.createdByUser', 'createdByUser')
+        .leftJoinAndSelect('so.items', 'items')
+        .leftJoinAndSelect('items.product', 'product')
+        .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+        .leftJoinAndSelect('productFlavour.flavour', 'flavour')
+        .leftJoinAndSelect('items.uom', 'uom')
+        .leftJoinAndSelect('items.warehouse', 'warehouse')
+        .where('so.id = :orderId', { orderId })
+        .andWhere('so.businessId = :businessId', { businessId })
+        .getOne();
+
+      if (!order) {
+        throw new NotFoundException('Sale order not found');
+      }
+
+      if (order.orderStatus === OrderStatus.APPROVED) {
+        throw new BadRequestException('Sale order is already approved');
+      }
+
+      if (order.orderStatus === OrderStatus.CANCELLED) {
+        throw new BadRequestException(
+          'Cancelled sale orders cannot be approved and sold',
+        );
+      }
+
+      if (order.orderStatus !== OrderStatus.PENDING) {
+        throw new BadRequestException(
+          'Only pending sale orders can be approved and sold',
+        );
+      }
+
+      if (!order.items?.length) {
+        throw new BadRequestException('Sale order must have items');
+      }
+
+      const customer = order.customer;
+      if (!customer) {
+        throw new NotFoundException('Customer not found on sale order');
+      }
+      if (!customer.receivableAccountId) {
+        throw new BadRequestException(
+          'Customer receivable account is required before approving delivery note',
+        );
+      }
+
+      const hasApprovedDeliveryNote = await manager
+        .getRepository(DeliveryNote)
+        .exists({
+          where: {
+            saleOrderId: order.id,
+            businessId,
+            status: DeliveryNoteStatus.APPROVED,
+          },
+        });
+      if (hasApprovedDeliveryNote) {
+        throw new BadRequestException(
+          'Sale order already has an approved delivery note',
+        );
+      }
+
+      order.orderStatus = OrderStatus.APPROVED;
+      await orderRepo.save(order);
+
+      const loadedOrder = await orderRepo.findOneOrFail({
+        where: { id: order.id },
+        relations: this.orderRelations(),
+      });
+
+      await this.reserveSaleOrderStock(manager, businessId, loadedOrder);
+
+      const deliveryNote =
+        await this.deliveryNoteService.createApprovedFromOrder(manager, {
+          businessId,
+          order: loadedOrder,
+          deliveryNoteDate: new Date(loadedOrder.orderDate),
+          deliveryCost: Number(loadedOrder.deliveryCost),
+          taxPercentage: Number(loadedOrder.taxPercentage),
+          discountPercentage: Number(loadedOrder.discountPercentage),
+          notes: loadedOrder.notes,
+          actorUserId,
+        });
+
+      const saleInvoice = await manager.getRepository(SaleInvoice).findOne({
+        where: { deliveryNoteId: deliveryNote.id, deletedAt: IsNull() },
+      });
+
+      return { order: loadedOrder, deliveryNote, saleInvoice };
+    });
+  }
+
+  async bulkApproveAndSale(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    dto: BulkApproveAndSaleSaleOrdersDto,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const ids = [...new Set(dto.ids.map((id) => id.trim()).filter(Boolean))];
+
+    if (!ids.length) {
+      throw new BadRequestException('At least one sale order id is required');
+    }
+
+    const results: Array<{
+      id: string;
+      orderNumber?: string;
+      status: 'success' | 'error';
+      message?: string;
+      saleOrder?: ReturnType<SaleOrderService['mapSaleOrder']>;
+      deliveryNote?: ReturnType<
+        SaleOrderService['mapSaleWorkflowDeliveryNote']
+      >;
+      saleInvoice?: ReturnType<SaleOrderService['mapSaleWorkflowInvoice']>;
+    }> = [];
+
+    let succeeded = 0;
+    let failed = 0;
+
+    for (const id of ids) {
+      try {
+        const created = await this.approveAndSaleExistingOrder(
+          tenantDb,
+          scopedBusinessId,
+          id,
+          actorUserId,
+        );
+
+        await this.activityLogService.recordActivityLog(tenantDb, {
+          actorId: actorUserId,
+          businessId: scopedBusinessId,
+          action: 'SALE_ORDER_APPROVED_AND_SOLD',
+          description: `Sale order ${created.order.orderNumber} approved and sold`,
+          metadata: {
+            saleOrderId: created.order.id,
+            orderNumber: created.order.orderNumber,
+            deliveryNoteId: created.deliveryNote.id,
+            deliveryNoteNumber: created.deliveryNote.deliveryNoteNumber,
+            saleInvoiceId: created.saleInvoice?.id ?? null,
+            invoiceNumber: created.saleInvoice?.invoiceNumber ?? null,
+            bulk: true,
+          },
+        });
+
+        succeeded += 1;
+        results.push({
+          id,
+          orderNumber: created.order.orderNumber,
+          status: 'success',
+          saleOrder: this.mapSaleOrder(created.order),
+          deliveryNote: this.mapSaleWorkflowDeliveryNote(created.deliveryNote),
+          saleInvoice: this.mapSaleWorkflowInvoice(created.saleInvoice),
+        });
+      } catch (error) {
+        failed += 1;
+        let orderNumber: string | undefined;
+        try {
+          const existing = await tenantDb
+            .getRepository(SaleOrder)
+            .findOne({ where: { id }, select: ['id', 'orderNumber'] });
+          orderNumber = existing?.orderNumber;
+        } catch {
+          // ignore lookup failure for error row label
+        }
+        results.push({
+          id,
+          orderNumber,
+          status: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'SALE_ORDER_BULK_APPROVE_AND_SALE',
+      description: `Bulk approve and sale finished. Succeeded: ${succeeded}, Failed: ${failed}`,
+      metadata: {
+        total: ids.length,
+        succeeded,
+        failed,
+        ids,
+      },
+    });
+
+    return {
+      total: ids.length,
+      succeeded,
+      failed,
+      results,
     };
   }
 
@@ -2828,6 +3048,589 @@ export class SaleOrderService {
       jobId: job.id,
       status: job.status,
       totalRows: job.totalRows,
+    };
+  }
+
+  private toJsonNumber(value: unknown): number {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  private formatOrderDateForJson(orderDate: Date | string): string {
+    if (typeof orderDate === 'string') {
+      return orderDate.slice(0, 10);
+    }
+    return orderDate.toISOString().slice(0, 10);
+  }
+
+  private mapSaleOrderToJsonItem(order: SaleOrder): SaleOrderJsonItemDto {
+    return {
+      orderNumber: order.orderNumber,
+      orderDate: this.formatOrderDateForJson(order.orderDate),
+      customerCode: order.customer?.code ?? '',
+      deliveryCost: this.toJsonNumber(order.deliveryCost),
+      taxPercentage: this.toJsonNumber(order.taxPercentage),
+      discountPercentage: this.toJsonNumber(order.discountPercentage),
+      discountAmount: this.toJsonNumber(order.discountAmount),
+      notes: order.notes ?? null,
+      items: (order.items ?? []).map((item) => ({
+        warehouseCode: item.warehouse?.code ?? '',
+        skuCode: item.product?.skuCode ?? '',
+        uomName: item.uom?.name ?? '',
+        productFlavourName: item.productFlavour?.flavour?.name ?? null,
+        quantity: this.toJsonNumber(item.quantity),
+        purchaseUnitPrice: this.toJsonNumber(item.purchaseUnitPrice),
+        saleUnitPrice: this.toJsonNumber(item.saleUnitPrice),
+        discountPercentage: this.toJsonNumber(item.discountPercentage),
+      })),
+    };
+  }
+
+  async exportSaleOrdersJson(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const orders = await tenantDb
+      .getRepository(SaleOrder)
+      .createQueryBuilder('so')
+      .leftJoinAndSelect('so.customer', 'customer')
+      .leftJoinAndSelect('so.items', 'items')
+      .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.uom', 'uom')
+      .leftJoinAndSelect('items.warehouse', 'warehouse')
+      .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
+      .where('so.businessId = :businessId', { businessId: scopedBusinessId })
+      .andWhere('so.orderStatus = :status', { status: OrderStatus.APPROVED })
+      .orderBy('so.orderNumber', 'ASC')
+      .addOrderBy('items.createdAt', 'ASC')
+      .getMany();
+
+    const items = orders.map((order) => this.mapSaleOrderToJsonItem(order));
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'SALE_ORDER_JSON_EXPORTED',
+      description: 'Approved sale orders exported as JSON',
+      metadata: {
+        businessId: scopedBusinessId,
+        count: items.length,
+        orderStatus: OrderStatus.APPROVED,
+      },
+    });
+
+    return {
+      format: SALESVINCE_EXPORT_FORMAT,
+      version: 1,
+      entity: JsonExportEntity.SALE_ORDERS,
+      exportedAt: new Date().toISOString(),
+      items,
+    };
+  }
+
+  private sanitizeJsonEmptyStrings(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sanitizeJsonEmptyStrings(item));
+    }
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [key, nested] of Object.entries(
+        value as Record<string, unknown>,
+      )) {
+        out[key] =
+          nested === '' ? null : this.sanitizeJsonEmptyStrings(nested);
+      }
+      return out;
+    }
+    return value;
+  }
+
+  private formatJsonValidationErrors(
+    errors: ReturnType<typeof validateSync>,
+  ): string {
+    const walk = (list: typeof errors, prefix = ''): string[] => {
+      const messages: string[] = [];
+      for (const error of list) {
+        const path = prefix ? `${prefix}.${error.property}` : error.property;
+        messages.push(
+          ...Object.values(error.constraints ?? {}).map(
+            (msg) => `${path}: ${msg}`,
+          ),
+        );
+        if (error.children?.length) {
+          messages.push(...walk(error.children, path));
+        }
+      }
+      return messages;
+    };
+    return walk(errors).join('; ');
+  }
+
+  private parseSaleOrderJsonImportFile(
+    file: Express.Multer.File,
+  ): SaleOrderJsonImportDto {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException(
+        'JSON file is required. Use multipart form-data field "file".',
+      );
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(file.buffer.toString('utf8'));
+    } catch {
+      throw new BadRequestException('Invalid JSON file');
+    }
+
+    const dto = plainToInstance(
+      SaleOrderJsonImportDto,
+      this.sanitizeJsonEmptyStrings(parsed),
+      { enableImplicitConversion: true },
+    );
+    const errors = validateSync(dto, {
+      whitelist: true,
+      forbidNonWhitelisted: false,
+    });
+    if (errors.length) {
+      throw new BadRequestException(
+        this.formatJsonValidationErrors(errors) ||
+          'Invalid sale order JSON import payload',
+      );
+    }
+
+    if (dto.entity && dto.entity !== JsonExportEntity.SALE_ORDERS) {
+      throw new BadRequestException(
+        'entity must be "saleOrders" for sale order JSON import',
+      );
+    }
+
+    return dto;
+  }
+
+  private resolveSaleOrderJsonImportMode(
+    fileMode: JsonImportMode | undefined,
+    bodyMode?: string,
+  ): JsonImportMode {
+    const raw = bodyMode?.trim() || fileMode;
+    if (!raw) {
+      return JsonImportMode.CREATE_ONLY;
+    }
+    if (raw === JsonImportMode.UPSERT || raw === JsonImportMode.CREATE_ONLY) {
+      return JsonImportMode.CREATE_ONLY;
+    }
+    throw new BadRequestException('mode must be upsert or createOnly');
+  }
+
+  private async findCustomerByCode(
+    tenantDb: DataSource,
+    businessId: string,
+    customerCode: string,
+  ): Promise<Party | null> {
+    return tenantDb.getRepository(Party).findOne({
+      where: {
+        businessId,
+        code: customerCode,
+        type: In([PartyType.CUSTOMER, PartyType.BOTH]),
+        deletedAt: IsNull(),
+      },
+      select: ['id', 'code', 'name', 'type'],
+    });
+  }
+
+  private async findWarehouseByCode(
+    tenantDb: DataSource,
+    businessId: string,
+    warehouseCode: string,
+  ): Promise<Warehouse | null> {
+    return tenantDb.getRepository(Warehouse).findOne({
+      where: {
+        businessId,
+        code: warehouseCode,
+        deletedAt: IsNull(),
+      },
+      select: ['id', 'code', 'name'],
+    });
+  }
+
+  private async findProductBySkuCode(
+    tenantDb: DataSource,
+    businessId: string,
+    skuCode: string,
+  ): Promise<Product | null> {
+    return tenantDb.getRepository(Product).findOne({
+      where: { businessId, skuCode, isDelete: false },
+      select: ['id', 'skuCode', 'name'],
+    });
+  }
+
+  private async findUomByNameForBusiness(
+    tenantDb: DataSource,
+    businessId: string,
+    uomName: string,
+  ): Promise<Uom | null> {
+    return tenantDb.getRepository(Uom).findOne({
+      where: { businessId, name: uomName },
+      select: ['id', 'name'],
+    });
+  }
+
+  private async findProductFlavourByName(
+    tenantDb: DataSource,
+    productId: string,
+    flavourName: string,
+  ): Promise<ProductFlavour | null> {
+    return tenantDb
+      .getRepository(ProductFlavour)
+      .createQueryBuilder('pf')
+      .innerJoinAndSelect('pf.flavour', 'flavour')
+      .where('pf.productId = :productId', { productId })
+      .andWhere('flavour.name = :flavourName', { flavourName })
+      .getOne();
+  }
+
+  private async buildCreateDtoFromJsonItem(
+    tenantDb: DataSource,
+    businessId: string,
+    item: SaleOrderJsonItemDto,
+  ): Promise<CreateSaleOrderDto> {
+    const customerCode = item.customerCode.trim();
+    const customer = await this.findCustomerByCode(
+      tenantDb,
+      businessId,
+      customerCode,
+    );
+    if (!customer) {
+      throw new NotFoundException(`Customer code ${customerCode} not found`);
+    }
+
+    const lineItems: CreateSaleOrderItemDto[] = [];
+    for (const [lineIndex, line] of item.items.entries()) {
+      const warehouseCode = line.warehouseCode.trim();
+      const skuCode = line.skuCode.trim();
+      const uomName = line.uomName.trim();
+
+      const warehouse = await this.findWarehouseByCode(
+        tenantDb,
+        businessId,
+        warehouseCode,
+      );
+      if (!warehouse) {
+        throw new NotFoundException(
+          `Line ${lineIndex + 1}: warehouse code ${warehouseCode} not found`,
+        );
+      }
+
+      const product = await this.findProductBySkuCode(
+        tenantDb,
+        businessId,
+        skuCode,
+      );
+      if (!product) {
+        throw new NotFoundException(
+          `Line ${lineIndex + 1}: product SKU ${skuCode} not found`,
+        );
+      }
+
+      const uom = await this.findUomByNameForBusiness(
+        tenantDb,
+        businessId,
+        uomName,
+      );
+      if (!uom) {
+        throw new NotFoundException(
+          `Line ${lineIndex + 1}: UOM ${uomName} not found`,
+        );
+      }
+
+      let productFlavourId: string | undefined;
+      const flavourName = line.productFlavourName?.trim();
+      if (flavourName) {
+        const productFlavour = await this.findProductFlavourByName(
+          tenantDb,
+          product.id,
+          flavourName,
+        );
+        if (!productFlavour) {
+          throw new NotFoundException(
+            `Line ${lineIndex + 1}: flavour ${flavourName} not found for product ${skuCode}`,
+          );
+        }
+        productFlavourId = String(productFlavour.id);
+      }
+
+      lineItems.push({
+        warehouseId: warehouse.id,
+        productId: product.id,
+        uomId: uom.id,
+        ...(productFlavourId ? { productFlavourId } : {}),
+        quantity: line.quantity,
+        ...(line.purchaseUnitPrice !== undefined
+          ? { purchaseUnitPrice: line.purchaseUnitPrice }
+          : {}),
+        ...(line.saleUnitPrice !== undefined
+          ? { saleUnitPrice: line.saleUnitPrice }
+          : {}),
+        ...(line.discountPercentage !== undefined
+          ? { discountPercentage: line.discountPercentage }
+          : {}),
+      });
+    }
+
+    return {
+      orderNumber: item.orderNumber.trim(),
+      customerId: customer.id,
+      orderDate: item.orderDate,
+      ...(item.deliveryCost !== undefined
+        ? { deliveryCost: item.deliveryCost }
+        : {}),
+      ...(item.taxPercentage !== undefined
+        ? { taxPercentage: item.taxPercentage }
+        : {}),
+      ...(item.discountPercentage !== undefined
+        ? { discountPercentage: item.discountPercentage }
+        : {}),
+      ...(item.discountAmount !== undefined
+        ? { discountAmount: item.discountAmount }
+        : {}),
+      ...(item.notes != null && String(item.notes).trim() !== ''
+        ? { notes: String(item.notes).trim() }
+        : {}),
+      items: lineItems,
+    };
+  }
+
+  private async notifySaleOrderJsonImportCompletion(
+    tenantDb: DataSource,
+    job: TenantJob,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+    status: 'completed' | 'failed',
+  ) {
+    const title =
+      status === 'completed'
+        ? 'Sale order JSON import completed'
+        : 'Sale order JSON import failed';
+    const message =
+      status === 'completed'
+        ? `Import finished. Inserted: ${job.inserted}, Failed: ${job.failed}, Total: ${job.totalRows}`
+        : `Import failed for ${job.fileName}. Please review import logs.`;
+
+    await this.notificationService.createNotification(
+      tenantDb,
+      {
+        userId: user.userId,
+        title,
+        businessId: user.businessId,
+        message,
+        type: 'sale_order_json_import',
+      },
+      tenantCode,
+      {
+        job: {
+          id: job.id,
+          jobType: job.jobType,
+          status,
+          fileName: job.fileName,
+          totalRows: job.totalRows,
+          inserted: job.inserted,
+          failed: job.failed,
+          completedAt: job.completedAt,
+          logs: job.logs,
+        },
+      },
+    );
+  }
+
+  private async processSaleOrderJsonImportJob(
+    tenantDb: DataSource,
+    jobId: string,
+    items: SaleOrderJsonItemDto[],
+    mode: JsonImportMode,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+  ) {
+    this.tenantJobService.startJob(jobId);
+    const scopedBusinessId = user.businessId;
+    let created = 0;
+    let skipped = 0;
+
+    for (const [index, item] of items.entries()) {
+      const key = item.orderNumber?.trim() || `row-${index + 1}`;
+      try {
+        const orderNumber = item.orderNumber.trim();
+        const existing = await tenantDb.getRepository(SaleOrder).findOne({
+          where: { orderNumber },
+          select: ['id', 'orderNumber'],
+        });
+
+        if (existing) {
+          skipped += 1;
+          this.tenantJobService.appendLog(jobId, {
+            row: index + 1,
+            name: key,
+            status: 'error',
+            error: `Sale order ${orderNumber} already exists`,
+            metadata: {
+              outcome: 'skipped',
+              saleOrderId: existing.id,
+              mode,
+            },
+          });
+          continue;
+        }
+
+        const createDto = await this.buildCreateDtoFromJsonItem(
+          tenantDb,
+          scopedBusinessId,
+          item,
+        );
+        const createdOrder = await this.create(
+          tenantDb,
+          scopedBusinessId,
+          createDto,
+          user.userId,
+        );
+        created += 1;
+        this.tenantJobService.appendLog(jobId, {
+          row: index + 1,
+          name: createdOrder.data.orderNumber,
+          status: 'success',
+          metadata: {
+            outcome: 'created',
+            saleOrderId: createdOrder.data.id,
+            orderNumber: createdOrder.data.orderNumber,
+            orderStatus: createdOrder.data.orderStatus,
+          },
+        });
+      } catch (error) {
+        this.tenantJobService.appendLog(jobId, {
+          row: index + 1,
+          name: key,
+          status: 'error',
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    const completedJob = this.tenantJobService.completeJob(jobId);
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: scopedBusinessId,
+      action: 'TENANT_JOB_COMPLETED',
+      description: `Sale order JSON import completed for ${completedJob.fileName}`,
+      metadata: {
+        jobId: completedJob.id,
+        jobType: completedJob.jobType,
+        fileName: completedJob.fileName,
+        totalRows: completedJob.totalRows,
+        inserted: completedJob.inserted,
+        failed: completedJob.failed,
+        created,
+        skipped,
+        mode,
+      },
+    });
+
+    await this.notifySaleOrderJsonImportCompletion(
+      tenantDb,
+      completedJob,
+      user,
+      tenantCode,
+      'completed',
+    );
+  }
+
+  async importSaleOrdersJson(
+    tenantDb: DataSource,
+    file: Express.Multer.File,
+    user: { userId: string; businessId: string },
+    tenantCode: string,
+    bodyMode?: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(user.businessId);
+    const dto = this.parseSaleOrderJsonImportFile(file);
+    const mode = this.resolveSaleOrderJsonImportMode(
+      dto.options?.mode,
+      bodyMode,
+    );
+
+    const job = this.tenantJobService.createJob({
+      tenantCode,
+      businessId: scopedBusinessId,
+      jobType: 'SALE_ORDER_JSON_IMPORT',
+      fileName: file.originalname || 'sale-orders.json',
+      createdBy: user.userId,
+      totalRows: dto.items.length,
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: scopedBusinessId,
+      action: 'TENANT_JOB_STARTED',
+      description: `Sale order JSON import started for ${job.fileName}`,
+      metadata: {
+        jobId: job.id,
+        jobType: job.jobType,
+        fileName: job.fileName,
+        totalRows: job.totalRows,
+        mode,
+      },
+    });
+
+    void this.processSaleOrderJsonImportJob(
+      tenantDb,
+      job.id,
+      dto.items,
+      mode,
+      user,
+      tenantCode,
+    ).catch(async (error) => {
+      this.tenantJobService.failJob(job.id);
+      this.tenantJobService.appendLog(job.id, {
+        row: 0,
+        name: '',
+        status: 'error',
+        error:
+          error instanceof Error ? error.message : 'Unknown processing failure',
+      });
+      const failedJob = this.tenantJobService.getJobById(
+        job.id,
+        tenantCode,
+        user.userId,
+      );
+
+      await this.activityLogService.recordActivityLog(tenantDb, {
+        actorId: user.userId,
+        businessId: scopedBusinessId,
+        action: 'TENANT_JOB_FAILED',
+        description: `Sale order JSON import failed for ${job.fileName}`,
+        metadata: {
+          jobId: job.id,
+          jobType: job.jobType,
+          fileName: job.fileName,
+          error: error instanceof Error ? error.message : String(error),
+          mode,
+        },
+      });
+      await this.notifySaleOrderJsonImportCompletion(
+        tenantDb,
+        failedJob,
+        user,
+        tenantCode,
+        'failed',
+      );
+    });
+
+    return {
+      message: 'Sale order JSON import started',
+      jobId: job.id,
+      status: job.status,
+      totalRows: job.totalRows,
+      mode,
     };
   }
 }
