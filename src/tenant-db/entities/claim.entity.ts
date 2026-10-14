@@ -49,6 +49,175 @@ export enum ClaimDiscardType {
   SCRAP = 'SCRAP',
 }
 
+@Entity('claims')
+export class Claim {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column()
+  businessId: string;
+
+  @ManyToOne(() => Business, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'businessId' })
+  business: Business;
+
+  @Column({ unique: true })
+  claimNumber: string;
+
+  @Column({ type: 'date' })
+  claimDate: Date;
+
+  @Column({
+    type: 'enum',
+    enum: ClaimSourceType,
+  })
+  sourceType: ClaimSourceType;
+
+  /** Customer when sourceType = CUSTOMER */
+  @Column({ type: 'uuid', nullable: true })
+  partyId: string | null;
+
+  @ManyToOne(() => Party, { onDelete: 'RESTRICT', nullable: true })
+  @JoinColumn({ name: 'partyId' })
+  party: Party | null;
+
+  /** Own warehouse/showroom when sourceType = OWN_LOCATION */
+  @Column({ type: 'uuid', nullable: true })
+  warehouseId: string | null;
+
+  @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT', nullable: true })
+  @JoinColumn({ name: 'warehouseId' })
+  warehouse: Warehouse | null;
+
+  /** Set when claim is sent to vendor */
+  @Column({ type: 'uuid', nullable: true })
+  vendorId: string | null;
+
+  @ManyToOne(() => Party, { onDelete: 'RESTRICT', nullable: true })
+  @JoinColumn({ name: 'vendorId' })
+  vendor: Party | null;
+
+  @Column({
+    type: 'enum',
+    enum: ClaimStatus,
+    default: ClaimStatus.DRAFT,
+  })
+  status: ClaimStatus;
+
+  @Column({ type: 'boolean', nullable: true })
+  isValid: boolean | null;
+
+  @Column({ type: 'text', nullable: true })
+  invalidReason: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  notes: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  createdBy: string | null;
+
+  @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'createdBy' })
+  createdByUser: User | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  closedAt: Date | null;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+
+  @OneToMany(() => ClaimItem, (item) => item.claim)
+  items: ClaimItem[];
+
+  @OneToMany(() => ClaimBatch, (batch) => batch.claim)
+  batches: ClaimBatch[];
+}
+
+@Entity('claim_items')
+export class ClaimItem {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column()
+  claimId: string;
+
+  @ManyToOne(() => Claim, (claim) => claim.items, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'claimId' })
+  claim: Claim;
+
+  @Column()
+  productId: string;
+
+  @ManyToOne(() => Product, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'productId' })
+  product: Product;
+
+  @Column({ type: 'int', nullable: true })
+  productFlavourId: number | null;
+
+  @ManyToOne(() => ProductFlavour, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'productFlavourId' })
+  productFlavour: ProductFlavour | null;
+
+  @Column()
+  uomId: string;
+
+  @ManyToOne(() => Uom, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'uomId' })
+  uom: Uom;
+
+  @Column()
+  warehouseId: string;
+
+  @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'warehouseId' })
+  warehouse: Warehouse;
+
+  /** Claim-module batch only (not ERP batchs). Set when status creates stock. */
+  @Column({ type: 'uuid', nullable: true })
+  claimBatchId: string | null;
+
+  // object (not ClaimBatch): avoid emitDecoratorMetadata TDZ for forward class ref
+  @ManyToOne(() => ClaimBatch, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'claimBatchId' })
+  claimBatch: object | null;
+
+  @Column({ type: 'int' })
+  claimedQuantity: number;
+
+  @Column({
+    type: 'enum',
+    enum: ClaimItemUnitOutcome,
+    default: ClaimItemUnitOutcome.PENDING,
+  })
+  unitOutcome: ClaimItemUnitOutcome;
+
+  @Column({
+    type: 'enum',
+    enum: ClaimDiscardType,
+    nullable: true,
+  })
+  discardType: ClaimDiscardType | null;
+
+  @Column({ type: 'text', nullable: true })
+  discardReason: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  notes: string | null;
+
+  @CreateDateColumn()
+  createdAt: Date;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
+
+  @OneToMany(() => ClaimBatch, (batch) => batch.claimItem)
+  batches: ClaimBatch[];
+}
+
 /**
  * Claim-module inventory only — not linked to ERP batchs / stock_balances.
  * Batch is created when claim status advances (e.g. submit/validate);
@@ -197,172 +366,4 @@ export class ClaimStock {
 
   @DeleteDateColumn({ nullable: true })
   deletedAt: Date | null;
-}
-
-@Entity('claims')
-export class Claim {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
-  @Column()
-  businessId: string;
-
-  @ManyToOne(() => Business, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'businessId' })
-  business: Business;
-
-  @Column({ unique: true })
-  claimNumber: string;
-
-  @Column({ type: 'date' })
-  claimDate: Date;
-
-  @Column({
-    type: 'enum',
-    enum: ClaimSourceType,
-  })
-  sourceType: ClaimSourceType;
-
-  /** Customer when sourceType = CUSTOMER */
-  @Column({ type: 'uuid', nullable: true })
-  partyId: string | null;
-
-  @ManyToOne(() => Party, { onDelete: 'RESTRICT', nullable: true })
-  @JoinColumn({ name: 'partyId' })
-  party: Party | null;
-
-  /** Own warehouse/showroom when sourceType = OWN_LOCATION */
-  @Column({ type: 'uuid', nullable: true })
-  warehouseId: string | null;
-
-  @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT', nullable: true })
-  @JoinColumn({ name: 'warehouseId' })
-  warehouse: Warehouse | null;
-
-  /** Set when claim is sent to vendor */
-  @Column({ type: 'uuid', nullable: true })
-  vendorId: string | null;
-
-  @ManyToOne(() => Party, { onDelete: 'RESTRICT', nullable: true })
-  @JoinColumn({ name: 'vendorId' })
-  vendor: Party | null;
-
-  @Column({
-    type: 'enum',
-    enum: ClaimStatus,
-    default: ClaimStatus.DRAFT,
-  })
-  status: ClaimStatus;
-
-  @Column({ type: 'boolean', nullable: true })
-  isValid: boolean | null;
-
-  @Column({ type: 'text', nullable: true })
-  invalidReason: string | null;
-
-  @Column({ type: 'text', nullable: true })
-  notes: string | null;
-
-  @Column({ type: 'uuid', nullable: true })
-  createdBy: string | null;
-
-  @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'createdBy' })
-  createdByUser: User | null;
-
-  @Column({ type: 'timestamptz', nullable: true })
-  closedAt: Date | null;
-
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
-
-  @OneToMany(() => ClaimItem, (item) => item.claim)
-  items: ClaimItem[];
-
-  @OneToMany(() => ClaimBatch, (batch) => batch.claim)
-  batches: ClaimBatch[];
-}
-
-@Entity('claim_items')
-export class ClaimItem {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
-
-  @Column()
-  claimId: string;
-
-  @ManyToOne(() => Claim, (claim) => claim.items, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'claimId' })
-  claim: Claim;
-
-  @Column()
-  productId: string;
-
-  @ManyToOne(() => Product, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'productId' })
-  product: Product;
-
-  @Column({ type: 'int', nullable: true })
-  productFlavourId: number | null;
-
-  @ManyToOne(() => ProductFlavour, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'productFlavourId' })
-  productFlavour: ProductFlavour | null;
-
-  @Column()
-  uomId: string;
-
-  @ManyToOne(() => Uom, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'uomId' })
-  uom: Uom;
-
-  @Column()
-  warehouseId: string;
-
-  @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'warehouseId' })
-  warehouse: Warehouse;
-
-  /** Claim-module batch only (not ERP batchs). Set when status creates stock. */
-  @Column({ type: 'uuid', nullable: true })
-  claimBatchId: string | null;
-
-  @ManyToOne(() => ClaimBatch, { onDelete: 'SET NULL', nullable: true })
-  @JoinColumn({ name: 'claimBatchId' })
-  claimBatch: ClaimBatch | null;
-
-  @Column({ type: 'int' })
-  claimedQuantity: number;
-
-  @Column({
-    type: 'enum',
-    enum: ClaimItemUnitOutcome,
-    default: ClaimItemUnitOutcome.PENDING,
-  })
-  unitOutcome: ClaimItemUnitOutcome;
-
-  @Column({
-    type: 'enum',
-    enum: ClaimDiscardType,
-    nullable: true,
-  })
-  discardType: ClaimDiscardType | null;
-
-  @Column({ type: 'text', nullable: true })
-  discardReason: string | null;
-
-  @Column({ type: 'text', nullable: true })
-  notes: string | null;
-
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
-
-  @OneToMany(() => ClaimBatch, (batch) => batch.claimItem)
-  batches: ClaimBatch[];
 }
