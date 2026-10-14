@@ -39,6 +39,7 @@ import { UpdatePurchaseOrderDto } from '../../dto/purchase-order/update-purchase
 import { UpdatePurchaseOrderItemDto } from '../../dto/purchase-order/update-purchase-order-item.dto';
 import { EditApprovedPurchaseOrderDto } from '../../dto/purchase-order/edit-approved-purchase-order.dto';
 import { EditApprovedPurchaseOrderItemDto } from '../../dto/purchase-order/edit-approved-purchase-order-item.dto';
+import { BulkApproveAndPurchasePurchaseOrdersDto } from '../../dto/purchase-order/bulk-approve-and-purchase-purchase-orders.dto';
 import {
   PurchaseOrderJsonImportDto,
   PurchaseOrderJsonItemDto,
@@ -1087,6 +1088,208 @@ export class PurchaseOrderService {
           created.purchaseInvoice,
         ),
       },
+    };
+  }
+
+  /**
+   * Approve existing PENDING POs and create approved GRN + purchase invoice each.
+   * Per-id transaction: one failure does not roll back others.
+   */
+  private async approveAndPurchaseExistingOrder(
+    tenantDb: DataSource,
+    businessId: string,
+    orderId: string,
+    actorUserId: string,
+  ) {
+    return tenantDb.transaction(async (manager) => {
+      const orderRepo = manager.getRepository(PurchaseOrder);
+      const order = await orderRepo
+        .createQueryBuilder('po')
+        .innerJoin('po.warehouse', 'warehouse')
+        .leftJoinAndSelect('po.warehouse', 'warehouseSelect')
+        .leftJoinAndSelect('po.vendor', 'vendor')
+        .leftJoinAndSelect('po.createdByUser', 'createdByUser')
+        .leftJoinAndSelect('po.items', 'items')
+        .leftJoinAndSelect('items.product', 'product')
+        .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+        .leftJoinAndSelect('items.uom', 'uom')
+        .where('po.id = :orderId', { orderId })
+        .andWhere('warehouse.businessId = :businessId', { businessId })
+        .getOne();
+
+      if (!order) {
+        throw new NotFoundException('Purchase order not found');
+      }
+
+      if (order.orderStatus === OrderStatus.APPROVED) {
+        throw new BadRequestException('Purchase order is already approved');
+      }
+
+      if (order.orderStatus !== OrderStatus.PENDING) {
+        throw new BadRequestException(
+          'Only pending purchase orders can be approved and purchased',
+        );
+      }
+
+      if (!order.items?.length) {
+        throw new BadRequestException('Purchase order must have items');
+      }
+
+      const vendor = order.vendor;
+      if (!vendor) {
+        throw new NotFoundException('Vendor not found on purchase order');
+      }
+      if (!vendor.payableAccountId) {
+        throw new BadRequestException(
+          'Vendor payable account is required before approving GRN',
+        );
+      }
+
+      const hasApprovedGrn = await manager.getRepository(Grn).exists({
+        where: {
+          purchaseOrderId: order.id,
+          businessId,
+          status: GrnStatus.APPROVED,
+          deletedAt: IsNull(),
+        },
+      });
+      if (hasApprovedGrn) {
+        throw new BadRequestException(
+          'Purchase order already has an approved GRN',
+        );
+      }
+
+      order.orderStatus = OrderStatus.APPROVED;
+      await orderRepo.save(order);
+
+      const loadedOrder = await orderRepo.findOneOrFail({
+        where: { id: order.id },
+        relations: this.orderRelations(),
+      });
+
+      const grn = await this.grnService.createApprovedFromOrder(manager, {
+        businessId,
+        order: loadedOrder,
+        grnDate: new Date(loadedOrder.orderDate),
+        deliveryCost: Number(loadedOrder.deliveryCost),
+        taxPercentage: Number(loadedOrder.taxPercentage),
+        discountPercentage: Number(loadedOrder.discountPercentage),
+        notes: loadedOrder.notes,
+        actorUserId,
+      });
+
+      const purchaseInvoice = await manager
+        .getRepository(PurchaseInvoice)
+        .findOne({
+          where: { grnId: grn.id, deletedAt: IsNull() },
+        });
+
+      return { order: loadedOrder, grn, purchaseInvoice };
+    });
+  }
+
+  async bulkApproveAndPurchase(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    dto: BulkApproveAndPurchasePurchaseOrdersDto,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const ids = [...new Set(dto.ids.map((id) => id.trim()).filter(Boolean))];
+
+    if (!ids.length) {
+      throw new BadRequestException('At least one purchase order id is required');
+    }
+
+    const results: Array<{
+      id: string;
+      orderNumber?: string;
+      status: 'success' | 'error';
+      message?: string;
+      purchaseOrder?: ReturnType<PurchaseOrderService['mapPurchaseOrder']>;
+      grn?: ReturnType<PurchaseOrderService['mapPurchaseWorkflowGrn']>;
+      purchaseInvoice?: ReturnType<
+        PurchaseOrderService['mapPurchaseWorkflowInvoice']
+      >;
+    }> = [];
+
+    let succeeded = 0;
+    let failed = 0;
+
+    for (const id of ids) {
+      try {
+        const created = await this.approveAndPurchaseExistingOrder(
+          tenantDb,
+          scopedBusinessId,
+          id,
+          actorUserId,
+        );
+
+        await this.activityLogService.recordActivityLog(tenantDb, {
+          actorId: actorUserId,
+          businessId: scopedBusinessId,
+          action: 'PURCHASE_ORDER_APPROVED_AND_PURCHASED',
+          description: `Purchase order ${created.order.orderNumber} approved and purchased`,
+          metadata: {
+            purchaseOrderId: created.order.id,
+            orderNumber: created.order.orderNumber,
+            grnId: created.grn.id,
+            grnNumber: created.grn.grnNumber,
+            purchaseInvoiceId: created.purchaseInvoice?.id ?? null,
+            invoiceNumber: created.purchaseInvoice?.invoiceNumber ?? null,
+            bulk: true,
+          },
+        });
+
+        succeeded += 1;
+        results.push({
+          id,
+          orderNumber: created.order.orderNumber,
+          status: 'success',
+          purchaseOrder: this.mapPurchaseOrder(created.order),
+          grn: this.mapPurchaseWorkflowGrn(created.grn),
+          purchaseInvoice: this.mapPurchaseWorkflowInvoice(
+            created.purchaseInvoice,
+          ),
+        });
+      } catch (error) {
+        failed += 1;
+        let orderNumber: string | undefined;
+        try {
+          const existing = await tenantDb
+            .getRepository(PurchaseOrder)
+            .findOne({ where: { id }, select: ['id', 'orderNumber'] });
+          orderNumber = existing?.orderNumber;
+        } catch {
+          // ignore lookup failure for error row label
+        }
+        results.push({
+          id,
+          orderNumber,
+          status: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'PURCHASE_ORDER_BULK_APPROVE_AND_PURCHASE',
+      description: `Bulk approve and purchase finished. Succeeded: ${succeeded}, Failed: ${failed}`,
+      metadata: {
+        total: ids.length,
+        succeeded,
+        failed,
+        ids,
+      },
+    });
+
+    return {
+      total: ids.length,
+      succeeded,
+      failed,
+      results,
     };
   }
 

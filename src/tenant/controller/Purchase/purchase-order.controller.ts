@@ -36,6 +36,7 @@ import { CreatePurchaseOrderDto } from '../../dto/purchase-order/create-purchase
 import { CreateSimplePurchaseOrderDto } from '../../dto/purchase-order/create-simple-purchase-order.dto';
 import { UpdatePurchaseOrderDto } from '../../dto/purchase-order/update-purchase-order.dto';
 import { EditApprovedPurchaseOrderDto } from '../../dto/purchase-order/edit-approved-purchase-order.dto';
+import { BulkApproveAndPurchasePurchaseOrdersDto } from '../../dto/purchase-order/bulk-approve-and-purchase-purchase-orders.dto';
 import { jsonImportUploadOptions } from '../../config/json-import-upload.config';
 
 @Controller('tenant/purchase-orders')
@@ -109,6 +110,22 @@ export class PurchaseOrderController {
   ) {
     const user = req.user as TenantRequestUser;
     return this.purchaseOrderService.createApproveAndPurchase(
+      tenantDb,
+      user.businessId,
+      dto,
+      user.userId,
+    );
+  }
+
+  @Post('bulk-approve-and-purchase')
+  @RequirePermissions('APPROVE_PURCHASE_ORDER')
+  bulkApproveAndPurchase(
+    @TenantConnection() tenantDb: DataSource,
+    @Body() dto: BulkApproveAndPurchasePurchaseOrdersDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.purchaseOrderService.bulkApproveAndPurchase(
       tenantDb,
       user.businessId,
       dto,
