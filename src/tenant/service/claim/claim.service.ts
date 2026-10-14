@@ -157,9 +157,9 @@ export class ClaimService {
       if (line.productFlavourId != null) {
         const flavour = await manager.getRepository(ProductFlavour).findOne({
           where: {
-            id: line.productFlavourId,
+            id: String(line.productFlavourId),
             productId: line.productId,
-          } as { id: number; productId: string },
+          },
         });
         if (!flavour) {
           throw new NotFoundException(
