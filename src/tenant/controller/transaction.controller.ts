@@ -1,7 +1,7 @@
 import { TenantBusinessAccessGuard } from "src/auth/tenant-business-access.guard";
-import { TenantConnection } from "src/common/tenant/tenant-connection.decorator";
+import { TenantCode, TenantConnection } from "src/common/tenant/tenant-connection.decorator";
 import { DataSource } from "typeorm";
-import { Controller, Get, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Post, Query, Req, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import { TenantPermissionGuard } from "src/auth/tenant-permission.guard";
 import { TenantRequestUser } from "src/auth/tenant-jwt.strategy";
@@ -9,6 +9,8 @@ import { TenantConnectionGuard } from "src/common/guards/tenant-connection.guard
 import { TenantJwtAuthGuard } from "src/auth/tenant-jwt-auth.guard";
 import { TenantJwtGuard } from "src/common/guards/tenant-jwt.guard";
 import { RequirePermissions } from "src/auth/require-permission.decorator";
+import { BackfillTradingLedgerDto } from "../dto/transaction/backfill-trading-ledger.dto";
+import { MissingTradingLedgerBackfillService } from "../service/missing-trading-ledger-backfill.service";
 import { TransactionService } from "../service/transaction.service";
 
 @Controller('tenant/transactions')
@@ -20,7 +22,10 @@ import { TransactionService } from "../service/transaction.service";
     TenantPermissionGuard,
 )
 export class TransactionController {
-    constructor(private readonly transactionService: TransactionService) { }
+    constructor(
+        private readonly transactionService: TransactionService,
+        private readonly missingTradingLedgerBackfillService: MissingTradingLedgerBackfillService,
+    ) { }
 
     @Get('')
     @RequirePermissions('LIST_TRANSACTION')
@@ -46,6 +51,28 @@ export class TransactionController {
             user.businessId,
             chartOfAccountId,
             user.userId,
+        );
+    }
+
+    /**
+     * Backfill missing Inventory / Sales Revenue / COGS (+ AR/AP) journals
+     * for approved GRN, purchase returns, delivery notes, and sale returns.
+     * Stock is never touched. Default dryRun=true — apply needs confirm.
+     */
+    @Post('backfill-trading-ledger')
+    @RequirePermissions('RECALCULATE_LEDGER')
+    backfillTradingLedger(
+        @TenantConnection() tenantDb: DataSource,
+        @TenantCode() tenantCode: string,
+        @Req() req: Request,
+        @Body() dto: BackfillTradingLedgerDto,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.missingTradingLedgerBackfillService.startBackfill(
+            tenantDb,
+            tenantCode,
+            user,
+            dto ?? {},
         );
     }
 }   
