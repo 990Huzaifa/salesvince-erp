@@ -404,10 +404,21 @@ export class TenantUtilityService {
       .trim();
   }
 
-  async getAccountList(tenantDb: DataSource, parentCode: string, businessId: string) {
+  async getAccountList(
+    tenantDb: DataSource,
+    parentCode: string,
+    businessId: string,
+    accountKind?: ChartOfAccountKind,
+  ) {
     const accountList = await tenantDb.getRepository(ChartOfAccount).find({
-      select: ['id', 'name', 'code', 'parentCode', 'isPostable'],
-      where: { deletedAt: null, parentCode: parentCode, isPostable: true, businessId: businessId },
+      select: ['id', 'name', 'code', 'parentCode', 'isPostable', 'accountKind'],
+      where: {
+        deletedAt: null,
+        parentCode,
+        isPostable: true,
+        businessId,
+        ...(accountKind ? { accountKind } : {}),
+      },
       order: { name: 'ASC' },
     });
 

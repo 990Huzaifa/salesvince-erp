@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -9,8 +10,11 @@ import {
   Put,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
@@ -19,12 +23,17 @@ import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
-import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
+import {
+  TenantCode,
+  TenantConnection,
+} from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { PurchaseReturnStatus } from 'src/tenant-db/entities/purchase-return.entity';
 import { PurchaseReturnService } from '../../service/purchase/purchase-return.service';
 import { CreatePurchaseReturnDto } from '../../dto/purchase-return/create-purchase-return.dto';
 import { UpdatePurchaseReturnDto } from '../../dto/purchase-return/update-purchase-return.dto';
+import { BulkApprovePurchaseReturnsDto } from '../../dto/purchase-return/bulk-approve-purchase-returns.dto';
+import { jsonImportUploadOptions } from '../../config/json-import-upload.config';
 
 @Controller('tenant/purchase-returns')
 @UseGuards(
@@ -69,6 +78,45 @@ export class PurchaseReturnController {
     );
   }
 
+  @Get('export')
+  @RequirePermissions('LIST_PURCHASE_RETURN')
+  exportPurchaseReturnsJson(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.purchaseReturnService.exportPurchaseReturnsJson(
+      tenantDb,
+      user.businessId,
+      user.userId,
+    );
+  }
+
+  @Post('import-json')
+  @RequirePermissions('CREATE_PURCHASE_RETURN')
+  @UseInterceptors(FileInterceptor('file', jsonImportUploadOptions))
+  importPurchaseReturnsJson(
+    @TenantConnection() tenantDb: DataSource,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('mode') mode: string | undefined,
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException(
+        'JSON file is required. Use multipart form-data field "file".',
+      );
+    }
+    const user = req.user as TenantRequestUser;
+    return this.purchaseReturnService.importPurchaseReturnsJson(
+      tenantDb,
+      file,
+      { userId: user.userId, businessId: user.businessId },
+      tenantCode,
+      mode,
+    );
+  }
+
   @Get()
   @RequirePermissions('LIST_PURCHASE_RETURN')
   list(
@@ -107,6 +155,22 @@ export class PurchaseReturnController {
       tenantDb,
       user.businessId,
       id,
+      user.userId,
+    );
+  }
+
+  @Post('bulk-approve')
+  @RequirePermissions('APPROVE_PURCHASE_RETURN')
+  bulkApprove(
+    @TenantConnection() tenantDb: DataSource,
+    @Body() dto: BulkApprovePurchaseReturnsDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.purchaseReturnService.bulkApprove(
+      tenantDb,
+      user.businessId,
+      dto,
       user.userId,
     );
   }

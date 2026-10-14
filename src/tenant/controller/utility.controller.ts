@@ -9,6 +9,7 @@ import { TenantUtilityService } from "../service/tenant-utility.service";
 import type { TenantRequestUser } from "src/auth/tenant-jwt.strategy";
 import { TenantBusinessAccessGuard } from "src/auth/tenant-business-access.guard";
 import { ComponentTypeEnum } from 'src/tenant-db/entities/hr/hr.enums';
+import { ChartOfAccountKind } from 'src/tenant-db/entities/chart-of-account.entity';
 import { sendPdf } from 'src/common/pdf';
 import { OpeningBalancePdfService } from '../service/report/opening-balance-pdf.service';
 
@@ -283,12 +284,26 @@ export class TenantUtilityController {
         @TenantConnection() tenantDb: DataSource,
         @Req() req: Request,
         @Query('parentCode') parentCode: string,
+        @Query('accountKind') accountKind?: ChartOfAccountKind,
     ) {
         if (!parentCode) {
             throw new BadRequestException('Parent code is required');
         }
+        if (
+            accountKind &&
+            !Object.values(ChartOfAccountKind).includes(accountKind)
+        ) {
+            throw new BadRequestException(
+                `accountKind must be one of: ${Object.values(ChartOfAccountKind).join(', ')}`,
+            );
+        }
         const user = req.user as TenantRequestUser;
-        return this.utilityService.getAccountList(tenantDb, parentCode, user.businessId);
+        return this.utilityService.getAccountList(
+            tenantDb,
+            parentCode,
+            user.businessId,
+            accountKind,
+        );
     }
 
     @UseGuards(

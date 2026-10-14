@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -9,8 +10,11 @@ import {
   Put,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
@@ -19,12 +23,17 @@ import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard';
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
-import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
+import {
+  TenantCode,
+  TenantConnection,
+} from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { SaleReturnStatus } from 'src/tenant-db/entities/sale-return.entity';
 import { SaleReturnService } from '../../service/sale/sale-return.service';
 import { CreateSaleReturnDto } from '../../dto/sale-return/create-sale-return.dto';
 import { UpdateSaleReturnDto } from '../../dto/sale-return/update-sale-return.dto';
+import { BulkApproveSaleReturnsDto } from '../../dto/sale-return/bulk-approve-sale-returns.dto';
+import { jsonImportUploadOptions } from '../../config/json-import-upload.config';
 
 @Controller('tenant/sale-returns')
 @UseGuards(
@@ -69,6 +78,45 @@ export class SaleReturnController {
     );
   }
 
+  @Get('export')
+  @RequirePermissions('LIST_SALE_RETURN')
+  exportSaleReturnsJson(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.saleReturnService.exportSaleReturnsJson(
+      tenantDb,
+      user.businessId,
+      user.userId,
+    );
+  }
+
+  @Post('import-json')
+  @RequirePermissions('CREATE_SALE_RETURN')
+  @UseInterceptors(FileInterceptor('file', jsonImportUploadOptions))
+  importSaleReturnsJson(
+    @TenantConnection() tenantDb: DataSource,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('mode') mode: string | undefined,
+    @Req() req: Request,
+    @TenantCode() tenantCode: string,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException(
+        'JSON file is required. Use multipart form-data field "file".',
+      );
+    }
+    const user = req.user as TenantRequestUser;
+    return this.saleReturnService.importSaleReturnsJson(
+      tenantDb,
+      file,
+      { userId: user.userId, businessId: user.businessId },
+      tenantCode,
+      mode,
+    );
+  }
+
   @Get()
   @RequirePermissions('LIST_SALE_RETURN')
   list(
@@ -107,6 +155,22 @@ export class SaleReturnController {
       tenantDb,
       user.businessId,
       id,
+      user.userId,
+    );
+  }
+
+  @Post('bulk-approve')
+  @RequirePermissions('APPROVE_SALE_RETURN')
+  bulkApprove(
+    @TenantConnection() tenantDb: DataSource,
+    @Body() dto: BulkApproveSaleReturnsDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.saleReturnService.bulkApprove(
+      tenantDb,
+      user.businessId,
+      dto,
       user.userId,
     );
   }
