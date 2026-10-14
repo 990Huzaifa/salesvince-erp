@@ -75,6 +75,10 @@ import { PurchaseInvoiceController } from './controller/Purchase/purchase-invoic
 import { PurchaseInvoiceService } from './service/purchase/purchase-invoice.service';
 import { PurchaseReturnController } from './controller/Purchase/purchase-return.controller';
 import { PurchaseReturnService } from './service/purchase/purchase-return.service';
+import { ClaimController } from './controller/claim/claim.controller';
+import { ClaimStockController } from './controller/claim/claim-stock.controller';
+import { ClaimService } from './service/claim/claim.service';
+import { ClaimStockService } from './service/claim/claim-stock.service';
 import { FinanceController } from './controller/finance.controller';
 import { FinanceService } from './service/finance.service';
 import { TenantNotificationController } from './controller/tenant-notification.controller';
@@ -225,6 +229,8 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     GrnController,
     PurchaseInvoiceController,
     PurchaseReturnController,
+    ClaimController,
+    ClaimStockController,
     FinanceController,
     ReportController,
     DashboardController,
@@ -296,6 +302,8 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     StockService,
     PurchaseInvoiceService,
     PurchaseReturnService,
+    ClaimService,
+    ClaimStockService,
     FinanceService,
     MasterGeoHelperService,
     ReportService,

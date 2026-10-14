@@ -56,6 +56,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'CREATE_PURCHASE_INVOICE', name: 'Create Purchase Invoice' },
   { key: 'CREATE_WAREHOUSE', name: 'Create Warehouse' },
   { key: 'CREATE_LOAN', name: 'Create Loan' },
+  { key: 'CREATE_CLAIM', name: 'Create Claim' },
 
   { key: 'LIST_USER', name: 'List Users' },
   { key: 'LIST_ROLE', name: 'List Role' },
@@ -101,6 +102,8 @@ export const TENANT_PERMISSIONS = [
   { key: 'LIST_INVENTORY_FORECAST', name: 'List Inventory Forecast' },
   { key: 'LIST_ACTIVITY_LOG', name: 'List Activity Log' },
   { key: 'LIST_LOAN', name: 'List Loan' },
+  { key: 'LIST_CLAIM', name: 'List Claim' },
+  { key: 'LIST_CLAIM_STOCK', name: 'List Claim Stock' },
 
   { key: 'UPDATE_USER', name: 'Update Users' },
   { key: 'UPDATE_ROLE', name: 'Update Role' },
@@ -122,6 +125,8 @@ export const TENANT_PERMISSIONS = [
   { key: 'UPDATE_SALE_INVOICE', name: 'Update Sale Invoice' },
   { key: 'UPDATE_SALE_RETURN', name: 'Update Sale Return' },
   { key: 'UPDATE_PURCHASE_RETURN', name: 'Update Purchase Return' },
+  { key: 'UPDATE_CLAIM', name: 'Update Claim' },
+  { key: 'UPDATE_CLAIM_STATUS', name: 'Update Claim Status' },
   { key: 'UPDATE_SALE_VOUCHER', name: 'Update Sale Voucher' },
   { key: 'UPDATE_PURCHASE_VOUCHER', name: 'Update Purchase Voucher' },
   { key: 'UPDATE_PURCHASE_RETURN_VOUCHER', name: 'Update Purchase Return Voucher' },
@@ -220,6 +225,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'VIEW_PURCHASE_INVOICE', name: 'View Purchase Invoice' },
   { key: 'VIEW_WAREHOUSE', name: 'View Warehouse' },
   { key: 'VIEW_LOAN', name: 'View Loan' },
+  { key: 'VIEW_CLAIM', name: 'View Claim' },
 
   { key: 'DELETE_USER', name: 'Delete Users' },
   { key: 'LIST_DELETE_USER_REQUEST', name: 'List Delete User Requests' },
@@ -237,6 +243,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'DELETE_SALE_VOUCHER', name: 'Delete Sale Voucher' },
   { key: 'DELETE_PURCHASE_VOUCHER', name: 'Delete Purchase Voucher' },
   { key: 'DELETE_PURCHASE_RETURN', name: 'Delete Purchase Return' },
+  { key: 'DELETE_CLAIM', name: 'Delete Claim' },
   { key: 'DELETE_OPENING_STOCK', name: 'Delete Opening Stock' },
   { key: 'DELETE_PURCHASE_STOCK', name: 'Delete Purchase Stock' },
   { key: 'DELETE_TRANSFER_STOCK', name: 'Delete Transfer Stock' },
