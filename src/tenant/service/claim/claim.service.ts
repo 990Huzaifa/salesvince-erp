@@ -43,23 +43,6 @@ export class ClaimService {
     return businessId;
   }
 
-  private claimRelations() {
-    return {
-      party: true,
-      warehouse: true,
-      vendor: true,
-      createdByUser: true,
-      items: {
-        product: true,
-        productFlavour: { flavour: true },
-        uom: true,
-        warehouse: true,
-        batches: true,
-      },
-      batches: true,
-    } as const;
-  }
-
   private async generateClaimNumber(
     source: DataSource | EntityManager,
   ): Promise<string> {
@@ -175,9 +158,8 @@ export class ClaimService {
   }
 
   /**
-   * Scalar-only update — never save() a Claim loaded with relations.
-   * save() syncs OneToMany batches and can SET claim_batches.claimId = null
-   * when ClaimBatch has JoinColumn + relation unset in the persistence context.
+   * Column-level update via SQL — avoids save() relation sync and RelationId
+   * read-only fields on the cleaned Claim entity.
    */
   private async patchClaim(
     manager: EntityManager,
@@ -194,7 +176,34 @@ export class ClaimService {
       closedAt: Date | null;
     }>,
   ) {
-    await manager.getRepository(Claim).update({ id: claimId }, patch);
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    const add = (column: string, value: unknown) => {
+      params.push(value);
+      sets.push(`"${column}" = $${params.length}`);
+    };
+
+    if (patch.status !== undefined) add('status', patch.status);
+    if (patch.vendorId !== undefined) add('vendorId', patch.vendorId);
+    if (patch.isValid !== undefined) add('isValid', patch.isValid);
+    if (patch.invalidReason !== undefined) {
+      add('invalidReason', patch.invalidReason);
+    }
+    if (patch.notes !== undefined) add('notes', patch.notes);
+    if (patch.partyId !== undefined) add('partyId', patch.partyId);
+    if (patch.warehouseId !== undefined) add('warehouseId', patch.warehouseId);
+    if (patch.claimDate !== undefined) add('claimDate', patch.claimDate);
+    if (patch.closedAt !== undefined) add('closedAt', patch.closedAt);
+
+    if (!sets.length) {
+      return;
+    }
+
+    params.push(claimId);
+    await manager.query(
+      `UPDATE claims SET ${sets.join(', ')}, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $${params.length}::uuid`,
+      params,
+    );
   }
 
   private async loadClaimOrFail(
@@ -202,10 +211,24 @@ export class ClaimService {
     businessId: string,
     id: string,
   ): Promise<Claim> {
-    const claim = await manager.getRepository(Claim).findOne({
-      where: { id, businessId },
-      relations: this.claimRelations(),
-    });
+    const claim = await manager
+      .getRepository(Claim)
+      .createQueryBuilder('claim')
+      .leftJoinAndSelect('claim.party', 'party')
+      .leftJoinAndSelect('claim.warehouse', 'warehouse')
+      .leftJoinAndSelect('claim.vendor', 'vendor')
+      .leftJoinAndSelect('claim.createdByUser', 'createdByUser')
+      .leftJoinAndSelect('claim.items', 'items')
+      .leftJoinAndSelect('items.product', 'itemProduct')
+      .leftJoinAndSelect('items.productFlavour', 'itemProductFlavour')
+      .leftJoinAndSelect('itemProductFlavour.flavour', 'itemFlavour')
+      .leftJoinAndSelect('items.uom', 'itemUom')
+      .leftJoinAndSelect('items.warehouse', 'itemWarehouse')
+      .leftJoinAndSelect('items.batches', 'itemBatches')
+      .leftJoinAndSelect('claim.batches', 'batches')
+      .where('claim.id = :id', { id })
+      .andWhere('claim.businessId = :businessId', { businessId })
+      .getOne();
     if (!claim) {
       throw new NotFoundException('Claim not found');
     }
@@ -248,47 +271,64 @@ export class ClaimService {
         );
       }
 
-      const claimRepo = manager.getRepository(Claim);
-      const claim = await claimRepo.save(
-        claimRepo.create({
-          businessId: scopedBusinessId,
-          claimNumber,
-          claimDate: new Date(dto.claimDate),
-          sourceType: dto.sourceType,
-          partyId:
+      const claimId = (
+        await manager.query(
+          `
+          INSERT INTO claims (
+            "businessId", "claimNumber", "claimDate", "sourceType",
+            "partyId", "warehouseId", "vendorId", "status",
+            "isValid", "invalidReason", "notes", "createdBy", "closedAt"
+          ) VALUES (
+            $1::uuid, $2, $3::date, $4::claims_sourcetype_enum,
+            $5::uuid, $6::uuid, NULL, $7::claims_status_enum,
+            NULL, NULL, $8, $9::uuid, NULL
+          )
+          RETURNING "id"
+          `,
+          [
+            scopedBusinessId,
+            claimNumber,
+            dto.claimDate,
+            dto.sourceType,
             dto.sourceType === ClaimSourceType.CUSTOMER ? dto.partyId! : null,
-          warehouseId:
             dto.sourceType === ClaimSourceType.OWN_LOCATION
               ? dto.warehouseId!
               : null,
-          vendorId: null,
-          status: ClaimStatus.DRAFT,
-          isValid: null,
-          invalidReason: null,
-          notes: dto.notes?.trim() || null,
-          createdBy: actorUserId,
-          closedAt: null,
-        }),
-      );
+            ClaimStatus.DRAFT,
+            dto.notes?.trim() || null,
+            actorUserId,
+          ],
+        )
+      )[0].id as string;
 
-      const itemRepo = manager.getRepository(ClaimItem);
-      await itemRepo.insert(
-        dto.items.map((line) => ({
-          claimId: claim.id,
-          productId: line.productId,
-          productFlavourId: line.productFlavourId ?? null,
-          uomId: line.uomId,
-          warehouseId: line.warehouseId,
-          claimedQuantity: line.claimedQuantity,
-          unitOutcome: ClaimItemUnitOutcome.PENDING,
-          discardType: null,
-          discardReason: null,
-          notes: line.notes?.trim() || null,
-          proofImage: line.proofImage?.trim() || null,
-        })),
-      );
+      for (const line of dto.items) {
+        await manager.query(
+          `
+          INSERT INTO claim_items (
+            "claimId", "productId", "productFlavourId", "uomId", "warehouseId",
+            "claimedQuantity", "unitOutcome", "discardType", "discardReason",
+            "notes", "proofImage"
+          ) VALUES (
+            $1::uuid, $2::uuid, $3::int, $4::uuid, $5::uuid,
+            $6::int, $7::claim_items_unitoutcome_enum, NULL, NULL,
+            $8, $9
+          )
+          `,
+          [
+            claimId,
+            line.productId,
+            line.productFlavourId ?? null,
+            line.uomId,
+            line.warehouseId,
+            line.claimedQuantity,
+            ClaimItemUnitOutcome.PENDING,
+            line.notes?.trim() || null,
+            line.proofImage?.trim() || null,
+          ],
+        );
+      }
 
-      return this.loadClaimOrFail(manager, scopedBusinessId, claim.id);
+      return this.loadClaimOrFail(manager, scopedBusinessId, claimId);
     });
 
     await this.activityLogService.recordActivityLog(tenantDb, {
@@ -425,23 +465,36 @@ export class ClaimService {
 
       if (dto.items?.length) {
         await this.validateLineMasters(manager, scopedBusinessId, dto.items);
-        await manager.getRepository(ClaimItem).delete({ claimId: claim.id });
-        const itemRepo = manager.getRepository(ClaimItem);
-        await itemRepo.insert(
-          dto.items.map((line) => ({
-            claimId: claim.id,
-            productId: line.productId,
-            productFlavourId: line.productFlavourId ?? null,
-            uomId: line.uomId,
-            warehouseId: line.warehouseId,
-            claimedQuantity: line.claimedQuantity,
-            unitOutcome: ClaimItemUnitOutcome.PENDING,
-            discardType: null,
-            discardReason: null,
-            notes: line.notes?.trim() || null,
-            proofImage: line.proofImage?.trim() || null,
-          })),
+        await manager.query(
+          `DELETE FROM claim_items WHERE "claimId" = $1::uuid`,
+          [claim.id],
         );
+        for (const line of dto.items) {
+          await manager.query(
+            `
+            INSERT INTO claim_items (
+              "claimId", "productId", "productFlavourId", "uomId", "warehouseId",
+              "claimedQuantity", "unitOutcome", "discardType", "discardReason",
+              "notes", "proofImage"
+            ) VALUES (
+              $1::uuid, $2::uuid, $3::int, $4::uuid, $5::uuid,
+              $6::int, $7::claim_items_unitoutcome_enum, NULL, NULL,
+              $8, $9
+            )
+            `,
+            [
+              claim.id,
+              line.productId,
+              line.productFlavourId ?? null,
+              line.uomId,
+              line.warehouseId,
+              line.claimedQuantity,
+              ClaimItemUnitOutcome.PENDING,
+              line.notes?.trim() || null,
+              line.proofImage?.trim() || null,
+            ],
+          );
+        }
       }
 
       return this.loadClaimOrFail(manager, scopedBusinessId, claim.id);
@@ -471,8 +524,13 @@ export class ClaimService {
       if (claim.status !== ClaimStatus.DRAFT) {
         throw new BadRequestException('Only DRAFT claims can be deleted');
       }
-      await manager.getRepository(ClaimItem).delete({ claimId: claim.id });
-      await manager.getRepository(Claim).delete(claim.id);
+      await manager.query(
+        `DELETE FROM claim_items WHERE "claimId" = $1::uuid`,
+        [claim.id],
+      );
+      await manager.query(`DELETE FROM claims WHERE "id" = $1::uuid`, [
+        claim.id,
+      ]);
     });
 
     await this.activityLogService.recordActivityLog(tenantDb, {

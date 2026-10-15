@@ -8,6 +8,7 @@ import {
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
+  RelationId,
   UpdateDateColumn,
 } from 'typeorm';
 import { Business } from './business.entity';
@@ -49,17 +50,24 @@ export enum ClaimDiscardType {
   SCRAP = 'SCRAP',
 }
 
+/**
+ * FK rule for this file: one owner only.
+ * - Relation uses @ManyToOne + @JoinColumn (DB column + FK)
+ * - Id exposed via @RelationId (read helper — NOT a second @Column)
+ * Never pair @Column('xId') with @JoinColumn({ name: 'xId' }).
+ */
+
 @Entity('claims')
 export class Claim {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'uuid' })
-  businessId: string;
-
-  @ManyToOne(() => Business, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Business, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'businessId' })
   business: Business;
+
+  @RelationId((claim: Claim) => claim.business)
+  businessId: string;
 
   @Column({ unique: true })
   claimNumber: string;
@@ -74,28 +82,28 @@ export class Claim {
   sourceType: ClaimSourceType;
 
   /** Customer when sourceType = CUSTOMER */
-  @Column({ type: 'uuid', nullable: true })
-  partyId: string | null;
-
   @ManyToOne(() => Party, { onDelete: 'RESTRICT', nullable: true })
   @JoinColumn({ name: 'partyId' })
   party: Party | null;
 
-  /** Own warehouse/showroom when sourceType = OWN_LOCATION */
-  @Column({ type: 'uuid', nullable: true })
-  warehouseId: string | null;
+  @RelationId((claim: Claim) => claim.party)
+  partyId: string | null;
 
+  /** Own warehouse/showroom when sourceType = OWN_LOCATION */
   @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT', nullable: true })
   @JoinColumn({ name: 'warehouseId' })
   warehouse: Warehouse | null;
 
-  /** Set when claim is sent to vendor */
-  @Column({ type: 'uuid', nullable: true })
-  vendorId: string | null;
+  @RelationId((claim: Claim) => claim.warehouse)
+  warehouseId: string | null;
 
+  /** Set when claim is sent to vendor */
   @ManyToOne(() => Party, { onDelete: 'RESTRICT', nullable: true })
   @JoinColumn({ name: 'vendorId' })
   vendor: Party | null;
+
+  @RelationId((claim: Claim) => claim.vendor)
+  vendorId: string | null;
 
   @Column({
     type: 'enum',
@@ -113,12 +121,12 @@ export class Claim {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
-  @Column({ type: 'uuid', nullable: true })
-  createdBy: string | null;
-
   @ManyToOne(() => User, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'createdBy' })
   createdByUser: User | null;
+
+  @RelationId((claim: Claim) => claim.createdByUser)
+  createdBy: string | null;
 
   @Column({ type: 'timestamptz', nullable: true })
   closedAt: Date | null;
@@ -141,40 +149,43 @@ export class ClaimItem {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'uuid' })
-  claimId: string;
-
-  @ManyToOne(() => Claim, (claim) => claim.items, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Claim, (claim) => claim.items, {
+    onDelete: 'CASCADE',
+    nullable: false,
+  })
   @JoinColumn({ name: 'claimId' })
   claim: Claim;
 
-  @Column({ type: 'uuid' })
-  productId: string;
+  @RelationId((item: ClaimItem) => item.claim)
+  claimId: string;
 
-  @ManyToOne(() => Product, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Product, { onDelete: 'RESTRICT', nullable: false })
   @JoinColumn({ name: 'productId' })
   product: Product;
 
-  @Column({ type: 'int', nullable: true })
-  productFlavourId: number | null;
+  @RelationId((item: ClaimItem) => item.product)
+  productId: string;
 
   @ManyToOne(() => ProductFlavour, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'productFlavourId' })
   productFlavour: ProductFlavour | null;
 
-  @Column({ type: 'uuid' })
-  uomId: string;
+  @RelationId((item: ClaimItem) => item.productFlavour)
+  productFlavourId: number | null;
 
-  @ManyToOne(() => Uom, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Uom, { onDelete: 'RESTRICT', nullable: false })
   @JoinColumn({ name: 'uomId' })
   uom: Uom;
 
-  @Column({ type: 'uuid' })
-  warehouseId: string;
+  @RelationId((item: ClaimItem) => item.uom)
+  uomId: string;
 
-  @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT', nullable: false })
   @JoinColumn({ name: 'warehouseId' })
   warehouse: Warehouse;
+
+  @RelationId((item: ClaimItem) => item.warehouse)
+  warehouseId: string;
 
   @Column({ type: 'int' })
   claimedQuantity: number;
@@ -199,8 +210,6 @@ export class ClaimItem {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
-  // proof image
-
   @Column({ type: 'text', nullable: true })
   proofImage: string | null;
 
@@ -223,59 +232,63 @@ export class ClaimBatch {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'uuid' })
-  businessId: string;
-
-  @ManyToOne(() => Business, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Business, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'businessId' })
   business: Business;
 
-  /** FK owned only by JoinColumn — do not also @Column(claimId). */
-  claimId: string;
+  @RelationId((batch: ClaimBatch) => batch.business)
+  businessId: string;
 
-  @ManyToOne(() => Claim, (claim) => claim.batches, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Claim, (claim) => claim.batches, {
+    onDelete: 'CASCADE',
+    nullable: false,
+  })
   @JoinColumn({ name: 'claimId' })
   claim: Claim;
 
-  /** FK owned only by JoinColumn — do not also @Column(claimItemId). */
-  claimItemId: string;
+  @RelationId((batch: ClaimBatch) => batch.claim)
+  claimId: string;
 
   @ManyToOne(() => ClaimItem, (item) => item.batches, {
     onDelete: 'CASCADE',
+    nullable: false,
   })
   @JoinColumn({ name: 'claimItemId' })
   claimItem: ClaimItem;
 
+  @RelationId((batch: ClaimBatch) => batch.claimItem)
+  claimItemId: string;
+
   @Column()
   batchNumber: string;
 
-  @Column({ type: 'uuid' })
-  productId: string;
-
-  @ManyToOne(() => Product, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Product, { onDelete: 'RESTRICT', nullable: false })
   @JoinColumn({ name: 'productId' })
   product: Product;
 
-  @Column({ type: 'int', nullable: true })
-  productFlavourId: number | null;
+  @RelationId((batch: ClaimBatch) => batch.product)
+  productId: string;
 
   @ManyToOne(() => ProductFlavour, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'productFlavourId' })
   productFlavour: ProductFlavour | null;
 
-  @Column({ type: 'uuid' })
-  uomId: string;
+  @RelationId((batch: ClaimBatch) => batch.productFlavour)
+  productFlavourId: number | null;
 
-  @ManyToOne(() => Uom, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Uom, { onDelete: 'RESTRICT', nullable: false })
   @JoinColumn({ name: 'uomId' })
   uom: Uom;
 
-  @Column({ type: 'uuid' })
-  warehouseId: string;
+  @RelationId((batch: ClaimBatch) => batch.uom)
+  uomId: string;
 
-  @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT', nullable: false })
   @JoinColumn({ name: 'warehouseId' })
   warehouse: Warehouse;
+
+  @RelationId((batch: ClaimBatch) => batch.warehouse)
+  warehouseId: string;
 
   /** Remaining qty in this claim batch (drops on discard / deliver / return). */
   @Column({ type: 'int' })
@@ -322,40 +335,40 @@ export class ClaimStock {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'uuid' })
-  businessId: string;
-
-  @ManyToOne(() => Business, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Business, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'businessId' })
   business: Business;
 
-  @Column({ type: 'uuid' })
-  warehouseId: string;
+  @RelationId((stock: ClaimStock) => stock.business)
+  businessId: string;
 
-  @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT', nullable: false })
   @JoinColumn({ name: 'warehouseId' })
   warehouse: Warehouse;
 
-  @Column({ type: 'uuid' })
-  productId: string;
+  @RelationId((stock: ClaimStock) => stock.warehouse)
+  warehouseId: string;
 
-  @ManyToOne(() => Product, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Product, { onDelete: 'RESTRICT', nullable: false })
   @JoinColumn({ name: 'productId' })
   product: Product;
 
-  @Column({ type: 'uuid' })
-  uomId: string;
+  @RelationId((stock: ClaimStock) => stock.product)
+  productId: string;
 
-  @ManyToOne(() => Uom, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Uom, { onDelete: 'RESTRICT', nullable: false })
   @JoinColumn({ name: 'uomId' })
   uom: Uom;
 
-  @Column({ type: 'int', nullable: true })
-  productFlavourId: number | null;
+  @RelationId((stock: ClaimStock) => stock.uom)
+  uomId: string;
 
   @ManyToOne(() => ProductFlavour, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'productFlavourId' })
   productFlavour: ProductFlavour | null;
+
+  @RelationId((stock: ClaimStock) => stock.productFlavour)
+  productFlavourId: number | null;
 
   @Column({ type: 'int', default: 0 })
   quantityOnHand: number;

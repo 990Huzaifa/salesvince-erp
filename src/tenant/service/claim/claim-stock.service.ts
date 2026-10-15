@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { DataSource, EntityManager, IsNull } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import {
   Claim,
   ClaimBatch,
@@ -150,20 +150,23 @@ export class ClaimStockService {
     const asOf = new Date(claim.claimDate);
 
     for (const item of items) {
-      const freshItem = await itemRepo.findOne({
-        where: { id: item.id, claimId: claim.id },
-      });
+      const freshItem = await itemRepo
+        .createQueryBuilder('item')
+        .where('item.id = :id', { id: item.id })
+        .andWhere('item.claimId = :claimId', { claimId: claim.id })
+        .getOne();
       if (!freshItem) {
         throw new BadRequestException(`Claim item ${item.id} not found`);
       }
 
-      const existingBatch = await batchRepo.findOne({
-        where: {
-          claimId: claim.id,
+      const existingBatch = await batchRepo
+        .createQueryBuilder('batch')
+        .where('batch.claimId = :claimId', { claimId: claim.id })
+        .andWhere('batch.claimItemId = :claimItemId', {
           claimItemId: freshItem.id,
-          deletedAt: IsNull(),
-        },
-      });
+        })
+        .andWhere('batch.deletedAt IS NULL')
+        .getOne();
       if (existingBatch) {
         continue;
       }
