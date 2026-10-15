@@ -56,14 +56,14 @@ export class ClaimStockService {
       .leftJoinAndSelect('batch.uom', 'uom')
       .leftJoinAndSelect('batch.warehouse', 'warehouse')
       .leftJoinAndSelect('batch.claimItem', 'claimItem')
-      .where('batch.businessId = :businessId', { businessId })
+      .where('batch.business = :businessId', { businessId })
       .andWhere('batch.deletedAt IS NULL')
       .orderBy('batch.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
 
     if (query.claimId) {
-      qb.andWhere('batch.claimId = :claimId', { claimId: query.claimId });
+      qb.andWhere('batch.claim = :claimId', { claimId: query.claimId });
     }
     if (query.search?.trim()) {
       qb.andWhere(
@@ -103,7 +103,7 @@ export class ClaimStockService {
       .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .leftJoinAndSelect('stock.uom', 'uom')
       .leftJoinAndSelect('stock.warehouse', 'warehouse')
-      .where('stock.businessId = :businessId', { businessId })
+      .where('stock.business = :businessId', { businessId })
       .andWhere('stock.deletedAt IS NULL')
       .orderBy('product.name', 'ASC')
       .skip((page - 1) * limit)
@@ -160,7 +160,7 @@ export class ClaimStockService {
       const freshItem = await itemRepo
         .createQueryBuilder('item')
         .where('item.id = :id', { id: item.id })
-        .andWhere('item.claimId = :claimId', { claimId: claim.id })
+        .andWhere('item.claim = :claimId', { claimId: claim.id })
         .getOne();
       if (!freshItem) {
         throw new BadRequestException(`Claim item ${item.id} not found`);
@@ -168,8 +168,8 @@ export class ClaimStockService {
 
       const existingBatch = await batchRepo
         .createQueryBuilder('batch')
-        .where('batch.claimId = :claimId', { claimId: claim.id })
-        .andWhere('batch.claimItemId = :claimItemId', {
+        .where('batch.claim = :claimId', { claimId: claim.id })
+        .andWhere('batch.claimItem = :claimItemId', {
           claimItemId: freshItem.id,
         })
         .andWhere('batch.deletedAt IS NULL')
@@ -285,10 +285,10 @@ export class ClaimStockService {
       const batch = await batchRepo
         .createQueryBuilder('batch')
         .setLock('pessimistic_write')
-        .where('batch.claimItemId = :claimItemId', {
+        .where('batch.claimItem = :claimItemId', {
           claimItemId: freshItem.id,
         })
-        .andWhere('batch.businessId = :businessId', { businessId })
+        .andWhere('batch.business = :businessId', { businessId })
         .andWhere('batch.deletedAt IS NULL')
         .getOne();
 
@@ -354,10 +354,10 @@ export class ClaimStockService {
         const batch = await manager
           .getRepository(ClaimBatch)
           .createQueryBuilder('batch')
-          .where('batch.claimItemId = :claimItemId', {
+          .where('batch.claimItem = :claimItemId', {
             claimItemId: freshItem.id,
           })
-          .andWhere('batch.businessId = :businessId', { businessId })
+          .andWhere('batch.business = :businessId', { businessId })
           .andWhere('batch.deletedAt IS NULL')
           .getOne();
         if (batch) {
@@ -419,22 +419,22 @@ export class ClaimStockService {
       .getRepository(ClaimStock)
       .createQueryBuilder('stock')
       .setLock('pessimistic_write')
-      .where('stock.businessId = :businessId', {
+      .where('stock.business = :businessId', {
         businessId: params.businessId,
       })
-      .andWhere('stock.warehouseId = :warehouseId', {
+      .andWhere('stock.warehouse = :warehouseId', {
         warehouseId: params.warehouseId,
       })
-      .andWhere('stock.productId = :productId', {
+      .andWhere('stock.product = :productId', {
         productId: params.productId,
       })
-      .andWhere('stock.uomId = :uomId', { uomId: params.uomId })
+      .andWhere('stock.uom = :uomId', { uomId: params.uomId })
       .andWhere('stock.deletedAt IS NULL');
 
     if (flavourId === null) {
-      qb.andWhere('stock.productFlavourId IS NULL');
+      qb.andWhere('stock.productFlavour IS NULL');
     } else {
-      qb.andWhere('stock.productFlavourId = :flavourId', { flavourId });
+      qb.andWhere('stock.productFlavour = :flavourId', { flavourId });
     }
 
     let stock = await qb.getOne();

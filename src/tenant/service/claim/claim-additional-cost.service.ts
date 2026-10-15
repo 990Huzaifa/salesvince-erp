@@ -23,13 +23,19 @@ export class ClaimAdditionalCostService {
     const created = await tenantDb.transaction(async (manager) => {
       const claim = await manager
         .getRepository(Claim)
-        .findOne({ where: { id: dto.claimId, businessId: scoped } });
+        .createQueryBuilder('claim')
+        .where('claim.id = :id', { id: dto.claimId })
+        .andWhere('claim.business = :businessId', { businessId: scoped })
+        .getOne();
       if (!claim) throw new NotFoundException('Claim not found');
 
       if (dto.costTypeId) {
-        const ct = await manager.getRepository(ClaimCostType).findOne({
-          where: { id: dto.costTypeId, businessId: scoped },
-        });
+        const ct = await manager
+          .getRepository(ClaimCostType)
+          .createQueryBuilder('c')
+          .where('c.id = :id', { id: dto.costTypeId })
+          .andWhere('c.business = :businessId', { businessId: scoped })
+          .getOne();
         if (!ct) throw new NotFoundException('Cost type not found');
       }
 

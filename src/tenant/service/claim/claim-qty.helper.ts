@@ -138,9 +138,12 @@ export async function refreshClaimStatusFromBalances(
   manager: EntityManager,
   claimId: string,
 ): Promise<ClaimStatus> {
-  const items = await manager.getRepository(ClaimItem).find({
-    where: { claimId },
-  });
+  // ClaimItem.claimId is @RelationId — not usable in find/where; filter via relation.
+  const items = await manager
+    .getRepository(ClaimItem)
+    .createQueryBuilder('item')
+    .where('item.claim = :claimId', { claimId })
+    .getMany();
   if (!items.length) {
     return ClaimStatus.DRAFT;
   }
