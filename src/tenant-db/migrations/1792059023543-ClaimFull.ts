@@ -56,7 +56,6 @@ export class ClaimFull1792059023543 implements MigrationInterface {
         await queryRunner.query(`ALTER TABLE "claim_items" ADD "qtyRejected" integer NOT NULL DEFAULT '0'`);
         await queryRunner.query(`ALTER TABLE "claim_items" ADD "qtyGiven" integer NOT NULL DEFAULT '0'`);
         await queryRunner.query(`CREATE TYPE "public"."claim_vendor_shipments_status_enum" AS ENUM('PENDING', 'SHIPPED', 'CANCELLED')`);
-        await queryRunner.query(`ALTER TABLE "claim_vendor_shipments" ADD "status" "public"."claim_vendor_shipments_status_enum" NOT NULL DEFAULT 'PENDING'`);
         await queryRunner.query(`CREATE TYPE "public"."claim_vendor_shipment_items_status_enum" AS ENUM('PENDING', 'ACCEPTED', 'REJECTED')`);
         await queryRunner.query(`ALTER TABLE "claim_vendor_shipment_items" ADD "status" "public"."claim_vendor_shipment_items_status_enum" NOT NULL`);
         await queryRunner.query(`ALTER TABLE "claim_vendor_shipment_items" ADD "rejectReason" text`);
@@ -150,7 +149,6 @@ export class ClaimFull1792059023543 implements MigrationInterface {
         await queryRunner.query(`ALTER TABLE "claim_vendor_shipment_items" DROP COLUMN "rejectReason"`);
         await queryRunner.query(`ALTER TABLE "claim_vendor_shipment_items" DROP COLUMN "status"`);
         await queryRunner.query(`DROP TYPE "public"."claim_vendor_shipment_items_status_enum"`);
-        await queryRunner.query(`ALTER TABLE "claim_vendor_shipments" DROP COLUMN "status"`);
         await queryRunner.query(`DROP TYPE "public"."claim_vendor_shipments_status_enum"`);
         await queryRunner.query(`ALTER TABLE "claim_items" DROP COLUMN "qtyGiven"`);
         await queryRunner.query(`ALTER TABLE "claim_items" DROP COLUMN "qtyRejected"`);
