@@ -263,6 +263,7 @@ export class ClaimService {
             discardType: null,
             discardReason: null,
             notes: line.notes?.trim() || null,
+            proofImage: line.proofImage?.trim() || null,
           }),
         ),
       );
@@ -415,6 +416,7 @@ export class ClaimService {
               discardType: null,
               discardReason: null,
               notes: line.notes?.trim() || null,
+              proofImage: line.proofImage?.trim() || null,
             }),
           ),
         );

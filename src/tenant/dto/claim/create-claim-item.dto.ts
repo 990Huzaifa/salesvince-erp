@@ -32,4 +32,10 @@ export class CreateClaimItemDto {
   @IsString()
   @MaxLength(2000)
   notes?: string | null;
+
+  /** Proof image URL / S3 key (optional). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  proofImage?: string | null;
 }

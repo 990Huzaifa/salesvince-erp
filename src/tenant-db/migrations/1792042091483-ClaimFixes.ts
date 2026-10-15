@@ -1,0 +1,128 @@
+import { MigrationInterface, QueryRunner } from "typeorm";
+
+export class ClaimFixes1792042091483 implements MigrationInterface {
+    name = 'ClaimFixes1792042091483'
+
+    public async up(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.query(`ALTER TABLE "batchs" DROP CONSTRAINT "FK_batchs_grnId"`);
+        await queryRunner.query(`ALTER TABLE "batchs" DROP CONSTRAINT "FK_batchs_purchaseInvoiceId"`);
+        await queryRunner.query(`ALTER TABLE "delete_user_requests" DROP CONSTRAINT "FK_delete_user_requests_userId"`);
+        await queryRunner.query(`ALTER TABLE "claims" DROP CONSTRAINT "FK_claims_businessId"`);
+        await queryRunner.query(`ALTER TABLE "claims" DROP CONSTRAINT "FK_claims_partyId"`);
+        await queryRunner.query(`ALTER TABLE "claims" DROP CONSTRAINT "FK_claims_warehouseId"`);
+        await queryRunner.query(`ALTER TABLE "claims" DROP CONSTRAINT "FK_claims_vendorId"`);
+        await queryRunner.query(`ALTER TABLE "claims" DROP CONSTRAINT "FK_claims_createdBy"`);
+        await queryRunner.query(`ALTER TABLE "claim_items" DROP CONSTRAINT "FK_claim_items_claimId"`);
+        await queryRunner.query(`ALTER TABLE "claim_items" DROP CONSTRAINT "FK_claim_items_productId"`);
+        await queryRunner.query(`ALTER TABLE "claim_items" DROP CONSTRAINT "FK_claim_items_productFlavourId"`);
+        await queryRunner.query(`ALTER TABLE "claim_items" DROP CONSTRAINT "FK_claim_items_uomId"`);
+        await queryRunner.query(`ALTER TABLE "claim_items" DROP CONSTRAINT "FK_claim_items_warehouseId"`);
+        await queryRunner.query(`ALTER TABLE "claim_items" DROP CONSTRAINT "FK_claim_items_claimBatchId"`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" DROP CONSTRAINT "FK_claim_batches_businessId"`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" DROP CONSTRAINT "FK_claim_batches_claimId"`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" DROP CONSTRAINT "FK_claim_batches_claimItemId"`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" DROP CONSTRAINT "FK_claim_batches_productId"`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" DROP CONSTRAINT "FK_claim_batches_productFlavourId"`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" DROP CONSTRAINT "FK_claim_batches_uomId"`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" DROP CONSTRAINT "FK_claim_batches_warehouseId"`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" DROP CONSTRAINT "FK_claim_stocks_businessId"`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" DROP CONSTRAINT "FK_claim_stocks_warehouseId"`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" DROP CONSTRAINT "FK_claim_stocks_productId"`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" DROP CONSTRAINT "FK_claim_stocks_uomId"`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" DROP CONSTRAINT "FK_claim_stocks_productFlavourId"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_delete_user_requests_userId"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_delete_user_requests_status"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_claim_stocks_active_business_warehouse_product_uom_flavour"`);
+        await queryRunner.query(`ALTER TABLE "claim_items" ADD "proofImage" text`);
+        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_claim_stocks_active_without_flavour" ON "claim_stocks" ("businessId", "warehouseId", "productId", "uomId") WHERE "deletedAt" IS NULL AND "productFlavourId" IS NULL`);
+        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_claim_stocks_active_with_flavour" ON "claim_stocks" ("businessId", "warehouseId", "productId", "uomId", "productFlavourId") WHERE "deletedAt" IS NULL AND "productFlavourId" IS NOT NULL`);
+        await queryRunner.query(`ALTER TABLE "batchs" ADD CONSTRAINT "FK_a3997c60d2fcd77b5a027a37625" FOREIGN KEY ("grnId") REFERENCES "goods_receive_notes"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "batchs" ADD CONSTRAINT "FK_9329d9a09c03c0dd5bf6283f077" FOREIGN KEY ("purchaseInvoiceId") REFERENCES "purchase_invoices"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "delete_user_requests" ADD CONSTRAINT "FK_668e507f9471e52d9aa9568a41a" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claims" ADD CONSTRAINT "FK_11c15c368e260fd51977f972b0a" FOREIGN KEY ("businessId") REFERENCES "businesses"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claims" ADD CONSTRAINT "FK_99226e16cccb66ab6642682838f" FOREIGN KEY ("partyId") REFERENCES "parties"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claims" ADD CONSTRAINT "FK_35b97aa7824741602183f42f547" FOREIGN KEY ("warehouseId") REFERENCES "warehouses"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claims" ADD CONSTRAINT "FK_1f4f7c3fce27733937fbf3e2da2" FOREIGN KEY ("vendorId") REFERENCES "parties"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claims" ADD CONSTRAINT "FK_3cdcfd01ff25bc0ec788d2f7857" FOREIGN KEY ("createdBy") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_items" ADD CONSTRAINT "FK_b479f850c47ca8be114d2b588bb" FOREIGN KEY ("claimId") REFERENCES "claims"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_items" ADD CONSTRAINT "FK_3075d1a3406ae227874b5023de3" FOREIGN KEY ("productId") REFERENCES "products"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_items" ADD CONSTRAINT "FK_2c7fe0ebb605926cec1ae59881c" FOREIGN KEY ("productFlavourId") REFERENCES "product_flavours"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_items" ADD CONSTRAINT "FK_34abbec3a1e8d88329e0fb71616" FOREIGN KEY ("uomId") REFERENCES "uoms"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_items" ADD CONSTRAINT "FK_7dedd61e0138a659def08041b97" FOREIGN KEY ("warehouseId") REFERENCES "warehouses"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_items" ADD CONSTRAINT "FK_456c3324de7c57829d94d48802d" FOREIGN KEY ("claimBatchId") REFERENCES "claim_batches"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" ADD CONSTRAINT "FK_d2977b2935f1d369669e66bcc3f" FOREIGN KEY ("businessId") REFERENCES "businesses"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" ADD CONSTRAINT "FK_0a33c53744d71cf76a7ef12cb95" FOREIGN KEY ("claimId") REFERENCES "claims"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" ADD CONSTRAINT "FK_93da92dbc1bcb020cfdab2fa10f" FOREIGN KEY ("claimItemId") REFERENCES "claim_items"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" ADD CONSTRAINT "FK_817567329a7a7485cceea57f8c7" FOREIGN KEY ("productId") REFERENCES "products"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" ADD CONSTRAINT "FK_e8f536a2b204c5151faacf8c650" FOREIGN KEY ("productFlavourId") REFERENCES "product_flavours"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" ADD CONSTRAINT "FK_7fb66ec381cb0d152cf809c5b93" FOREIGN KEY ("uomId") REFERENCES "uoms"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" ADD CONSTRAINT "FK_c699b6d550e7f700cbe226e179d" FOREIGN KEY ("warehouseId") REFERENCES "warehouses"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" ADD CONSTRAINT "FK_8b216f874bdd31c7daf7ab5a8e1" FOREIGN KEY ("businessId") REFERENCES "businesses"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" ADD CONSTRAINT "FK_a4b7822e56bf2c7d22c14afdeb8" FOREIGN KEY ("warehouseId") REFERENCES "warehouses"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" ADD CONSTRAINT "FK_91e2c0218815e8f2defb6c86a3c" FOREIGN KEY ("productId") REFERENCES "products"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" ADD CONSTRAINT "FK_d85982bd634a74e9f78b1b412e0" FOREIGN KEY ("uomId") REFERENCES "uoms"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" ADD CONSTRAINT "FK_dbd6ce08108159899d169c8b62e" FOREIGN KEY ("productFlavourId") REFERENCES "product_flavours"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+    }
+
+    public async down(queryRunner: QueryRunner): Promise<void> {
+        await queryRunner.query(`ALTER TABLE "claim_stocks" DROP CONSTRAINT "FK_dbd6ce08108159899d169c8b62e"`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" DROP CONSTRAINT "FK_d85982bd634a74e9f78b1b412e0"`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" DROP CONSTRAINT "FK_91e2c0218815e8f2defb6c86a3c"`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" DROP CONSTRAINT "FK_a4b7822e56bf2c7d22c14afdeb8"`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" DROP CONSTRAINT "FK_8b216f874bdd31c7daf7ab5a8e1"`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" DROP CONSTRAINT "FK_c699b6d550e7f700cbe226e179d"`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" DROP CONSTRAINT "FK_7fb66ec381cb0d152cf809c5b93"`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" DROP CONSTRAINT "FK_e8f536a2b204c5151faacf8c650"`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" DROP CONSTRAINT "FK_817567329a7a7485cceea57f8c7"`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" DROP CONSTRAINT "FK_93da92dbc1bcb020cfdab2fa10f"`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" DROP CONSTRAINT "FK_0a33c53744d71cf76a7ef12cb95"`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" DROP CONSTRAINT "FK_d2977b2935f1d369669e66bcc3f"`);
+        await queryRunner.query(`ALTER TABLE "claim_items" DROP CONSTRAINT "FK_456c3324de7c57829d94d48802d"`);
+        await queryRunner.query(`ALTER TABLE "claim_items" DROP CONSTRAINT "FK_7dedd61e0138a659def08041b97"`);
+        await queryRunner.query(`ALTER TABLE "claim_items" DROP CONSTRAINT "FK_34abbec3a1e8d88329e0fb71616"`);
+        await queryRunner.query(`ALTER TABLE "claim_items" DROP CONSTRAINT "FK_2c7fe0ebb605926cec1ae59881c"`);
+        await queryRunner.query(`ALTER TABLE "claim_items" DROP CONSTRAINT "FK_3075d1a3406ae227874b5023de3"`);
+        await queryRunner.query(`ALTER TABLE "claim_items" DROP CONSTRAINT "FK_b479f850c47ca8be114d2b588bb"`);
+        await queryRunner.query(`ALTER TABLE "claims" DROP CONSTRAINT "FK_3cdcfd01ff25bc0ec788d2f7857"`);
+        await queryRunner.query(`ALTER TABLE "claims" DROP CONSTRAINT "FK_1f4f7c3fce27733937fbf3e2da2"`);
+        await queryRunner.query(`ALTER TABLE "claims" DROP CONSTRAINT "FK_35b97aa7824741602183f42f547"`);
+        await queryRunner.query(`ALTER TABLE "claims" DROP CONSTRAINT "FK_99226e16cccb66ab6642682838f"`);
+        await queryRunner.query(`ALTER TABLE "claims" DROP CONSTRAINT "FK_11c15c368e260fd51977f972b0a"`);
+        await queryRunner.query(`ALTER TABLE "delete_user_requests" DROP CONSTRAINT "FK_668e507f9471e52d9aa9568a41a"`);
+        await queryRunner.query(`ALTER TABLE "batchs" DROP CONSTRAINT "FK_9329d9a09c03c0dd5bf6283f077"`);
+        await queryRunner.query(`ALTER TABLE "batchs" DROP CONSTRAINT "FK_a3997c60d2fcd77b5a027a37625"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_claim_stocks_active_with_flavour"`);
+        await queryRunner.query(`DROP INDEX "public"."IDX_claim_stocks_active_without_flavour"`);
+        await queryRunner.query(`ALTER TABLE "claim_items" DROP COLUMN "proofImage"`);
+        await queryRunner.query(`CREATE UNIQUE INDEX "IDX_claim_stocks_active_business_warehouse_product_uom_flavour" ON "claim_stocks" ("businessId", "productFlavourId", "productId", "uomId", "warehouseId") WHERE ("deletedAt" IS NULL)`);
+        await queryRunner.query(`CREATE INDEX "IDX_delete_user_requests_status" ON "delete_user_requests" ("status") `);
+        await queryRunner.query(`CREATE INDEX "IDX_delete_user_requests_userId" ON "delete_user_requests" ("userId") `);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" ADD CONSTRAINT "FK_claim_stocks_productFlavourId" FOREIGN KEY ("productFlavourId") REFERENCES "product_flavours"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" ADD CONSTRAINT "FK_claim_stocks_uomId" FOREIGN KEY ("uomId") REFERENCES "uoms"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" ADD CONSTRAINT "FK_claim_stocks_productId" FOREIGN KEY ("productId") REFERENCES "products"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" ADD CONSTRAINT "FK_claim_stocks_warehouseId" FOREIGN KEY ("warehouseId") REFERENCES "warehouses"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_stocks" ADD CONSTRAINT "FK_claim_stocks_businessId" FOREIGN KEY ("businessId") REFERENCES "businesses"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" ADD CONSTRAINT "FK_claim_batches_warehouseId" FOREIGN KEY ("warehouseId") REFERENCES "warehouses"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" ADD CONSTRAINT "FK_claim_batches_uomId" FOREIGN KEY ("uomId") REFERENCES "uoms"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" ADD CONSTRAINT "FK_claim_batches_productFlavourId" FOREIGN KEY ("productFlavourId") REFERENCES "product_flavours"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" ADD CONSTRAINT "FK_claim_batches_productId" FOREIGN KEY ("productId") REFERENCES "products"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" ADD CONSTRAINT "FK_claim_batches_claimItemId" FOREIGN KEY ("claimItemId") REFERENCES "claim_items"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" ADD CONSTRAINT "FK_claim_batches_claimId" FOREIGN KEY ("claimId") REFERENCES "claims"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_batches" ADD CONSTRAINT "FK_claim_batches_businessId" FOREIGN KEY ("businessId") REFERENCES "businesses"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_items" ADD CONSTRAINT "FK_claim_items_claimBatchId" FOREIGN KEY ("claimBatchId") REFERENCES "claim_batches"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_items" ADD CONSTRAINT "FK_claim_items_warehouseId" FOREIGN KEY ("warehouseId") REFERENCES "warehouses"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_items" ADD CONSTRAINT "FK_claim_items_uomId" FOREIGN KEY ("uomId") REFERENCES "uoms"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_items" ADD CONSTRAINT "FK_claim_items_productFlavourId" FOREIGN KEY ("productFlavourId") REFERENCES "product_flavours"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_items" ADD CONSTRAINT "FK_claim_items_productId" FOREIGN KEY ("productId") REFERENCES "products"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claim_items" ADD CONSTRAINT "FK_claim_items_claimId" FOREIGN KEY ("claimId") REFERENCES "claims"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claims" ADD CONSTRAINT "FK_claims_createdBy" FOREIGN KEY ("createdBy") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claims" ADD CONSTRAINT "FK_claims_vendorId" FOREIGN KEY ("vendorId") REFERENCES "parties"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claims" ADD CONSTRAINT "FK_claims_warehouseId" FOREIGN KEY ("warehouseId") REFERENCES "warehouses"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claims" ADD CONSTRAINT "FK_claims_partyId" FOREIGN KEY ("partyId") REFERENCES "parties"("id") ON DELETE RESTRICT ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "claims" ADD CONSTRAINT "FK_claims_businessId" FOREIGN KEY ("businessId") REFERENCES "businesses"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "delete_user_requests" ADD CONSTRAINT "FK_delete_user_requests_userId" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "batchs" ADD CONSTRAINT "FK_batchs_purchaseInvoiceId" FOREIGN KEY ("purchaseInvoiceId") REFERENCES "purchase_invoices"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+        await queryRunner.query(`ALTER TABLE "batchs" ADD CONSTRAINT "FK_batchs_grnId" FOREIGN KEY ("grnId") REFERENCES "goods_receive_notes"("id") ON DELETE SET NULL ON UPDATE NO ACTION`);
+    }
+
+}

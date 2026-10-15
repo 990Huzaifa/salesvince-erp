@@ -208,6 +208,11 @@ export class ClaimItem {
   @Column({ type: 'text', nullable: true })
   notes: string | null;
 
+  // proof image
+
+  @Column({ type: 'text', nullable: true })
+  proofImage: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
@@ -262,8 +267,8 @@ export class ClaimBatch {
   @JoinColumn({ name: 'productId' })
   product: Product;
 
-  @Column({ type: 'int', nullable: true })
-  productFlavourId: number | null;
+  @Column({ type: 'text', nullable: true })
+  productFlavourId: string | null;
 
   @ManyToOne(() => ProductFlavour, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'productFlavourId' })
@@ -309,11 +314,19 @@ export class ClaimBatch {
  */
 @Entity('claim_stocks')
 @Index(
-  'IDX_claim_stocks_active_business_warehouse_product_uom_flavour',
+  'IDX_claim_stocks_active_with_flavour',
   ['businessId', 'warehouseId', 'productId', 'uomId', 'productFlavourId'],
   {
     unique: true,
-    where: '"deletedAt" IS NULL',
+    where: '"deletedAt" IS NULL AND "productFlavourId" IS NOT NULL',
+  },
+)
+@Index(
+  'IDX_claim_stocks_active_without_flavour',
+  ['businessId', 'warehouseId', 'productId', 'uomId'],
+  {
+    unique: true,
+    where: '"deletedAt" IS NULL AND "productFlavourId" IS NULL',
   },
 )
 export class ClaimStock {
@@ -348,8 +361,8 @@ export class ClaimStock {
   @JoinColumn({ name: 'uomId' })
   uom: Uom;
 
-  @Column({ type: 'int', nullable: true })
-  productFlavourId: number | null;
+  @Column({ type: 'text', nullable: true })
+  productFlavourId: string | null;
 
   @ManyToOne(() => ProductFlavour, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'productFlavourId' })

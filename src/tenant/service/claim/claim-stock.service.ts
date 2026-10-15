@@ -1,11 +1,16 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { DataSource, EntityManager, IsNull } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import {
   Claim,
   ClaimBatch,
   ClaimItem,
   ClaimStock,
 } from 'src/tenant-db/entities/claim.entity';
+
+export type ClaimStockIntakeResult = {
+  createdBatches: ClaimBatch[];
+  stockIncrements: number;
+};
 
 /**
  * Claim-module inventory only. Does not touch ERP batchs / stock_balances.
@@ -14,6 +19,16 @@ import {
 export class ClaimStockService {
   private roundQuantity(value: number): number {
     return Math.round(value);
+  }
+
+  /** ClaimItem uses int; ClaimBatch / ClaimStock use string | null. */
+  private toFlavourKey(
+    productFlavourId: number | string | null | undefined,
+  ): string | null {
+    if (productFlavourId === null || productFlavourId === undefined) {
+      return null;
+    }
+    return String(productFlavourId);
   }
 
   async listBatches(
@@ -31,6 +46,8 @@ export class ClaimStockService {
       .getRepository(ClaimBatch)
       .createQueryBuilder('batch')
       .leftJoinAndSelect('batch.product', 'product')
+      .leftJoinAndSelect('batch.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .leftJoinAndSelect('batch.uom', 'uom')
       .leftJoinAndSelect('batch.warehouse', 'warehouse')
       .where('batch.businessId = :businessId', { businessId })
@@ -59,7 +76,12 @@ export class ClaimStockService {
   async listStock(
     tenantDb: DataSource,
     businessId: string | undefined,
-    query: { page?: number; limit?: number; warehouseId?: string; search?: string },
+    query: {
+      page?: number;
+      limit?: number;
+      warehouseId?: string;
+      search?: string;
+    },
   ) {
     if (!businessId) {
       throw new BadRequestException('Business context is required');
@@ -71,6 +93,8 @@ export class ClaimStockService {
       .getRepository(ClaimStock)
       .createQueryBuilder('stock')
       .leftJoinAndSelect('stock.product', 'product')
+      .leftJoinAndSelect('stock.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .leftJoinAndSelect('stock.uom', 'uom')
       .leftJoinAndSelect('stock.warehouse', 'warehouse')
       .where('stock.businessId = :businessId', { businessId })
@@ -98,68 +122,91 @@ export class ClaimStockService {
   }
 
   /**
-   * On claim intake (submit): create ClaimBatch per item + increase ClaimStock.
+   * Submit intake: create ClaimBatch per item (if missing) + increase ClaimStock.
    */
   async intakeFromClaim(
     manager: EntityManager,
     claim: Claim,
     items: ClaimItem[],
-  ): Promise<ClaimBatch[]> {
+  ): Promise<ClaimStockIntakeResult> {
+    if (!items?.length) {
+      throw new BadRequestException('Claim must have items for stock intake');
+    }
+
     const batchRepo = manager.getRepository(ClaimBatch);
     const itemRepo = manager.getRepository(ClaimItem);
-    const created: ClaimBatch[] = [];
+    const createdBatches: ClaimBatch[] = [];
+    let stockIncrements = 0;
     const asOf = new Date(claim.claimDate);
 
     for (const item of items) {
-      if (item.claimBatchId) {
+      // Fresh row — avoid stale claimBatchId from relations
+      const freshItem = await itemRepo.findOne({
+        where: { id: item.id, claimId: claim.id },
+      });
+      if (!freshItem) {
+        throw new BadRequestException(`Claim item ${item.id} not found`);
+      }
+
+      if (freshItem.claimBatchId) {
         continue;
       }
-      const qty = this.roundQuantity(Number(item.claimedQuantity));
+
+      const qty = this.roundQuantity(Number(freshItem.claimedQuantity));
       if (qty <= 0) {
         throw new BadRequestException(
-          `Claim item ${item.id} quantity must be greater than zero`,
+          `Claim item ${freshItem.id} quantity must be greater than zero`,
         );
       }
 
       const batchNumber = await this.generateBatchNumber(
         manager,
         claim.claimNumber,
-        item.productId,
-        item.uomId,
+        freshItem.productId,
+        freshItem.uomId,
       );
+
+      const productFlavourId = this.toFlavourKey(freshItem.productFlavourId);
 
       const batch = await batchRepo.save(
         batchRepo.create({
           businessId: claim.businessId,
           claimId: claim.id,
-          claimItemId: item.id,
+          claimItemId: freshItem.id,
           batchNumber,
-          productId: item.productId,
-          productFlavourId: item.productFlavourId,
-          uomId: item.uomId,
-          warehouseId: item.warehouseId,
+          productId: freshItem.productId,
+          productFlavourId,
+          uomId: freshItem.uomId,
+          warehouseId: freshItem.warehouseId,
           quantity: qty,
           originalQuantity: qty,
           batchDate: asOf,
         }),
       );
 
-      item.claimBatchId = batch.id;
-      await itemRepo.save(item);
+      freshItem.claimBatchId = batch.id;
+      await itemRepo.save(freshItem);
 
       await this.adjustStock(manager, {
         businessId: claim.businessId,
-        warehouseId: item.warehouseId,
-        productId: item.productId,
-        uomId: item.uomId,
-        productFlavourId: item.productFlavourId,
+        warehouseId: freshItem.warehouseId,
+        productId: freshItem.productId,
+        uomId: freshItem.uomId,
+        productFlavourId,
         quantityDelta: qty,
       });
 
-      created.push(batch);
+      createdBatches.push(batch);
+      stockIncrements += qty;
     }
 
-    return created;
+    if (createdBatches.length === 0) {
+      throw new BadRequestException(
+        'Claim stock intake already done for all items (batches exist)',
+      );
+    }
+
+    return { createdBatches, stockIncrements };
   }
 
   /**
@@ -171,25 +218,29 @@ export class ClaimStockService {
     items: Array<{ item: ClaimItem; quantity: number }>,
   ): Promise<void> {
     const batchRepo = manager.getRepository(ClaimBatch);
+    const itemRepo = manager.getRepository(ClaimItem);
 
     for (const { item, quantity } of items) {
       const qty = this.roundQuantity(quantity);
       if (qty <= 0) {
         continue;
       }
-      if (!item.claimBatchId) {
+
+      const freshItem = await itemRepo.findOne({ where: { id: item.id } });
+      if (!freshItem?.claimBatchId) {
         throw new BadRequestException(
           `Claim item ${item.id} has no claim batch — submit claim first`,
         );
       }
 
-      const batch = await batchRepo.findOne({
-        where: {
-          id: item.claimBatchId,
-          businessId,
-          deletedAt: IsNull(),
-        },
-      });
+      const batch = await batchRepo
+        .createQueryBuilder('batch')
+        .setLock('pessimistic_write')
+        .where('batch.id = :id', { id: freshItem.claimBatchId })
+        .andWhere('batch.businessId = :businessId', { businessId })
+        .andWhere('batch.deletedAt IS NULL')
+        .getOne();
+
       if (!batch) {
         throw new BadRequestException(
           `Claim batch not found for item ${item.id}`,
@@ -206,10 +257,10 @@ export class ClaimStockService {
 
       await this.adjustStock(manager, {
         businessId,
-        warehouseId: item.warehouseId,
-        productId: item.productId,
-        uomId: item.uomId,
-        productFlavourId: item.productFlavourId,
+        warehouseId: freshItem.warehouseId,
+        productId: freshItem.productId,
+        uomId: freshItem.uomId,
+        productFlavourId: this.toFlavourKey(freshItem.productFlavourId),
         quantityDelta: -qty,
       });
     }
@@ -221,7 +272,8 @@ export class ClaimStockService {
     productId: string,
     uomId: string,
   ): Promise<string> {
-    const base = `CB-${claimNumber}-${productId.slice(0, 8)}-${uomId.slice(0, 8)}`;
+    const safeClaim = claimNumber.replace(/[^a-zA-Z0-9-]/g, '');
+    const base = `CB-${safeClaim}-${productId.slice(0, 8)}-${uomId.slice(0, 8)}`;
     const last = await manager
       .getRepository(ClaimBatch)
       .createQueryBuilder('batch')
@@ -244,23 +296,36 @@ export class ClaimStockService {
       warehouseId: string;
       productId: string;
       uomId: string;
-      productFlavourId: number | null;
+      productFlavourId: string | null;
       quantityDelta: number;
     },
   ): Promise<ClaimStock> {
     const stockRepo = manager.getRepository(ClaimStock);
-    const flavourId = params.productFlavourId ?? null;
+    const flavourId = this.toFlavourKey(params.productFlavourId);
 
-    let stock = await stockRepo.findOne({
-      where: {
+    const qb = stockRepo
+      .createQueryBuilder('stock')
+      .setLock('pessimistic_write')
+      .where('stock.businessId = :businessId', {
         businessId: params.businessId,
+      })
+      .andWhere('stock.warehouseId = :warehouseId', {
         warehouseId: params.warehouseId,
+      })
+      .andWhere('stock.productId = :productId', {
         productId: params.productId,
-        uomId: params.uomId,
-        productFlavourId: flavourId === null ? IsNull() : flavourId,
-        deletedAt: IsNull(),
-      },
-    });
+      })
+      .andWhere('stock.uomId = :uomId', { uomId: params.uomId })
+      .andWhere('stock.deletedAt IS NULL');
+
+    // Matches split unique indexes (with / without flavour)
+    if (flavourId === null) {
+      qb.andWhere('stock.productFlavourId IS NULL');
+    } else {
+      qb.andWhere('stock.productFlavourId = :flavourId', { flavourId });
+    }
+
+    let stock = await qb.getOne();
 
     if (!stock) {
       stock = stockRepo.create({
@@ -274,10 +339,12 @@ export class ClaimStockService {
     }
 
     const next = this.roundQuantity(
-      Number(stock.quantityOnHand) + params.quantityDelta,
+      Number(stock.quantityOnHand ?? 0) + params.quantityDelta,
     );
     if (next < 0) {
-      throw new BadRequestException('Insufficient claim stock for this operation');
+      throw new BadRequestException(
+        'Insufficient claim stock for this operation',
+      );
     }
     stock.quantityOnHand = next;
     return stockRepo.save(stock);
