@@ -3,7 +3,6 @@ import {
   CreateDateColumn,
   DeleteDateColumn,
   Entity,
-  Index,
   JoinColumn,
   ManyToOne,
   OneToMany,
@@ -313,24 +312,10 @@ export class ClaimBatch {
 
 /**
  * Aggregated claim-module stock (separate from ERP stock_balances).
+ * Unique indexes live in DB migrations only — @Index cannot reference @RelationId fields.
+ * (IDX_claim_stocks_active_with_flavour / IDX_claim_stocks_active_without_flavour)
  */
 @Entity('claim_stocks')
-@Index(
-  'IDX_claim_stocks_active_with_flavour',
-  ['businessId', 'warehouseId', 'productId', 'uomId', 'productFlavourId'],
-  {
-    unique: true,
-    where: '"deletedAt" IS NULL AND "productFlavourId" IS NOT NULL',
-  },
-)
-@Index(
-  'IDX_claim_stocks_active_without_flavour',
-  ['businessId', 'warehouseId', 'productId', 'uomId'],
-  {
-    unique: true,
-    where: '"deletedAt" IS NULL AND "productFlavourId" IS NULL',
-  },
-)
 export class ClaimStock {
   @PrimaryGeneratedColumn('uuid')
   id: string;
