@@ -11,6 +11,12 @@ export enum ClaimVendorShipmentStatus {
   CANCELLED = 'CANCELLED',
 }
 
+export enum ClaimVendorShipmentItemStatus {
+  PENDING = 'PENDING',
+  ACCEPTED = 'ACCEPTED',
+  REJECTED = 'REJECTED',
+}
+
 @Entity('claim_vendor_shipments')
 export class ClaimVendorShipment {
   @PrimaryGeneratedColumn('uuid')
@@ -50,6 +56,9 @@ export class ClaimVendorShipment {
 
   @Column({ type: 'text', nullable: true })
   proofImage: string | null;
+
+  @Column({ type: 'enum', enum: ClaimVendorShipmentStatus, default: ClaimVendorShipmentStatus.PENDING })
+  status: ClaimVendorShipmentStatus;
 
   @CreateDateColumn()
   createdAt: Date;
@@ -136,6 +145,12 @@ export class ClaimVendorShipmentItem {
 
   @Column({ type: 'text', nullable: true })
   proofImage: string | null;
+
+  @Column({ type: 'enum', enum: ClaimVendorShipmentItemStatus })
+  status: ClaimVendorShipmentItemStatus;
+
+  @Column({ type: 'text', nullable: true })
+  rejectReason: string | null;
 
   @CreateDateColumn()
   createdAt: Date;
