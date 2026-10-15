@@ -230,19 +230,18 @@ export class ClaimBatch {
   @JoinColumn({ name: 'businessId' })
   business: Business;
 
+  /** FK owned only by JoinColumn — do not also @Column(claimId). */
+  claimId: string;
+
   @ManyToOne(() => Claim, (claim) => claim.batches, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'claimId' })
   claim: Claim;
 
-  @Column({ type: 'uuid' })
-  claimId: string;
-
-  @Column({ type: 'uuid'})
+  /** FK owned only by JoinColumn — do not also @Column(claimItemId). */
   claimItemId: string;
 
   @ManyToOne(() => ClaimItem, (item) => item.batches, {
     onDelete: 'CASCADE',
-    nullable: true,
   })
   @JoinColumn({ name: 'claimItemId' })
   claimItem: ClaimItem;

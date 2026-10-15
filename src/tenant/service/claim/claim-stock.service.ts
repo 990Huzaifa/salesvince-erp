@@ -225,8 +225,6 @@ export class ClaimStockService {
         ],
       );
 
-      const batch = await batchRepo.findOneOrFail({ where: { id: batchId } });
-
       await this.adjustStock(manager, {
         businessId: claim.businessId,
         warehouseId: freshItem.warehouseId,
@@ -236,7 +234,22 @@ export class ClaimStockService {
         quantityDelta: qty,
       });
 
-      createdBatches.push(batch);
+      // Do not findOne/save this batch in the same UnitOfWork as Claim.save —
+      // hydration + relation sync can null claimId. Return a plain stub.
+      createdBatches.push({
+        id: batchId,
+        businessId,
+        claimId,
+        claimItemId: freshItem.id,
+        batchNumber,
+        productId: freshItem.productId,
+        productFlavourId,
+        uomId: freshItem.uomId,
+        warehouseId: freshItem.warehouseId,
+        quantity: qty,
+        originalQuantity: qty,
+        batchDate: asOf,
+      } as ClaimBatch);
       stockIncrements += qty;
     }
 

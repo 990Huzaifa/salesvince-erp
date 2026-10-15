@@ -174,6 +174,29 @@ export class ClaimService {
     return claim;
   }
 
+  /**
+   * Scalar-only update — never save() a Claim loaded with relations.
+   * save() syncs OneToMany batches and can SET claim_batches.claimId = null
+   * when ClaimBatch has JoinColumn + relation unset in the persistence context.
+   */
+  private async patchClaim(
+    manager: EntityManager,
+    claimId: string,
+    patch: Partial<{
+      status: ClaimStatus;
+      vendorId: string | null;
+      isValid: boolean | null;
+      invalidReason: string | null;
+      notes: string | null;
+      partyId: string | null;
+      warehouseId: string | null;
+      claimDate: Date;
+      closedAt: Date | null;
+    }>,
+  ) {
+    await manager.getRepository(Claim).update({ id: claimId }, patch);
+  }
+
   private async loadClaimOrFail(
     manager: EntityManager | DataSource,
     businessId: string,
@@ -249,22 +272,20 @@ export class ClaimService {
       );
 
       const itemRepo = manager.getRepository(ClaimItem);
-      await itemRepo.save(
-        dto.items.map((line) =>
-          itemRepo.create({
-            claimId: claim.id,
-            productId: line.productId,
-            productFlavourId: line.productFlavourId ?? null,
-            uomId: line.uomId,
-            warehouseId: line.warehouseId,
-            claimedQuantity: line.claimedQuantity,
-            unitOutcome: ClaimItemUnitOutcome.PENDING,
-            discardType: null,
-            discardReason: null,
-            notes: line.notes?.trim() || null,
-            proofImage: line.proofImage?.trim() || null,
-          }),
-        ),
+      await itemRepo.insert(
+        dto.items.map((line) => ({
+          claimId: claim.id,
+          productId: line.productId,
+          productFlavourId: line.productFlavourId ?? null,
+          uomId: line.uomId,
+          warehouseId: line.warehouseId,
+          claimedQuantity: line.claimedQuantity,
+          unitOutcome: ClaimItemUnitOutcome.PENDING,
+          discardType: null,
+          discardReason: null,
+          notes: line.notes?.trim() || null,
+          proofImage: line.proofImage?.trim() || null,
+        })),
       );
 
       return this.loadClaimOrFail(manager, scopedBusinessId, claim.id);
@@ -378,49 +399,51 @@ export class ClaimService {
         throw new BadRequestException('Only DRAFT claims can be updated');
       }
 
+      const patch: Parameters<ClaimService['patchClaim']>[2] = {};
       if (dto.claimDate) {
-        claim.claimDate = new Date(dto.claimDate);
+        patch.claimDate = new Date(dto.claimDate);
       }
       if (dto.notes !== undefined) {
-        claim.notes = dto.notes?.trim() || null;
+        patch.notes = dto.notes?.trim() || null;
       }
 
       if (claim.sourceType === ClaimSourceType.CUSTOMER && dto.partyId) {
         await this.assertCustomer(manager, scopedBusinessId, dto.partyId);
-        claim.partyId = dto.partyId;
+        patch.partyId = dto.partyId;
       }
       if (
         claim.sourceType === ClaimSourceType.OWN_LOCATION &&
         dto.warehouseId
       ) {
         await this.assertWarehouse(manager, scopedBusinessId, dto.warehouseId);
-        claim.warehouseId = dto.warehouseId;
+        patch.warehouseId = dto.warehouseId;
+      }
+
+      if (Object.keys(patch).length) {
+        await this.patchClaim(manager, claim.id, patch);
       }
 
       if (dto.items?.length) {
         await this.validateLineMasters(manager, scopedBusinessId, dto.items);
         await manager.getRepository(ClaimItem).delete({ claimId: claim.id });
         const itemRepo = manager.getRepository(ClaimItem);
-        await itemRepo.save(
-          dto.items.map((line) =>
-            itemRepo.create({
-              claimId: claim.id,
-              productId: line.productId,
-              productFlavourId: line.productFlavourId ?? null,
-              uomId: line.uomId,
-              warehouseId: line.warehouseId,
-              claimedQuantity: line.claimedQuantity,
-              unitOutcome: ClaimItemUnitOutcome.PENDING,
-              discardType: null,
-              discardReason: null,
-              notes: line.notes?.trim() || null,
-              proofImage: line.proofImage?.trim() || null,
-            }),
-          ),
+        await itemRepo.insert(
+          dto.items.map((line) => ({
+            claimId: claim.id,
+            productId: line.productId,
+            productFlavourId: line.productFlavourId ?? null,
+            uomId: line.uomId,
+            warehouseId: line.warehouseId,
+            claimedQuantity: line.claimedQuantity,
+            unitOutcome: ClaimItemUnitOutcome.PENDING,
+            discardType: null,
+            discardReason: null,
+            notes: line.notes?.trim() || null,
+            proofImage: line.proofImage?.trim() || null,
+          })),
         );
       }
 
-      await manager.getRepository(Claim).save(claim);
       return this.loadClaimOrFail(manager, scopedBusinessId, claim.id);
     });
 
@@ -482,8 +505,9 @@ export class ClaimService {
       }
 
       await this.claimStockService.intakeFromClaim(manager, claim, claim.items);
-      claim.status = ClaimStatus.SUBMITTED;
-      await manager.getRepository(Claim).save(claim);
+      await this.patchClaim(manager, claim.id, {
+        status: ClaimStatus.SUBMITTED,
+      });
       return this.loadClaimOrFail(manager, scopedBusinessId, claim.id);
     });
 
@@ -526,11 +550,7 @@ export class ClaimService {
         );
       }
 
-      claim.isValid = dto.isValid;
-
       if (!dto.isValid) {
-        claim.invalidReason = dto.invalidReason?.trim() || 'Invalid claim';
-        claim.status = ClaimStatus.INVALID_DISCARDED;
         await this.consumeAllItems(
           manager,
           scopedBusinessId,
@@ -539,14 +559,20 @@ export class ClaimService {
           ClaimDiscardType.AS_IS,
           dto.discardReason || dto.invalidReason || 'Invalid claim',
         );
-        claim.closedAt = new Date();
-        claim.status = ClaimStatus.CLOSED;
+        await this.patchClaim(manager, claim.id, {
+          isValid: false,
+          invalidReason: dto.invalidReason?.trim() || 'Invalid claim',
+          status: ClaimStatus.CLOSED,
+          closedAt: new Date(),
+        });
       } else {
-        claim.invalidReason = null;
-        claim.status = ClaimStatus.VALIDATED;
+        await this.patchClaim(manager, claim.id, {
+          isValid: true,
+          invalidReason: null,
+          status: ClaimStatus.VALIDATED,
+        });
       }
 
-      await manager.getRepository(Claim).save(claim);
       return this.loadClaimOrFail(manager, scopedBusinessId, claim.id);
     });
 
@@ -578,9 +604,10 @@ export class ClaimService {
         );
       }
       await this.assertVendor(manager, scopedBusinessId, dto.vendorId);
-      claim.vendorId = dto.vendorId;
-      claim.status = ClaimStatus.SENT_TO_VENDOR;
-      await manager.getRepository(Claim).save(claim);
+      await this.patchClaim(manager, claim.id, {
+        vendorId: dto.vendorId,
+        status: ClaimStatus.SENT_TO_VENDOR,
+      });
       return this.loadClaimOrFail(manager, scopedBusinessId, claim.id);
     });
 
@@ -629,24 +656,27 @@ export class ClaimService {
           );
         }
         if (line.decision === ClaimVendorItemDecision.ACCEPTED) {
-          item.unitOutcome = ClaimItemUnitOutcome.VENDOR_ACCEPTED;
           accepted += 1;
+          await manager.getRepository(ClaimItem).update(
+            { id: item.id },
+            { unitOutcome: ClaimItemUnitOutcome.VENDOR_ACCEPTED },
+          );
         } else {
-          item.unitOutcome = ClaimItemUnitOutcome.VENDOR_REJECTED;
           rejected += 1;
+          await manager.getRepository(ClaimItem).update(
+            { id: item.id },
+            { unitOutcome: ClaimItemUnitOutcome.VENDOR_REJECTED },
+          );
         }
-        await manager.getRepository(ClaimItem).save(item);
       }
 
-      claim.status = ClaimStatus.RECEIVED_FROM_VENDOR;
-      await manager.getRepository(Claim).save(claim);
-
+      let nextStatus = ClaimStatus.RECEIVED_FROM_VENDOR;
       if (accepted > 0 && rejected === 0) {
-        claim.status = ClaimStatus.VENDOR_ACCEPTED;
+        nextStatus = ClaimStatus.VENDOR_ACCEPTED;
       } else if (accepted === 0 && rejected > 0) {
-        claim.status = ClaimStatus.VENDOR_REJECTED_DISCARD;
+        nextStatus = ClaimStatus.VENDOR_REJECTED_DISCARD;
       }
-      await manager.getRepository(Claim).save(claim);
+      await this.patchClaim(manager, claim.id, { status: nextStatus });
 
       return this.loadClaimOrFail(manager, scopedBusinessId, claim.id);
     });
@@ -710,18 +740,25 @@ export class ClaimService {
       );
 
       for (const item of toConsume) {
-        item.unitOutcome = ClaimItemUnitOutcome.DISCARDED;
-        item.discardType = dto.discardType;
-        item.discardReason = dto.reason;
-        await manager.getRepository(ClaimItem).save(item);
+        await manager.getRepository(ClaimItem).update(
+          { id: item.id },
+          {
+            unitOutcome: ClaimItemUnitOutcome.DISCARDED,
+            discardType: dto.discardType,
+            discardReason: dto.reason,
+          },
+        );
       }
 
-      claim.status = ClaimStatus.CLOSED;
-      claim.closedAt = new Date();
-      if (dto.notes) {
-        claim.notes = [claim.notes, dto.notes].filter(Boolean).join('\n');
-      }
-      await manager.getRepository(Claim).save(claim);
+      await this.patchClaim(manager, claim.id, {
+        status: ClaimStatus.CLOSED,
+        closedAt: new Date(),
+        ...(dto.notes
+          ? {
+              notes: [claim.notes, dto.notes].filter(Boolean).join('\n'),
+            }
+          : {}),
+      });
       return this.loadClaimOrFail(manager, scopedBusinessId, claim.id);
     });
 
@@ -780,13 +817,16 @@ export class ClaimService {
       );
 
       for (const item of accepted) {
-        item.unitOutcome = ClaimItemUnitOutcome.DELIVERED;
-        await manager.getRepository(ClaimItem).save(item);
+        await manager.getRepository(ClaimItem).update(
+          { id: item.id },
+          { unitOutcome: ClaimItemUnitOutcome.DELIVERED },
+        );
       }
 
-      claim.status = ClaimStatus.CLOSED;
-      claim.closedAt = new Date();
-      await manager.getRepository(Claim).save(claim);
+      await this.patchClaim(manager, claim.id, {
+        status: ClaimStatus.CLOSED,
+        closedAt: new Date(),
+      });
       return this.loadClaimOrFail(manager, scopedBusinessId, claim.id);
     });
 
@@ -845,13 +885,16 @@ export class ClaimService {
       );
 
       for (const item of accepted) {
-        item.unitOutcome = ClaimItemUnitOutcome.RETURNED_TO_STOCK;
-        await manager.getRepository(ClaimItem).save(item);
+        await manager.getRepository(ClaimItem).update(
+          { id: item.id },
+          { unitOutcome: ClaimItemUnitOutcome.RETURNED_TO_STOCK },
+        );
       }
 
-      claim.status = ClaimStatus.CLOSED;
-      claim.closedAt = new Date();
-      await manager.getRepository(Claim).save(claim);
+      await this.patchClaim(manager, claim.id, {
+        status: ClaimStatus.CLOSED,
+        closedAt: new Date(),
+      });
       return this.loadClaimOrFail(manager, scopedBusinessId, claim.id);
     });
 
@@ -884,10 +927,14 @@ export class ClaimService {
       })),
     );
     for (const item of items) {
-      item.unitOutcome = outcome;
-      item.discardType = discardType;
-      item.discardReason = reason;
-      await manager.getRepository(ClaimItem).save(item);
+      await manager.getRepository(ClaimItem).update(
+        { id: item.id },
+        {
+          unitOutcome: outcome,
+          discardType,
+          discardReason: reason,
+        },
+      );
     }
   }
 }
