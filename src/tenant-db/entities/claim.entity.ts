@@ -225,8 +225,7 @@ export class ClaimItem {
 
 /**
  * Claim-module inventory only — not linked to ERP batchs / stock_balances.
- * Batch is created when claim status advances (e.g. submit/validate);
- * later status changes reduce ClaimBatch.quantity + ClaimStock.
+ * Batch + stock-in happen on submit; later statuses reduce ClaimBatch + ClaimStock.
  */
 @Entity('claim_batches')
 export class ClaimBatch {

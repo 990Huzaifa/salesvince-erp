@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import {
@@ -132,6 +133,9 @@ export class ClaimStockService {
     if (!items?.length) {
       throw new BadRequestException('Claim must have items for stock intake');
     }
+    if (!claim?.id) {
+      throw new BadRequestException('Claim id is required for stock intake');
+    }
 
     const batchRepo = manager.getRepository(ClaimBatch);
     const itemRepo = manager.getRepository(ClaimItem);
@@ -168,24 +172,27 @@ export class ClaimStockService {
 
       const productFlavourId = this.toFlavourKey(freshItem.productFlavourId);
 
-      const batch = await batchRepo.save(
-        batchRepo.create({
-          businessId: claim.businessId,
-          claimId: claim.id,
-          claimItemId: freshItem.id,
-          batchNumber,
-          productId: freshItem.productId,
-          productFlavourId,
-          uomId: freshItem.uomId,
-          warehouseId: freshItem.warehouseId,
-          quantity: qty,
-          originalQuantity: qty,
-          batchDate: asOf,
-        }),
-      );
+      // insert() avoids TypeORM save() wiping claimId when @Column + @ManyToOne
+      // share the same JoinColumn and the relation object is unset.
+      const batchId = randomUUID();
+      await batchRepo.insert({
+        id: batchId,
+        businessId: claim.businessId,
+        claimId: claim.id,
+        claimItemId: freshItem.id,
+        batchNumber,
+        productId: freshItem.productId,
+        productFlavourId,
+        uomId: freshItem.uomId,
+        warehouseId: freshItem.warehouseId,
+        quantity: qty,
+        originalQuantity: qty,
+        batchDate: asOf,
+      });
 
-      freshItem.claimBatchId = batch.id;
-      await itemRepo.save(freshItem);
+      const batch = await batchRepo.findOneOrFail({ where: { id: batchId } });
+
+      await itemRepo.update({ id: freshItem.id }, { claimBatchId: batchId });
 
       await this.adjustStock(manager, {
         businessId: claim.businessId,
