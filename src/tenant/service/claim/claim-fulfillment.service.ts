@@ -67,6 +67,13 @@ export class ClaimFulfillmentService {
       .leftJoinAndSelect('f.party', 'party')
       .leftJoinAndSelect('f.warehouse', 'warehouse')
       .leftJoinAndSelect('f.items', 'items')
+      .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
+      .leftJoinAndSelect('items.uom', 'uom')
+      .leftJoinAndSelect('items.warehouse', 'itemWarehouse')
+      .leftJoinAndSelect('items.claimBatch', 'claimBatch')
+      .leftJoinAndSelect('items.claimItem', 'claimItem')
       .where('f.id = :id', { id })
       .andWhere('claim.businessId = :businessId', { businessId })
       .getOne();
