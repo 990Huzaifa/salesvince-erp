@@ -264,10 +264,9 @@ export class ClaimVendorShipmentService {
       `
       INSERT INTO claim_vendor_shipments (
         "id", "shipmentNumber", "shipmentDate", "claimId", "vendorId",
-        "shipmentStatus", "status", "notes", "proofImage"
+        "shipmentStatus", "notes", "proofImage"
       ) VALUES (
         $1::uuid, $2, $3::date, $4::uuid, $5::uuid,
-        $6::claim_vendor_shipments_shipmentstatus_enum,
         $6::claim_vendor_shipments_shipmentstatus_enum,
         $7, $8
       )
@@ -689,7 +688,6 @@ export class ClaimVendorShipmentService {
         `
         UPDATE claim_vendor_shipments
         SET "shipmentStatus" = $1::claim_vendor_shipments_shipmentstatus_enum,
-            "status" = $1::claim_vendor_shipments_shipmentstatus_enum,
             "updatedAt" = CURRENT_TIMESTAMP
         WHERE "id" = $2::uuid
         `,
@@ -758,7 +756,6 @@ export class ClaimVendorShipmentService {
         `
         UPDATE claim_vendor_shipments
         SET "shipmentStatus" = $1::claim_vendor_shipments_shipmentstatus_enum,
-            "status" = $1::claim_vendor_shipments_shipmentstatus_enum,
             "updatedAt" = CURRENT_TIMESTAMP
         WHERE "id" = $2::uuid
         `,

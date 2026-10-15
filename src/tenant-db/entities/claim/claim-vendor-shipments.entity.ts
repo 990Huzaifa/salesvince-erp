@@ -57,9 +57,6 @@ export class ClaimVendorShipment {
   @Column({ type: 'text', nullable: true })
   proofImage: string | null;
 
-  @Column({ type: 'enum', enum: ClaimVendorShipmentStatus, default: ClaimVendorShipmentStatus.PENDING })
-  status: ClaimVendorShipmentStatus;
-
   @CreateDateColumn()
   createdAt: Date;
 
