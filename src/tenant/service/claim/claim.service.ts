@@ -574,7 +574,12 @@ export class ClaimService {
         throw new BadRequestException('Claim must have items');
       }
 
-      await this.claimStockService.intakeFromClaim(manager, claim, claim.items);
+      await this.claimStockService.intakeFromClaim(
+        manager,
+        claim,
+        claim.items,
+        scopedBusinessId,
+      );
       await this.patchClaim(manager, claim.id, {
         status: ClaimStatus.SUBMITTED,
       });
@@ -617,6 +622,7 @@ export class ClaimService {
           manager,
           claim,
           claim.items ?? [],
+          scopedBusinessId,
         );
       }
 

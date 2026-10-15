@@ -19,7 +19,7 @@ export type ClaimStockIntakeResult = {
  * Link model (current entity):
  * - ClaimItem has no claimBatchId
  * - ClaimBatch.claimItemId (required) points at the item
- * - productFlavourId is int | null on item / batch / stock
+ * - productFlavourId is uuid | null on item / batch / stock
  */
 @Injectable()
 export class ClaimStockService {
@@ -134,12 +134,20 @@ export class ClaimStockService {
     manager: EntityManager,
     claim: Claim,
     items: ClaimItem[],
+    businessId?: string,
   ): Promise<ClaimStockIntakeResult> {
     if (!items?.length) {
       throw new BadRequestException('Claim must have items for stock intake');
     }
     if (!claim?.id) {
       throw new BadRequestException('Claim id is required for stock intake');
+    }
+
+    const scopedBusinessId = String(businessId || claim.businessId || '');
+    if (!scopedBusinessId || scopedBusinessId === 'undefined') {
+      throw new BadRequestException(
+        'Business id is required for claim stock intake',
+      );
     }
 
     const batchRepo = manager.getRepository(ClaimBatch);
@@ -186,19 +194,22 @@ export class ClaimStockService {
 
       const productFlavourId = this.toFlavourId(freshItem.productFlavourId ?? null) ?? null;
       const claimId = String(claim.id);
-      const businessId = String(claim.businessId);
       const batchId = randomUUID();
       await manager.query(
         `
-        INSERT INTO claim_batches (id, businessId, claimId, claimItemId, batchNumber, productId, productFlavourId, uomId, warehouseId, quantity, originalQuantity, batchDate) VALUES (
+        INSERT INTO claim_batches (
+          "id", "businessId", "claimId", "claimItemId", "batchNumber",
+          "productId", "productFlavourId", "uomId", "warehouseId",
+          "quantity", "originalQuantity", "batchDate"
+        ) VALUES (
           $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5,
-          $6::uuid, $7::int, $8::uuid, $9::uuid,
+          $6::uuid, $7::uuid, $8::uuid, $9::uuid,
           $10::int, $11::int, $12::date
         )
         `,
         [
           batchId,
-          businessId,
+          scopedBusinessId,
           claimId,
           freshItem.id,
           batchNumber,
@@ -213,7 +224,7 @@ export class ClaimStockService {
       );
 
       await this.adjustStock(manager, {
-        businessId: claim.businessId,
+        businessId: scopedBusinessId,
         warehouseId: freshItem.warehouseId,
         productId: freshItem.productId,
         uomId: freshItem.uomId,
@@ -225,7 +236,7 @@ export class ClaimStockService {
       // hydration + relation sync can null claimId. Return a plain stub.
       createdBatches.push({
         id: batchId,
-        businessId,
+        businessId: scopedBusinessId,
         claimId,
         claimItemId: freshItem.id,
         batchNumber,
@@ -441,7 +452,7 @@ export class ClaimStockService {
           "productFlavourId",
           "quantityOnHand"
         ) VALUES (
-          $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::int, 0
+          $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::uuid, 0
         )
         `,
         [
