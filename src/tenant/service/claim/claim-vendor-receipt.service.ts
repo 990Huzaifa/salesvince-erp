@@ -246,13 +246,16 @@ export class ClaimVendorReceiptService {
       .createQueryBuilder('r')
       .leftJoinAndSelect('r.claim', 'claim')
       .leftJoinAndSelect('r.vendor', 'vendor')
+      .leftJoinAndSelect('r.warehouse', 'warehouse')
       .where('claim.businessId = :businessId', { businessId: scoped })
-      .orderBy('r.receiptDate', 'DESC')
+      .orderBy('r.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
-    if (query.claimId) qb.andWhere('r.claimId = :claimId', { claimId: query.claimId });
+    if (query.claimId) {
+      qb.andWhere('claim.id = :claimId', { claimId: query.claimId });
+    }
     if (query.vendorId) {
-      qb.andWhere('r.vendorId = :vendorId', { vendorId: query.vendorId });
+      qb.andWhere('vendor.id = :vendorId', { vendorId: query.vendorId });
     }
     const [rows, total] = await qb.getManyAndCount();
     return { data: rows, meta: { total, page, limit } };
