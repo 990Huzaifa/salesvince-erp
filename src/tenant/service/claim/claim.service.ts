@@ -24,9 +24,14 @@ import { ClaimVendorItemDecision } from '../../dto/claim/receive-from-vendor-ite
 import { SendToVendorDto } from '../../dto/claim/send-to-vendor.dto';
 import { UpdateClaimDto } from '../../dto/claim/update-claim.dto';
 import { ValidateClaimDto } from '../../dto/claim/validate-claim.dto';
+import { ClaimFulfillmentType } from 'src/tenant-db/entities/claim/claim-fulfillments.entity';
 import { ActivityLogService } from '../activity-log.service';
+import { ClaimDiscardService } from './claim-discard.service';
+import { ClaimFulfillmentService } from './claim-fulfillment.service';
 import { ClaimStockService } from './claim-stock.service';
+import { ClaimVendorReceiptService } from './claim-vendor-receipt.service';
 import { ClaimVendorShipmentService } from './claim-vendor-shipment.service';
+import { balancesOf } from './claim-qty.helper';
 
 const CLAIM_NUMBER_PREFIX = 'CLM';
 
@@ -36,6 +41,9 @@ export class ClaimService {
     private readonly activityLogService: ActivityLogService,
     private readonly claimStockService: ClaimStockService,
     private readonly claimVendorShipmentService: ClaimVendorShipmentService,
+    private readonly claimVendorReceiptService: ClaimVendorReceiptService,
+    private readonly claimDiscardService: ClaimDiscardService,
+    private readonly claimFulfillmentService: ClaimFulfillmentService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -308,11 +316,12 @@ export class ClaimService {
           `
           INSERT INTO claim_items (
             "claimId", "productId", "productFlavourId", "uomId", "warehouseId",
-            "claimedQuantity", "unitOutcome", "discardType", "discardReason",
+            "claimedQuantity", "qtyDiscarded", "qtySent", "qtyReceived",
+            "qtyRejected", "qtyGiven", "unitOutcome", "discardType", "discardReason",
             "notes", "proofImage"
           ) VALUES (
-            $1::uuid, $2::uuid, $3::int, $4::uuid, $5::uuid,
-            $6::int, $7::claim_items_unitoutcome_enum, NULL, NULL,
+            $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+            $6::int, 0, 0, 0, 0, 0, $7::claim_items_unitoutcome_enum, NULL, NULL,
             $8, $9
           )
           `,
@@ -476,11 +485,12 @@ export class ClaimService {
             `
             INSERT INTO claim_items (
               "claimId", "productId", "productFlavourId", "uomId", "warehouseId",
-              "claimedQuantity", "unitOutcome", "discardType", "discardReason",
+              "claimedQuantity", "qtyDiscarded", "qtySent", "qtyReceived",
+              "qtyRejected", "qtyGiven", "unitOutcome", "discardType", "discardReason",
               "notes", "proofImage"
             ) VALUES (
-              $1::uuid, $2::uuid, $3::int, $4::uuid, $5::uuid,
-              $6::int, $7::claim_items_unitoutcome_enum, NULL, NULL,
+              $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
+              $6::int, 0, 0, 0, 0, 0, $7::claim_items_unitoutcome_enum, NULL, NULL,
               $8, $9
             )
             `,
@@ -677,66 +687,56 @@ export class ClaimService {
     actorUserId: string,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
+    const claim = await this.loadClaimOrFail(
+      tenantDb.manager,
+      scopedBusinessId,
+      id,
+    );
+    if (!claim.vendorId) {
+      throw new BadRequestException('Claim has no vendor — send to vendor first');
+    }
+    const warehouseId =
+      claim.items?.[0]?.warehouseId ?? claim.warehouseId ?? null;
+    if (!warehouseId) {
+      throw new BadRequestException('Receive warehouse is required');
+    }
 
-    const updated = await tenantDb.transaction(async (manager) => {
-      const claim = await this.loadClaimOrFail(manager, scopedBusinessId, id);
-      if (claim.status !== ClaimStatus.SENT_TO_VENDOR) {
-        throw new BadRequestException(
-          'Only SENT_TO_VENDOR claims can receive from vendor',
-        );
-      }
-
-      const itemById = new Map((claim.items ?? []).map((row) => [row.id, row]));
-      let accepted = 0;
-      let rejected = 0;
-
-      for (const line of dto.items) {
-        const item = itemById.get(line.claimItemId);
-        if (!item) {
-          throw new BadRequestException(
-            `Claim item ${line.claimItemId} not on this claim`,
-          );
-        }
-        if (line.quantity > Number(item.claimedQuantity)) {
-          throw new BadRequestException(
-            `Receive qty exceeds claimed qty for item ${item.id}`,
-          );
-        }
-        if (line.decision === ClaimVendorItemDecision.ACCEPTED) {
-          accepted += 1;
-          await manager.getRepository(ClaimItem).update(
-            { id: item.id },
-            { unitOutcome: ClaimItemUnitOutcome.VENDOR_ACCEPTED },
-          );
-        } else {
-          rejected += 1;
-          await manager.getRepository(ClaimItem).update(
-            { id: item.id },
-            { unitOutcome: ClaimItemUnitOutcome.VENDOR_REJECTED },
-          );
-        }
-      }
-
-      let nextStatus = ClaimStatus.RECEIVED_FROM_VENDOR;
-      if (accepted > 0 && rejected === 0) {
-        nextStatus = ClaimStatus.VENDOR_ACCEPTED;
-      } else if (accepted === 0 && rejected > 0) {
-        nextStatus = ClaimStatus.VENDOR_REJECTED_DISCARD;
-      }
-      await this.patchClaim(manager, claim.id, { status: nextStatus });
-
-      return this.loadClaimOrFail(manager, scopedBusinessId, claim.id);
-    });
-
-    await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: actorUserId,
-      businessId: scopedBusinessId,
-      action: 'CLAIM_RECEIVED_FROM_VENDOR',
-      description: `Claim ${updated.claimNumber} received from vendor`,
-      metadata: { claimId: updated.id },
-    });
-
-    return { data: this.mapClaim(updated) };
+    const itemById = new Map((claim.items ?? []).map((row) => [row.id, row]));
+    return this.claimVendorReceiptService.createAndPost(
+      tenantDb,
+      businessId,
+      {
+        claimId: id,
+        vendorId: claim.vendorId,
+        warehouseId,
+        items: dto.items.map((line) => {
+          const item = itemById.get(line.claimItemId);
+          if (!item) {
+            throw new BadRequestException(
+              `Claim item ${line.claimItemId} not on this claim`,
+            );
+          }
+          const accepted =
+            line.decision === ClaimVendorItemDecision.ACCEPTED
+              ? line.quantity
+              : 0;
+          const rejected =
+            line.decision === ClaimVendorItemDecision.REJECTED
+              ? line.quantity
+              : 0;
+          return {
+            claimItemId: line.claimItemId,
+            shipmentItemId: line.shipmentItemId,
+            acceptedQuantity: accepted,
+            rejectedQuantity: rejected,
+            rejectReason: line.rejectReason,
+            rejectedAction:
+              rejected > 0 ? ClaimDiscardType.AS_IS : undefined,
+          };
+        }),
+      },
+      actorUserId,
+    );
   }
 
   async discard(
@@ -747,77 +747,47 @@ export class ClaimService {
     actorUserId: string,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
+    const claim = await this.loadClaimOrFail(
+      tenantDb.manager,
+      scopedBusinessId,
+      id,
+    );
 
-    const updated = await tenantDb.transaction(async (manager) => {
-      const claim = await this.loadClaimOrFail(manager, scopedBusinessId, id);
-      const allowed: ClaimStatus[] = [
-        ClaimStatus.VENDOR_REJECTED_DISCARD,
-        ClaimStatus.RECEIVED_FROM_VENDOR,
-        ClaimStatus.INVALID_DISCARDED,
-      ];
-      if (!allowed.includes(claim.status) && claim.isValid !== false) {
-        // allow discard when vendor rejected path or explicitly after receive with rejects
-        if (claim.status !== ClaimStatus.VENDOR_REJECTED_DISCARD) {
-          const hasReject = (claim.items ?? []).some(
-            (item) =>
-              item.unitOutcome === ClaimItemUnitOutcome.VENDOR_REJECTED,
-          );
-          if (!hasReject && claim.status !== ClaimStatus.INVALID_DISCARDED) {
-            throw new BadRequestException(
-              'Claim is not in a discardable state',
-            );
-          }
-        }
-      }
-
-      const toConsume = (claim.items ?? []).filter(
-        (item) =>
-          item.unitOutcome === ClaimItemUnitOutcome.VENDOR_REJECTED ||
-          item.unitOutcome === ClaimItemUnitOutcome.PENDING ||
-          claim.status === ClaimStatus.VENDOR_REJECTED_DISCARD,
-      );
-
-      await this.claimStockService.consumeClaimItems(
-        manager,
-        scopedBusinessId,
-        toConsume.map((item) => ({
-          item,
-          quantity: Number(item.claimedQuantity),
-        })),
-      );
-
-      for (const item of toConsume) {
-        await manager.getRepository(ClaimItem).update(
-          { id: item.id },
-          {
-            unitOutcome: ClaimItemUnitOutcome.DISCARDED,
-            discardType: dto.discardType,
-            discardReason: dto.reason,
-          },
-        );
-      }
-
-      await this.patchClaim(manager, claim.id, {
-        status: ClaimStatus.CLOSED,
-        closedAt: new Date(),
-        ...(dto.notes
+    const lines = (claim.items ?? [])
+      .map((item) => {
+        const { toSend } = balancesOf(item);
+        return toSend > 0
           ? {
-              notes: [claim.notes, dto.notes].filter(Boolean).join('\n'),
+              claimItemId: item.id,
+              quantity: toSend,
+              reason: dto.reason,
+              action: dto.discardType,
+              notes: dto.notes,
             }
-          : {}),
-      });
-      return this.loadClaimOrFail(manager, scopedBusinessId, claim.id);
-    });
+          : null;
+      })
+      .filter(Boolean) as Array<{
+      claimItemId: string;
+      quantity: number;
+      reason: string;
+      action: ClaimDiscardType;
+      notes?: string | null;
+    }>;
 
-    await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: actorUserId,
-      businessId: scopedBusinessId,
-      action: 'CLAIM_DISCARDED',
-      description: `Claim ${updated.claimNumber} discarded`,
-      metadata: { claimId: updated.id, discardType: dto.discardType },
-    });
+    if (!lines.length) {
+      throw new BadRequestException('No remaining To-send qty to discard');
+    }
 
-    return { data: this.mapClaim(updated) };
+    return this.claimDiscardService.createAndPost(
+      tenantDb,
+      businessId,
+      {
+        claimId: id,
+        notes: dto.notes,
+        items: lines,
+      },
+      actorUserId,
+    );
   }
 
   /** Vendor accepted → deliver to customer (CUSTOMER source) */
@@ -828,64 +798,35 @@ export class ClaimService {
     actorUserId: string,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
+    const claim = await this.loadClaimOrFail(
+      tenantDb.manager,
+      scopedBusinessId,
+      id,
+    );
+    const items = (claim.items ?? [])
+      .map((item) => {
+        const { readyToGive } = balancesOf(item);
+        return readyToGive > 0
+          ? { claimItemId: item.id, quantity: readyToGive }
+          : null;
+      })
+      .filter(Boolean) as Array<{ claimItemId: string; quantity: number }>;
 
-    const updated = await tenantDb.transaction(async (manager) => {
-      const claim = await this.loadClaimOrFail(manager, scopedBusinessId, id);
-      if (claim.sourceType !== ClaimSourceType.CUSTOMER) {
-        throw new BadRequestException(
-          'Only CUSTOMER claims can be delivered to customer',
-        );
-      }
-      if (
-        claim.status !== ClaimStatus.VENDOR_ACCEPTED &&
-        claim.status !== ClaimStatus.RECEIVED_FROM_VENDOR
-      ) {
-        throw new BadRequestException(
-          'Claim must be vendor-accepted before customer delivery',
-        );
-      }
+    if (!items.length) {
+      throw new BadRequestException('No Ready-to-give qty to deliver');
+    }
 
-      const accepted = (claim.items ?? []).filter(
-        (item) =>
-          item.unitOutcome === ClaimItemUnitOutcome.VENDOR_ACCEPTED ||
-          item.unitOutcome === ClaimItemUnitOutcome.PENDING,
-      );
-      if (!accepted.length) {
-        throw new BadRequestException('No accepted items to deliver');
-      }
-
-      await this.claimStockService.consumeClaimItems(
-        manager,
-        scopedBusinessId,
-        accepted.map((item) => ({
-          item,
-          quantity: Number(item.claimedQuantity),
-        })),
-      );
-
-      for (const item of accepted) {
-        await manager.getRepository(ClaimItem).update(
-          { id: item.id },
-          { unitOutcome: ClaimItemUnitOutcome.DELIVERED },
-        );
-      }
-
-      await this.patchClaim(manager, claim.id, {
-        status: ClaimStatus.CLOSED,
-        closedAt: new Date(),
-      });
-      return this.loadClaimOrFail(manager, scopedBusinessId, claim.id);
-    });
-
-    await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: actorUserId,
-      businessId: scopedBusinessId,
-      action: 'CLAIM_DELIVERED_TO_CUSTOMER',
-      description: `Claim ${updated.claimNumber} delivered to customer`,
-      metadata: { claimId: updated.id },
-    });
-
-    return { data: this.mapClaim(updated) };
+    return this.claimFulfillmentService.createAndPost(
+      tenantDb,
+      businessId,
+      {
+        claimId: id,
+        type: ClaimFulfillmentType.DELIVER_TO_CUSTOMER,
+        partyId: claim.partyId,
+        items,
+      },
+      actorUserId,
+    );
   }
 
   /** Vendor accepted → return to own warehouse/showroom */
@@ -896,64 +837,35 @@ export class ClaimService {
     actorUserId: string,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
+    const claim = await this.loadClaimOrFail(
+      tenantDb.manager,
+      scopedBusinessId,
+      id,
+    );
+    const items = (claim.items ?? [])
+      .map((item) => {
+        const { readyToGive } = balancesOf(item);
+        return readyToGive > 0
+          ? { claimItemId: item.id, quantity: readyToGive }
+          : null;
+      })
+      .filter(Boolean) as Array<{ claimItemId: string; quantity: number }>;
 
-    const updated = await tenantDb.transaction(async (manager) => {
-      const claim = await this.loadClaimOrFail(manager, scopedBusinessId, id);
-      if (claim.sourceType !== ClaimSourceType.OWN_LOCATION) {
-        throw new BadRequestException(
-          'Only OWN_LOCATION claims can return to location',
-        );
-      }
-      if (
-        claim.status !== ClaimStatus.VENDOR_ACCEPTED &&
-        claim.status !== ClaimStatus.RECEIVED_FROM_VENDOR
-      ) {
-        throw new BadRequestException(
-          'Claim must be vendor-accepted before location return',
-        );
-      }
+    if (!items.length) {
+      throw new BadRequestException('No Ready-to-give qty to return');
+    }
 
-      const accepted = (claim.items ?? []).filter(
-        (item) =>
-          item.unitOutcome === ClaimItemUnitOutcome.VENDOR_ACCEPTED ||
-          item.unitOutcome === ClaimItemUnitOutcome.PENDING,
-      );
-      if (!accepted.length) {
-        throw new BadRequestException('No accepted items to return');
-      }
-
-      await this.claimStockService.consumeClaimItems(
-        manager,
-        scopedBusinessId,
-        accepted.map((item) => ({
-          item,
-          quantity: Number(item.claimedQuantity),
-        })),
-      );
-
-      for (const item of accepted) {
-        await manager.getRepository(ClaimItem).update(
-          { id: item.id },
-          { unitOutcome: ClaimItemUnitOutcome.RETURNED_TO_STOCK },
-        );
-      }
-
-      await this.patchClaim(manager, claim.id, {
-        status: ClaimStatus.CLOSED,
-        closedAt: new Date(),
-      });
-      return this.loadClaimOrFail(manager, scopedBusinessId, claim.id);
-    });
-
-    await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: actorUserId,
-      businessId: scopedBusinessId,
-      action: 'CLAIM_RETURNED_TO_LOCATION',
-      description: `Claim ${updated.claimNumber} returned to location`,
-      metadata: { claimId: updated.id },
-    });
-
-    return { data: this.mapClaim(updated) };
+    return this.claimFulfillmentService.createAndPost(
+      tenantDb,
+      businessId,
+      {
+        claimId: id,
+        type: ClaimFulfillmentType.RETURN_TO_LOCATION,
+        warehouseId: claim.warehouseId,
+        items,
+      },
+      actorUserId,
+    );
   }
 
   private async consumeAllItems(

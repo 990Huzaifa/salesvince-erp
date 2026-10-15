@@ -14,6 +14,7 @@ import {
 import {
   ClaimVendorShipment,
   ClaimVendorShipmentItem,
+  ClaimVendorShipmentItemStatus,
   ClaimVendorShipmentStatus,
 } from 'src/tenant-db/entities/claim/claim-vendor-shipments.entity';
 import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
@@ -21,6 +22,12 @@ import { CreateClaimVendorShipmentDto } from '../../dto/claim/create-claim-vendo
 import { CreateClaimVendorShipmentItemDto } from '../../dto/claim/create-claim-vendor-shipment-item.dto';
 import { UpdateClaimVendorShipmentDto } from '../../dto/claim/update-claim-vendor-shipment.dto';
 import { ActivityLogService } from '../activity-log.service';
+import {
+  balancesOf,
+  bumpClaimItemQty,
+  refreshClaimStatusFromBalances,
+  roundQty,
+} from './claim-qty.helper';
 
 const SHIPMENT_NUMBER_PREFIX = 'CVS';
 
@@ -202,11 +209,12 @@ export class ClaimVendorShipmentService {
         claimItem.id,
         excludeShipmentId,
       );
+      const { toSend } = balancesOf(claimItem);
       const maxShip = Math.max(
         0,
-        Math.min(remainingBatch, Number(claimItem.claimedQuantity) - already),
+        Math.min(remainingBatch, toSend, Number(claimItem.claimedQuantity) - already),
       );
-      const qty = line.quantity != null ? Math.round(line.quantity) : maxShip;
+      const qty = line.quantity != null ? roundQty(line.quantity) : maxShip;
 
       if (qty <= 0) {
         throw new BadRequestException(
@@ -256,10 +264,12 @@ export class ClaimVendorShipmentService {
       `
       INSERT INTO claim_vendor_shipments (
         "id", "shipmentNumber", "shipmentDate", "claimId", "vendorId",
-        "shipmentStatus", "notes", "proofImage"
+        "shipmentStatus", "status", "notes", "proofImage"
       ) VALUES (
         $1::uuid, $2, $3::date, $4::uuid, $5::uuid,
-        $6::claim_vendor_shipments_shipmentstatus_enum, $7, $8
+        $6::claim_vendor_shipments_shipmentstatus_enum,
+        $6::claim_vendor_shipments_shipmentstatus_enum,
+        $7, $8
       )
       `,
       [
@@ -279,10 +289,12 @@ export class ClaimVendorShipmentService {
         `
         INSERT INTO claim_vendor_shipment_items (
           "id", "shipmentId", "claimItemId", "claimBatchId", "warehouseId",
-          "productId", "productFlavourId", "uomId", "quantity", "notes", "proofImage"
+          "productId", "productFlavourId", "uomId", "quantity", "notes", "proofImage",
+          "status", "rejectReason"
         ) VALUES (
           $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
-          $6::uuid, $7::uuid, $8::uuid, $9::int, $10, $11
+          $6::uuid, $7::uuid, $8::uuid, $9::int, $10, $11,
+          $12::claim_vendor_shipment_items_status_enum, NULL
         )
         `,
         [
@@ -297,6 +309,7 @@ export class ClaimVendorShipmentService {
           line.quantity,
           line.notes,
           line.proofImage,
+          ClaimVendorShipmentItemStatus.PENDING,
         ],
       );
     }
@@ -318,10 +331,12 @@ export class ClaimVendorShipmentService {
         `
         INSERT INTO claim_vendor_shipment_items (
           "id", "shipmentId", "claimItemId", "claimBatchId", "warehouseId",
-          "productId", "productFlavourId", "uomId", "quantity", "notes", "proofImage"
+          "productId", "productFlavourId", "uomId", "quantity", "notes", "proofImage",
+          "status", "rejectReason"
         ) VALUES (
           $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid,
-          $6::uuid, $7::uuid, $8::uuid, $9::int, $10, $11
+          $6::uuid, $7::uuid, $8::uuid, $9::int, $10, $11,
+          $12::claim_vendor_shipment_items_status_enum, NULL
         )
         `,
         [
@@ -336,8 +351,21 @@ export class ClaimVendorShipmentService {
           line.quantity,
           line.notes,
           line.proofImage,
+          ClaimVendorShipmentItemStatus.PENDING,
         ],
       );
+    }
+  }
+
+  private async applySentQty(
+    manager: EntityManager,
+    lines: ResolvedShipmentLine[],
+    sign: 1 | -1,
+  ) {
+    for (const line of lines) {
+      await bumpClaimItemQty(manager, line.claimItemId, {
+        qtySent: sign * line.quantity,
+      });
     }
   }
 
@@ -443,16 +471,18 @@ export class ClaimVendorShipmentService {
         lines,
       });
 
+      await this.applySentQty(manager, lines, 1);
+
       await manager.query(
         `
         UPDATE claims
         SET "vendorId" = $1::uuid,
-            "status" = $2::claims_status_enum,
             "updatedAt" = CURRENT_TIMESTAMP
-        WHERE "id" = $3::uuid
+        WHERE "id" = $2::uuid
         `,
-        [dto.vendorId, ClaimStatus.SENT_TO_VENDOR, claim.id],
+        [dto.vendorId, claim.id],
       );
+      await refreshClaimStatusFromBalances(manager, claim.id);
 
       const shipment = await this.loadShipmentOrFail(
         manager,
@@ -659,22 +689,36 @@ export class ClaimVendorShipmentService {
         `
         UPDATE claim_vendor_shipments
         SET "shipmentStatus" = $1::claim_vendor_shipments_shipmentstatus_enum,
+            "status" = $1::claim_vendor_shipments_shipmentstatus_enum,
             "updatedAt" = CURRENT_TIMESTAMP
         WHERE "id" = $2::uuid
         `,
         [ClaimVendorShipmentStatus.SHIPPED, shipment.id],
       );
 
+      const lines = (shipment.items ?? []).map((si) => ({
+        claimItemId: si.claimItemId,
+        claimBatchId: si.claimBatchId,
+        warehouseId: si.warehouseId,
+        productId: si.productId,
+        productFlavourId: si.productFlavourId,
+        uomId: si.uomId,
+        quantity: roundQty(si.quantity),
+        notes: si.notes,
+        proofImage: si.proofImage,
+      }));
+      await this.applySentQty(manager, lines, 1);
+
       await manager.query(
         `
         UPDATE claims
         SET "vendorId" = $1::uuid,
-            "status" = $2::claims_status_enum,
             "updatedAt" = CURRENT_TIMESTAMP
-        WHERE "id" = $3::uuid
+        WHERE "id" = $2::uuid
         `,
-        [shipment.vendorId, ClaimStatus.SENT_TO_VENDOR, shipment.claimId],
+        [shipment.vendorId, shipment.claimId],
       );
+      await refreshClaimStatusFromBalances(manager, shipment.claimId);
 
       return this.loadShipmentOrFail(manager, scopedBusinessId, shipment.id);
     });
@@ -714,6 +758,7 @@ export class ClaimVendorShipmentService {
         `
         UPDATE claim_vendor_shipments
         SET "shipmentStatus" = $1::claim_vendor_shipments_shipmentstatus_enum,
+            "status" = $1::claim_vendor_shipments_shipmentstatus_enum,
             "updatedAt" = CURRENT_TIMESTAMP
         WHERE "id" = $2::uuid
         `,

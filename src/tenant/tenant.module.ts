@@ -78,9 +78,19 @@ import { PurchaseReturnService } from './service/purchase/purchase-return.servic
 import { ClaimController } from './controller/claim/claim.controller';
 import { ClaimStockController } from './controller/claim/claim-stock.controller';
 import { ClaimVendorShipmentController } from './controller/claim/claim-vendor-shipment.controller';
+import { ClaimVendorReceiptController } from './controller/claim/claim-vendor-receipt.controller';
+import { ClaimDiscardController } from './controller/claim/claim-discard.controller';
+import { ClaimFulfillmentController } from './controller/claim/claim-fulfillment.controller';
+import { ClaimAdditionalCostController } from './controller/claim/claim-additional-cost.controller';
+import { ClaimMasterController } from './controller/claim/claim-master.controller';
 import { ClaimService } from './service/claim/claim.service';
 import { ClaimStockService } from './service/claim/claim-stock.service';
 import { ClaimVendorShipmentService } from './service/claim/claim-vendor-shipment.service';
+import { ClaimVendorReceiptService } from './service/claim/claim-vendor-receipt.service';
+import { ClaimDiscardService } from './service/claim/claim-discard.service';
+import { ClaimFulfillmentService } from './service/claim/claim-fulfillment.service';
+import { ClaimAdditionalCostService } from './service/claim/claim-additional-cost.service';
+import { ClaimMasterService } from './service/claim/claim-master.service';
 import { FinanceController } from './controller/finance.controller';
 import { FinanceService } from './service/finance.service';
 import { TenantNotificationController } from './controller/tenant-notification.controller';
@@ -234,6 +244,11 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     ClaimController,
     ClaimStockController,
     ClaimVendorShipmentController,
+    ClaimVendorReceiptController,
+    ClaimDiscardController,
+    ClaimFulfillmentController,
+    ClaimAdditionalCostController,
+    ClaimMasterController,
     FinanceController,
     ReportController,
     DashboardController,
@@ -308,6 +323,11 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     ClaimService,
     ClaimStockService,
     ClaimVendorShipmentService,
+    ClaimVendorReceiptService,
+    ClaimDiscardService,
+    ClaimFulfillmentService,
+    ClaimAdditionalCostService,
+    ClaimMasterService,
     FinanceService,
     MasterGeoHelperService,
     ReportService,

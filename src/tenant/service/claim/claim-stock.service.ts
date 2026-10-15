@@ -309,6 +309,65 @@ export class ClaimStockService {
     }
   }
 
+  /** Reverse a prior consume (cancel discard / fulfillment). */
+  async restoreClaimItems(
+    manager: EntityManager,
+    businessId: string,
+    items: Array<{
+      claimItemId: string;
+      claimBatchId?: string | null;
+      quantity: number;
+    }>,
+  ): Promise<void> {
+    const itemRepo = manager.getRepository(ClaimItem);
+
+    for (const line of items) {
+      const qty = this.roundQuantity(line.quantity);
+      if (qty <= 0) continue;
+
+      const freshItem = await itemRepo.findOne({
+        where: { id: line.claimItemId },
+      });
+      if (!freshItem) {
+        throw new BadRequestException(
+          `Claim item ${line.claimItemId} not found`,
+        );
+      }
+
+      if (line.claimBatchId) {
+        await manager.query(
+          `UPDATE claim_batches SET "quantity" = "quantity" + $1::int, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $2::uuid`,
+          [qty, line.claimBatchId],
+        );
+      } else {
+        const batch = await manager
+          .getRepository(ClaimBatch)
+          .createQueryBuilder('batch')
+          .where('batch.claimItemId = :claimItemId', {
+            claimItemId: freshItem.id,
+          })
+          .andWhere('batch.businessId = :businessId', { businessId })
+          .andWhere('batch.deletedAt IS NULL')
+          .getOne();
+        if (batch) {
+          await manager.query(
+            `UPDATE claim_batches SET "quantity" = "quantity" + $1::int, "updatedAt" = CURRENT_TIMESTAMP WHERE "id" = $2::uuid`,
+            [qty, batch.id],
+          );
+        }
+      }
+
+      await this.adjustStock(manager, {
+        businessId,
+        warehouseId: freshItem.warehouseId,
+        productId: freshItem.productId,
+        uomId: freshItem.uomId,
+        productFlavourId: this.toFlavourId(freshItem.productFlavourId),
+        quantityDelta: qty,
+      });
+    }
+  }
+
   private async generateBatchNumber(
     manager: EntityManager,
     claimNumber: string,

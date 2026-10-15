@@ -15,7 +15,10 @@ import { Party } from '../party.entity';
 import { Product, ProductFlavour, Uom } from '../product.entity';
 import { User } from '../user.entity';
 import { Warehouse } from '../warehouse.entity';
-import { ClaimVendorReceipt } from './claim-vendor-receipts.entity';
+import { ClaimAdditionalCost } from './claim-additional-costs.entity';
+import { ClaimDiscard, ClaimDiscardItem } from './claim-discards.entity';
+import { ClaimFulfillment, ClaimFulfillmentItem } from './claim-fulfillments.entity';
+import { ClaimVendorReceipt, ClaimVendorReceiptItem } from './claim-vendor-receipts.entity';
 import { ClaimVendorShipment, ClaimVendorShipmentItem } from './claim-vendor-shipments.entity';
 
 export enum ClaimSourceType {
@@ -49,6 +52,13 @@ export enum ClaimItemUnitOutcome {
 export enum ClaimDiscardType {
   AS_IS = 'AS_IS',
   SCRAP = 'SCRAP',
+}
+
+/** Vendor return / customer settlement type. */
+export enum ClaimSettlementType {
+  REPLACEMENT = 'REPLACEMENT',
+  REPAIRED = 'REPAIRED',
+  CREDIT = 'CREDIT',
 }
 
 /**
@@ -149,6 +159,15 @@ export class Claim {
 
   @OneToMany(() => ClaimVendorReceipt, (receipt) => receipt.claim)
   vendorReceipts: ClaimVendorReceipt[];
+
+  @OneToMany(() => ClaimDiscard, (discard) => discard.claim)
+  discards: ClaimDiscard[];
+
+  @OneToMany(() => ClaimFulfillment, (fulfillment) => fulfillment.claim)
+  fulfillments: ClaimFulfillment[];
+
+  @OneToMany(() => ClaimAdditionalCost, (cost) => cost.claim)
+  additionalCosts: ClaimAdditionalCost[];
 }
 
 @Entity('claim_items')
@@ -197,6 +216,23 @@ export class ClaimItem {
   @Column({ type: 'int' })
   claimedQuantity: number;
 
+  /** Running totals — balances derived in services, never typed by UI. */
+  @Column({ type: 'int', default: 0 })
+  qtyDiscarded: number;
+
+  @Column({ type: 'int', default: 0 })
+  qtySent: number;
+
+  @Column({ type: 'int', default: 0 })
+  qtyReceived: number;
+
+  @Column({ type: 'int', default: 0 })
+  qtyRejected: number;
+
+  /** Delivered to customer or returned to location. */
+  @Column({ type: 'int', default: 0 })
+  qtyGiven: number;
+
   @Column({
     type: 'enum',
     enum: ClaimItemUnitOutcome,
@@ -231,6 +267,15 @@ export class ClaimItem {
 
   @OneToMany(() => ClaimVendorShipmentItem, (shipmentItem) => shipmentItem.claimItem)
   shipmentItems: ClaimVendorShipmentItem[];
+
+  @OneToMany(() => ClaimVendorReceiptItem, (receiptItem) => receiptItem.claimItem)
+  receiptItems: ClaimVendorReceiptItem[];
+
+  @OneToMany(() => ClaimDiscardItem, (discardItem) => discardItem.claimItem)
+  discardItems: ClaimDiscardItem[];
+
+  @OneToMany(() => ClaimFulfillmentItem, (fulfillmentItem) => fulfillmentItem.claimItem)
+  fulfillmentItems: ClaimFulfillmentItem[];
 }
 
 /**
