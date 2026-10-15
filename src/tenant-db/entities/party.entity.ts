@@ -21,6 +21,7 @@ import { SaleOrder } from './sale-order.entity';
 import { DeliveryNote } from './delivery-note.entity';
 import { PurchaseInvoice } from './purchase-invoice.entity';
 import { SaleInvoice } from './sale-invoice.entity';
+import { ClaimVendorShipment } from './claim/claim-vendor-shipments.entity';
 
 export enum PartyType {
   CUSTOMER = 'CUSTOMER',
@@ -157,4 +158,7 @@ export class Party {
 
   @OneToMany(() => SaleInvoice, (saleInvoice) => saleInvoice.customer, { onDelete: 'CASCADE' })
   saleInvoices: SaleInvoice[];
+
+  @OneToMany(() => ClaimVendorShipment, (shipment) => shipment.vendor, { onDelete: 'CASCADE' })
+  vendorShipments: ClaimVendorShipment[];
 }

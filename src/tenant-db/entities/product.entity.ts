@@ -27,6 +27,7 @@ import { PurchaseReturnItem } from './purchase-return.entity';
 import { SaleInvoiceItem } from './sale-invoice.entity';
 import { DeliveryNoteItem } from './delivery-note.entity';
 import { SaleReturnItem } from './sale-return.entity';
+import { ClaimVendorShipmentItem } from './claim/claim-vendor-shipments.entity';
 
 export enum BatchPickStrategy {
     FIFO = 'FIFO',
@@ -209,6 +210,9 @@ export class Uom {
 
     @OneToMany(() => SaleReturnItem, (saleReturnItem) => saleReturnItem.uom)
     saleReturnItems: SaleReturnItem[];
+
+    @OneToMany(() => ClaimVendorShipmentItem, (shipmentItem) => shipmentItem.uom)
+    claimVendorShipmentItems: ClaimVendorShipmentItem[];
 }
 
 @Entity('product_brands')
@@ -363,11 +367,14 @@ export class Product {
     @OneToMany(() => StockMovement, (stockMovement) => stockMovement.product, { onDelete: 'CASCADE' })
     stockMovements: StockMovement[];
 
+    @OneToMany(() => ClaimVendorShipmentItem, (shipmentItem) => shipmentItem.product)
+    claimVendorShipmentItems: ClaimVendorShipmentItem[];
+
 }
 
 @Entity('product_flavours')
 export class ProductFlavour {
-    @PrimaryGeneratedColumn()
+    @PrimaryGeneratedColumn('uuid')
     id: string;
 
     @ManyToOne(() => Product, (product) => product.flavours, { onDelete: 'CASCADE' })
@@ -415,6 +422,9 @@ export class ProductFlavour {
 
     @OneToMany(() => SaleReturnItem, (saleReturnItem) => saleReturnItem.productFlavour)
     saleReturnItems: SaleReturnItem[];
+
+    @OneToMany(() => ClaimVendorShipmentItem, (shipmentItem) => shipmentItem.productFlavour)
+    claimVendorShipmentItems: ClaimVendorShipmentItem[];
 }
 
 @Entity('product_pricings')

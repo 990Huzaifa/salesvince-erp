@@ -11,7 +11,7 @@ import {
   ValidateIf,
   ValidateNested,
 } from 'class-validator';
-import { ClaimSourceType } from 'src/tenant-db/entities/claim.entity';
+import { ClaimSourceType } from 'src/tenant-db/entities/claim/claim.entity';
 import { CreateClaimItemDto } from './create-claim-item.dto';
 
 export class CreateClaimDto {

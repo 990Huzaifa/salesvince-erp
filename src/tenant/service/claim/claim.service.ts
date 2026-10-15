@@ -12,7 +12,7 @@ import {
   ClaimItemUnitOutcome,
   ClaimSourceType,
   ClaimStatus,
-} from 'src/tenant-db/entities/claim.entity';
+} from 'src/tenant-db/entities/claim/claim.entity';
 import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
 import { Product, ProductFlavour, Uom } from 'src/tenant-db/entities/product.entity';
 import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
@@ -26,6 +26,7 @@ import { UpdateClaimDto } from '../../dto/claim/update-claim.dto';
 import { ValidateClaimDto } from '../../dto/claim/validate-claim.dto';
 import { ActivityLogService } from '../activity-log.service';
 import { ClaimStockService } from './claim-stock.service';
+import { ClaimVendorShipmentService } from './claim-vendor-shipment.service';
 
 const CLAIM_NUMBER_PREFIX = 'CLM';
 
@@ -34,6 +35,7 @@ export class ClaimService {
   constructor(
     private readonly activityLogService: ActivityLogService,
     private readonly claimStockService: ClaimStockService,
+    private readonly claimVendorShipmentService: ClaimVendorShipmentService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -652,32 +654,19 @@ export class ClaimService {
     dto: SendToVendorDto,
     actorUserId: string,
   ) {
-    const scopedBusinessId = this.assertBusinessId(businessId);
-
-    const updated = await tenantDb.transaction(async (manager) => {
-      const claim = await this.loadClaimOrFail(manager, scopedBusinessId, id);
-      if (claim.status !== ClaimStatus.VALIDATED) {
-        throw new BadRequestException(
-          'Only VALIDATED claims can be sent to vendor',
-        );
-      }
-      await this.assertVendor(manager, scopedBusinessId, dto.vendorId);
-      await this.patchClaim(manager, claim.id, {
+    return this.claimVendorShipmentService.createAndShip(
+      tenantDb,
+      businessId,
+      {
+        claimId: id,
         vendorId: dto.vendorId,
-        status: ClaimStatus.SENT_TO_VENDOR,
-      });
-      return this.loadClaimOrFail(manager, scopedBusinessId, claim.id);
-    });
-
-    await this.activityLogService.recordActivityLog(tenantDb, {
-      actorId: actorUserId,
-      businessId: scopedBusinessId,
-      action: 'CLAIM_SENT_TO_VENDOR',
-      description: `Claim ${updated.claimNumber} sent to vendor`,
-      metadata: { claimId: updated.id, vendorId: dto.vendorId },
-    });
-
-    return { data: this.mapClaim(updated) };
+        shipmentDate: dto.shipmentDate,
+        notes: dto.notes,
+        proofImage: dto.proofImage,
+        items: dto.items,
+      },
+      actorUserId,
+    );
   }
 
   async receiveFromVendor(

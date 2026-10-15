@@ -1,5 +1,5 @@
 import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
-import { ClaimDiscardType } from 'src/tenant-db/entities/claim.entity';
+import { ClaimDiscardType } from 'src/tenant-db/entities/claim/claim.entity';
 
 export class DiscardClaimDto {
   @IsEnum(ClaimDiscardType)

@@ -24,7 +24,7 @@ import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import {
   ClaimSourceType,
   ClaimStatus,
-} from 'src/tenant-db/entities/claim.entity';
+} from 'src/tenant-db/entities/claim/claim.entity';
 import { CreateClaimDto } from '../../dto/claim/create-claim.dto';
 import { DiscardClaimDto } from '../../dto/claim/discard-claim.dto';
 import { ReceiveFromVendorDto } from '../../dto/claim/receive-from-vendor.dto';

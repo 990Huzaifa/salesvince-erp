@@ -13,9 +13,9 @@ export class CreateClaimItemDto {
   productId: string;
 
   @IsOptional()
-  @Type(() => Number)
+  @IsUUID()
   @IsInt()
-  productFlavourId?: number | null;
+  productFlavourId?: string | null;
 
   @IsUUID()
   uomId: string;

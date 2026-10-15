@@ -10,11 +10,13 @@ import {
   RelationId,
   UpdateDateColumn,
 } from 'typeorm';
-import { Business } from './business.entity';
-import { Party } from './party.entity';
-import { Product, ProductFlavour, Uom } from './product.entity';
-import { User } from './user.entity';
-import { Warehouse } from './warehouse.entity';
+import { Business } from '../business.entity';
+import { Party } from '../party.entity';
+import { Product, ProductFlavour, Uom } from '../product.entity';
+import { User } from '../user.entity';
+import { Warehouse } from '../warehouse.entity';
+import { ClaimVendorReceipt } from './claim-vendor-receipts.entity';
+import { ClaimVendorShipment, ClaimVendorShipmentItem } from './claim-vendor-shipments.entity';
 
 export enum ClaimSourceType {
   CUSTOMER = 'CUSTOMER',
@@ -141,6 +143,12 @@ export class Claim {
 
   @OneToMany(() => ClaimBatch, (batch) => batch.claim)
   batches: ClaimBatch[];
+
+  @OneToMany(() => ClaimVendorShipment, (shipment) => shipment.claim)
+  vendorShipments: ClaimVendorShipment[];
+
+  @OneToMany(() => ClaimVendorReceipt, (receipt) => receipt.claim)
+  vendorReceipts: ClaimVendorReceipt[];
 }
 
 @Entity('claim_items')
@@ -170,7 +178,7 @@ export class ClaimItem {
   productFlavour: ProductFlavour | null;
 
   @RelationId((item: ClaimItem) => item.productFlavour)
-  productFlavourId: number | null;
+  productFlavourId: string | null;
 
   @ManyToOne(() => Uom, { onDelete: 'RESTRICT', nullable: false })
   @JoinColumn({ name: 'uomId' })
@@ -220,6 +228,9 @@ export class ClaimItem {
 
   @OneToMany(() => ClaimBatch, (batch) => batch.claimItem)
   batches: ClaimBatch[];
+
+  @OneToMany(() => ClaimVendorShipmentItem, (shipmentItem) => shipmentItem.claimItem)
+  shipmentItems: ClaimVendorShipmentItem[];
 }
 
 /**
@@ -273,7 +284,7 @@ export class ClaimBatch {
   productFlavour: ProductFlavour | null;
 
   @RelationId((batch: ClaimBatch) => batch.productFlavour)
-  productFlavourId: number | null;
+  productFlavourId: string | null;
 
   @ManyToOne(() => Uom, { onDelete: 'RESTRICT', nullable: false })
   @JoinColumn({ name: 'uomId' })
@@ -308,6 +319,9 @@ export class ClaimBatch {
 
   @DeleteDateColumn({ nullable: true })
   deletedAt: Date | null;
+
+  @OneToMany(() => ClaimVendorShipmentItem, (shipmentItem) => shipmentItem.claimBatch)
+  shipmentItems: ClaimVendorShipmentItem[];
 }
 
 /**
@@ -353,7 +367,7 @@ export class ClaimStock {
   productFlavour: ProductFlavour | null;
 
   @RelationId((stock: ClaimStock) => stock.productFlavour)
-  productFlavourId: number | null;
+  productFlavourId: string | null;
 
   @Column({ type: 'int', default: 0 })
   quantityOnHand: number;

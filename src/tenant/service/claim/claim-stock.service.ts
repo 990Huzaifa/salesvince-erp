@@ -6,7 +6,7 @@ import {
   ClaimBatch,
   ClaimItem,
   ClaimStock,
-} from 'src/tenant-db/entities/claim.entity';
+} from 'src/tenant-db/entities/claim/claim.entity';
 
 export type ClaimStockIntakeResult = {
   createdBatches: ClaimBatch[];
@@ -28,13 +28,12 @@ export class ClaimStockService {
   }
 
   private toFlavourId(
-    productFlavourId: number | string | null | undefined,
-  ): number | null {
+    productFlavourId: string | null | undefined,
+  ): string | null {
     if (productFlavourId === null || productFlavourId === undefined) {
       return null;
     }
-    const n = Number(productFlavourId);
-    return Number.isFinite(n) ? n : null;
+    return productFlavourId;
   }
 
   async listBatches(
@@ -185,28 +184,13 @@ export class ClaimStockService {
         freshItem.uomId,
       );
 
-      const productFlavourId = this.toFlavourId(freshItem.productFlavourId);
+      const productFlavourId = this.toFlavourId(freshItem.productFlavourId ?? null) ?? null;
       const claimId = String(claim.id);
       const businessId = String(claim.businessId);
-
-      // Raw SQL avoids TypeORM nulling claimId when @Column + @JoinColumn share name
       const batchId = randomUUID();
       await manager.query(
         `
-        INSERT INTO claim_batches (
-          "id",
-          "businessId",
-          "claimId",
-          "claimItemId",
-          "batchNumber",
-          "productId",
-          "productFlavourId",
-          "uomId",
-          "warehouseId",
-          "quantity",
-          "originalQuantity",
-          "batchDate"
-        ) VALUES (
+        INSERT INTO claim_batches (id, businessId, claimId, claimItemId, batchNumber, productId, productFlavourId, uomId, warehouseId, quantity, originalQuantity, batchDate) VALUES (
           $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5,
           $6::uuid, $7::int, $8::uuid, $9::uuid,
           $10::int, $11::int, $12::date
@@ -355,7 +339,7 @@ export class ClaimStockService {
       warehouseId: string;
       productId: string;
       uomId: string;
-      productFlavourId: number | null;
+      productFlavourId: string | null;
       quantityDelta: number;
     },
   ): Promise<ClaimStock> {

@@ -3,6 +3,7 @@ import { Business } from "./business.entity";
 import { PurchaseOrder } from "./purchase-order.entity";
 import { Grn } from "./grn.entity";
 import { StockBalance, Batch, StockMovement } from "./stock.entity";
+import { ClaimVendorShipmentItem } from "./claim/claim-vendor-shipments.entity";
 
 @Entity('warehouses')
 export class Warehouse {
@@ -76,4 +77,7 @@ export class Warehouse {
 
     @OneToMany(() => StockMovement, (stockMovement) => stockMovement.warehouse, { onDelete: 'CASCADE' })
     stockMovements: StockMovement[];
+
+    @OneToMany(() => ClaimVendorShipmentItem, (shipmentItem) => shipmentItem.warehouse)
+    claimVendorShipmentItems: ClaimVendorShipmentItem[];
 }    
