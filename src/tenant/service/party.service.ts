@@ -193,21 +193,23 @@ export class PartyService {
           ? 'CUS'
           : 'PTY';
 
-    const last = await tenantDb
+    // Numeric MAX — not string ORDER BY (CUS-9 > CUS-00010 lexicographically).
+    // Include soft-deleted: unique index is on (businessId, code) without deletedAt.
+    const raw = await tenantDb
       .getRepository(Party)
       .createQueryBuilder('p')
+      .withDeleted()
+      .select(
+        `MAX(CAST(SUBSTRING(p.code FROM ${prefix.length + 2}) AS INTEGER))`,
+        'maxSuffix',
+      )
       .where('p.businessId = :businessId', { businessId })
-      .andWhere('p.code LIKE :prefix', { prefix: `${prefix}-%` })
-      .andWhere('p.deletedAt IS NULL')
-      .orderBy('p.code', 'DESC')
-      .getOne();
+      .andWhere('p.code ~ :pattern', {
+        pattern: `^${prefix}-[0-9]+$`,
+      })
+      .getRawOne<{ maxSuffix: string | null }>();
 
-    let next = 1;
-    if (last) {
-      const suffix = last.code.replace(`${prefix}-`, '');
-      next = (parseInt(suffix, 10) || 0) + 1;
-    }
-
+    const next = (Number(raw?.maxSuffix) || 0) + 1;
     return `${prefix}-${String(next).padStart(5, '0')}`;
   }
 
@@ -307,17 +309,34 @@ export class PartyService {
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const name = dto.name.trim();
-    const code =
+    const codeProvided = Boolean(dto.code?.trim());
+    let code =
       dto.code?.trim() ||
       (await this.generatePartyCode(tenantDb, scopedBusinessId, dto.type));
 
     const partyRepo = tenantDb.getRepository(Party);
-    const existing = await partyRepo.findOne({
-      where: { businessId: scopedBusinessId, code, deletedAt: IsNull() },
-      select: ['id'],
-    });
-    if (existing) {
-      throw new ConflictException('Party code already exists for this business');
+    // Unique index ignores soft-delete — check withDeleted.
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const existing = await partyRepo.findOne({
+        where: { businessId: scopedBusinessId, code },
+        withDeleted: true,
+        select: ['id'],
+      });
+      if (!existing) break;
+      if (codeProvided) {
+        throw new ConflictException(
+          'Party code already exists for this business',
+        );
+      }
+      // Auto code collided — bump numeric suffix (don't re-query same MAX).
+      const prefix = code.includes('-') ? code.split('-')[0] : 'PTY';
+      const current = parseInt(code.replace(`${prefix}-`, ''), 10) || 0;
+      code = `${prefix}-${String(current + 1).padStart(5, '0')}`;
+      if (attempt === 7) {
+        throw new ConflictException(
+          'Could not allocate a unique party code — please retry',
+        );
+      }
     }
 
     this.assertCustomerOnlyFields(dto.type, {
