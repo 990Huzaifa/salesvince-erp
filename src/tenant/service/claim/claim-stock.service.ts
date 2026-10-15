@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, IsNull } from 'typeorm';
 import {
   Claim,
   ClaimBatch,
@@ -15,6 +15,11 @@ export type ClaimStockIntakeResult = {
 
 /**
  * Claim-module inventory only. Does not touch ERP batchs / stock_balances.
+ *
+ * Link model (current entity):
+ * - ClaimItem has no claimBatchId
+ * - ClaimBatch.claimItemId (required) points at the item
+ * - productFlavourId is int | null on item / batch / stock
  */
 @Injectable()
 export class ClaimStockService {
@@ -22,14 +27,14 @@ export class ClaimStockService {
     return Math.round(value);
   }
 
-  /** ClaimItem uses int; ClaimBatch / ClaimStock use string | null. */
-  private toFlavourKey(
+  private toFlavourId(
     productFlavourId: number | string | null | undefined,
-  ): string | null {
+  ): number | null {
     if (productFlavourId === null || productFlavourId === undefined) {
       return null;
     }
-    return String(productFlavourId);
+    const n = Number(productFlavourId);
+    return Number.isFinite(n) ? n : null;
   }
 
   async listBatches(
@@ -51,6 +56,7 @@ export class ClaimStockService {
       .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .leftJoinAndSelect('batch.uom', 'uom')
       .leftJoinAndSelect('batch.warehouse', 'warehouse')
+      .leftJoinAndSelect('batch.claimItem', 'claimItem')
       .where('batch.businessId = :businessId', { businessId })
       .andWhere('batch.deletedAt IS NULL')
       .orderBy('batch.createdAt', 'DESC')
@@ -144,7 +150,6 @@ export class ClaimStockService {
     const asOf = new Date(claim.claimDate);
 
     for (const item of items) {
-      // Fresh row — avoid stale claimBatchId from relations
       const freshItem = await itemRepo.findOne({
         where: { id: item.id, claimId: claim.id },
       });
@@ -152,7 +157,14 @@ export class ClaimStockService {
         throw new BadRequestException(`Claim item ${item.id} not found`);
       }
 
-      if (freshItem.claimBatchId) {
+      const existingBatch = await batchRepo.findOne({
+        where: {
+          claimId: claim.id,
+          claimItemId: freshItem.id,
+          deletedAt: IsNull(),
+        },
+      });
+      if (existingBatch) {
         continue;
       }
 
@@ -170,29 +182,50 @@ export class ClaimStockService {
         freshItem.uomId,
       );
 
-      const productFlavourId = this.toFlavourKey(freshItem.productFlavourId);
+      const productFlavourId = this.toFlavourId(freshItem.productFlavourId);
+      const claimId = String(claim.id);
+      const businessId = String(claim.businessId);
 
-      // insert() avoids TypeORM save() wiping claimId when @Column + @ManyToOne
-      // share the same JoinColumn and the relation object is unset.
+      // Raw SQL avoids TypeORM nulling claimId when @Column + @JoinColumn share name
       const batchId = randomUUID();
-      await batchRepo.insert({
-        id: batchId,
-        businessId: claim.businessId,
-        claimId: claim.id,
-        claimItemId: freshItem.id,
-        batchNumber,
-        productId: freshItem.productId,
-        productFlavourId,
-        uomId: freshItem.uomId,
-        warehouseId: freshItem.warehouseId,
-        quantity: qty,
-        originalQuantity: qty,
-        batchDate: asOf,
-      });
+      await manager.query(
+        `
+        INSERT INTO claim_batches (
+          "id",
+          "businessId",
+          "claimId",
+          "claimItemId",
+          "batchNumber",
+          "productId",
+          "productFlavourId",
+          "uomId",
+          "warehouseId",
+          "quantity",
+          "originalQuantity",
+          "batchDate"
+        ) VALUES (
+          $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5,
+          $6::uuid, $7::int, $8::uuid, $9::uuid,
+          $10::int, $11::int, $12::date
+        )
+        `,
+        [
+          batchId,
+          businessId,
+          claimId,
+          freshItem.id,
+          batchNumber,
+          freshItem.productId,
+          productFlavourId,
+          freshItem.uomId,
+          freshItem.warehouseId,
+          qty,
+          qty,
+          asOf,
+        ],
+      );
 
       const batch = await batchRepo.findOneOrFail({ where: { id: batchId } });
-
-      await itemRepo.update({ id: freshItem.id }, { claimBatchId: batchId });
 
       await this.adjustStock(manager, {
         businessId: claim.businessId,
@@ -234,23 +267,23 @@ export class ClaimStockService {
       }
 
       const freshItem = await itemRepo.findOne({ where: { id: item.id } });
-      if (!freshItem?.claimBatchId) {
-        throw new BadRequestException(
-          `Claim item ${item.id} has no claim batch — submit claim first`,
-        );
+      if (!freshItem) {
+        throw new BadRequestException(`Claim item ${item.id} not found`);
       }
 
       const batch = await batchRepo
         .createQueryBuilder('batch')
         .setLock('pessimistic_write')
-        .where('batch.id = :id', { id: freshItem.claimBatchId })
+        .where('batch.claimItemId = :claimItemId', {
+          claimItemId: freshItem.id,
+        })
         .andWhere('batch.businessId = :businessId', { businessId })
         .andWhere('batch.deletedAt IS NULL')
         .getOne();
 
       if (!batch) {
         throw new BadRequestException(
-          `Claim batch not found for item ${item.id}`,
+          `Claim batch not found for item ${item.id} — submit claim first`,
         );
       }
       if (this.roundQuantity(Number(batch.quantity)) < qty) {
@@ -260,14 +293,17 @@ export class ClaimStockService {
       }
 
       batch.quantity = this.roundQuantity(Number(batch.quantity) - qty);
-      await batchRepo.save(batch);
+      await manager.query(
+        `UPDATE claim_batches SET "quantity" = $1::int WHERE "id" = $2::uuid`,
+        [batch.quantity, batch.id],
+      );
 
       await this.adjustStock(manager, {
         businessId,
         warehouseId: freshItem.warehouseId,
         productId: freshItem.productId,
         uomId: freshItem.uomId,
-        productFlavourId: this.toFlavourKey(freshItem.productFlavourId),
+        productFlavourId: this.toFlavourId(freshItem.productFlavourId),
         quantityDelta: -qty,
       });
     }
@@ -303,14 +339,14 @@ export class ClaimStockService {
       warehouseId: string;
       productId: string;
       uomId: string;
-      productFlavourId: string | null;
+      productFlavourId: number | null;
       quantityDelta: number;
     },
   ): Promise<ClaimStock> {
-    const stockRepo = manager.getRepository(ClaimStock);
-    const flavourId = this.toFlavourKey(params.productFlavourId);
+    const flavourId = this.toFlavourId(params.productFlavourId);
 
-    const qb = stockRepo
+    const qb = manager
+      .getRepository(ClaimStock)
       .createQueryBuilder('stock')
       .setLock('pessimistic_write')
       .where('stock.businessId = :businessId', {
@@ -325,7 +361,6 @@ export class ClaimStockService {
       .andWhere('stock.uomId = :uomId', { uomId: params.uomId })
       .andWhere('stock.deletedAt IS NULL');
 
-    // Matches split unique indexes (with / without flavour)
     if (flavourId === null) {
       qb.andWhere('stock.productFlavourId IS NULL');
     } else {
@@ -335,13 +370,32 @@ export class ClaimStockService {
     let stock = await qb.getOne();
 
     if (!stock) {
-      stock = stockRepo.create({
-        businessId: params.businessId,
-        warehouseId: params.warehouseId,
-        productId: params.productId,
-        uomId: params.uomId,
-        productFlavourId: flavourId,
-        quantityOnHand: 0,
+      const stockId = randomUUID();
+      await manager.query(
+        `
+        INSERT INTO claim_stocks (
+          "id",
+          "businessId",
+          "warehouseId",
+          "productId",
+          "uomId",
+          "productFlavourId",
+          "quantityOnHand"
+        ) VALUES (
+          $1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6::int, 0
+        )
+        `,
+        [
+          stockId,
+          params.businessId,
+          params.warehouseId,
+          params.productId,
+          params.uomId,
+          flavourId,
+        ],
+      );
+      stock = await manager.getRepository(ClaimStock).findOneOrFail({
+        where: { id: stockId },
       });
     }
 
@@ -353,7 +407,12 @@ export class ClaimStockService {
         'Insufficient claim stock for this operation',
       );
     }
+
+    await manager.query(
+      `UPDATE claim_stocks SET "quantityOnHand" = $1::int WHERE "id" = $2::uuid`,
+      [next, stock.id],
+    );
     stock.quantityOnHand = next;
-    return stockRepo.save(stock);
+    return stock;
   }
 }
