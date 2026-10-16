@@ -21,8 +21,10 @@ import {
   ProductCategory,
   ProductFlavour,
   ProductPricing,
+  ProductPricingType,
   ProductSubCategory,
   Uom,
+  BatchPickStrategy,
 } from 'src/tenant-db/entities/product.entity';
 import { Asset, AssetStatus } from 'src/tenant-db/entities/asset.entity';
 import {
@@ -62,7 +64,6 @@ import {
   JsonImportResultRow,
   SALESVINCE_EXPORT_FORMAT,
 } from '../dto/import-export/json-export-envelope.dto';
-import { BatchPickStrategy } from 'src/tenant-db/entities/product.entity';
 import { generateSequentialCode } from './hr/hr-common.util';
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
@@ -423,16 +424,13 @@ export class ProductService {
         await productFlavourRepo.save(flavourRows);
       }
 
-      const pricingRows = dto.pricing.map((price) =>
-        productPricingRepo.create({
+      const pricingRows = dto.pricing.map((price) => {
+        const normalized = this.normalizePricingRow(price);
+        return productPricingRepo.create({
           productId: savedProduct.id,
-          uomId: price.uomId,
-          purchaseUnitPrice: price.purchaseUnitPrice,
-          saleUnitMarginAmount: price.saleUnitMarginAmount,
-          saleUnitMarginPercentage: price.saleUnitMarginPercentage,
-          quantity: price.quantity,
-        }),
-      );
+          ...normalized,
+        });
+      });
       await productPricingRepo.save(pricingRows);
 
       return savedProduct;
@@ -734,12 +732,7 @@ export class ProductService {
         const requestedPricingByUom = new Map(
           dto.pricing.map((item) => [
             item.uomId.trim(),
-            {
-              purchaseUnitPrice: item.purchaseUnitPrice,
-              saleUnitMarginAmount: item.saleUnitMarginAmount,
-              saleUnitMarginPercentage: item.saleUnitMarginPercentage,
-              quantity: Number(item.quantity),
-            },
+            this.normalizePricingRow(item),
           ]),
         );
         const requestedUomIds = [...requestedPricingByUom.keys()];
@@ -755,9 +748,15 @@ export class ProductService {
         for (const [uomId, requestedPricing] of requestedPricingByUom) {
           const currentPricing = existingPricingByUom.get(uomId);
           if (currentPricing) {
+            currentPricing.pricingType = requestedPricing.pricingType;
             currentPricing.purchaseUnitPrice = requestedPricing.purchaseUnitPrice;
-            currentPricing.saleUnitMarginAmount = requestedPricing.saleUnitMarginAmount;
-            currentPricing.saleUnitMarginPercentage = requestedPricing.saleUnitMarginPercentage;
+            currentPricing.saleUnitMarginAmount =
+              requestedPricing.saleUnitMarginAmount;
+            currentPricing.saleUnitMarginPercentage =
+              requestedPricing.saleUnitMarginPercentage;
+            currentPricing.purchasePercentage =
+              requestedPricing.purchasePercentage;
+            currentPricing.salePercentage = requestedPricing.salePercentage;
             currentPricing.quantity = requestedPricing.quantity;
             await productPricingRepo.save(currentPricing);
             continue;
@@ -766,11 +765,8 @@ export class ProductService {
           await productPricingRepo.save(
             productPricingRepo.create({
               productId: product.id,
+              ...requestedPricing,
               uomId,
-              purchaseUnitPrice: requestedPricing.purchaseUnitPrice,
-              saleUnitMarginAmount: requestedPricing.saleUnitMarginAmount,
-              saleUnitMarginPercentage: requestedPricing.saleUnitMarginPercentage,
-              quantity: requestedPricing.quantity,
             }),
           );
         }
@@ -976,12 +972,7 @@ export class ProductService {
         const requestedPricingByUom = new Map(
           dto.pricing.map((item) => [
             item.uomId.trim(),
-            {
-              purchaseUnitPrice: item.purchaseUnitPrice,
-              saleUnitMarginAmount: item.saleUnitMarginAmount,
-              saleUnitMarginPercentage: item.saleUnitMarginPercentage,
-              quantity: Number(item.quantity),
-            },
+            this.normalizePricingRow(item),
           ]),
         );
         const requestedUomIds = [...requestedPricingByUom.keys()];
@@ -997,9 +988,15 @@ export class ProductService {
         for (const [uomId, requestedPricing] of requestedPricingByUom) {
           const currentPricing = existingPricingByUom.get(uomId);
           if (currentPricing) {
+            currentPricing.pricingType = requestedPricing.pricingType;
             currentPricing.purchaseUnitPrice = requestedPricing.purchaseUnitPrice;
-            currentPricing.saleUnitMarginAmount = requestedPricing.saleUnitMarginAmount;
-            currentPricing.saleUnitMarginPercentage = requestedPricing.saleUnitMarginPercentage;
+            currentPricing.saleUnitMarginAmount =
+              requestedPricing.saleUnitMarginAmount;
+            currentPricing.saleUnitMarginPercentage =
+              requestedPricing.saleUnitMarginPercentage;
+            currentPricing.purchasePercentage =
+              requestedPricing.purchasePercentage;
+            currentPricing.salePercentage = requestedPricing.salePercentage;
             currentPricing.quantity = requestedPricing.quantity;
             await productPricingRepo.save(currentPricing);
             continue;
@@ -1008,11 +1005,8 @@ export class ProductService {
           await productPricingRepo.save(
             productPricingRepo.create({
               productId: product.id,
+              ...requestedPricing,
               uomId,
-              purchaseUnitPrice: requestedPricing.purchaseUnitPrice,
-              saleUnitMarginAmount: requestedPricing.saleUnitMarginAmount,
-              saleUnitMarginPercentage: requestedPricing.saleUnitMarginPercentage,
-              quantity: requestedPricing.quantity,
             }),
           );
         }
@@ -1670,13 +1664,14 @@ export class ProductService {
             isActive: true,
             batchPickStrategy: BatchPickStrategy.LIFO,
             pricing: [
-              {
+              this.normalizePricingRow({
                 uomId: uom.id,
+                pricingType: ProductPricingType.BY_AMOUNT,
                 purchaseUnitPrice: pricing.purchaseUnitPrice,
                 saleUnitMarginAmount: pricing.saleUnitMarginAmount,
                 saleUnitMarginPercentage: pricing.saleUnitMarginPercentage,
                 quantity: 1,
-              },
+              }),
             ],
           };
 
@@ -1818,6 +1813,55 @@ export class ProductService {
     return Math.round(value * 100) / 100;
   }
 
+  private normalizePricingRow(price: {
+    uomId: string;
+    pricingType?: ProductPricingType;
+    purchaseUnitPrice: number;
+    saleUnitMarginAmount: number;
+    saleUnitMarginPercentage: number;
+    purchasePercentage?: number;
+    salePercentage?: number;
+    quantity: number;
+  }): {
+    uomId: string;
+    pricingType: ProductPricingType;
+    purchaseUnitPrice: number;
+    saleUnitMarginAmount: number;
+    saleUnitMarginPercentage: number;
+    purchasePercentage: number;
+    salePercentage: number;
+    quantity: number;
+  } {
+    const pricingType = price.pricingType ?? ProductPricingType.BY_AMOUNT;
+    const uomId = price.uomId.trim();
+    const purchaseUnitPrice = Number(price.purchaseUnitPrice);
+    const quantity = Number(price.quantity);
+
+    if (pricingType === ProductPricingType.BY_MARGIN) {
+      return {
+        uomId,
+        pricingType,
+        purchaseUnitPrice,
+        saleUnitMarginAmount: 0,
+        saleUnitMarginPercentage: 0,
+        purchasePercentage: Number(price.purchasePercentage ?? 0),
+        salePercentage: Number(price.salePercentage ?? 0),
+        quantity,
+      };
+    }
+
+    return {
+      uomId,
+      pricingType: ProductPricingType.BY_AMOUNT,
+      purchaseUnitPrice,
+      saleUnitMarginAmount: Number(price.saleUnitMarginAmount),
+      saleUnitMarginPercentage: Number(price.saleUnitMarginPercentage),
+      purchasePercentage: 0,
+      salePercentage: 0,
+      quantity,
+    };
+  }
+
   private resolvePricingMargins(price: ProductJsonPricingItemDto): {
     purchaseUnitPrice: number;
     saleUnitMarginAmount: number;
@@ -1883,11 +1927,14 @@ export class ProductService {
         return {
           uom: { name: row.uom?.name ?? '' },
           isBase: row.uom?.isBase ?? false,
+          pricingType: row.pricingType ?? ProductPricingType.BY_AMOUNT,
           quantity: Number(row.quantity),
           purchaseUnitPrice: purchase,
           saleUnitPrice: this.roundMoney(purchase + marginAmount),
           saleUnitMarginAmount: marginAmount,
           saleUnitMarginPercentage: Number(row.saleUnitMarginPercentage),
+          purchasePercentage: Number(row.purchasePercentage ?? 0),
+          salePercentage: Number(row.salePercentage ?? 0),
         };
       }),
     };
@@ -2074,13 +2121,18 @@ export class ProductService {
           await manager.getRepository(Uom).save(uom);
         }
         const margins = this.resolvePricingMargins(price);
-        pricingRows.push({
-          uomId: uom.id,
-          purchaseUnitPrice: margins.purchaseUnitPrice,
-          saleUnitMarginAmount: margins.saleUnitMarginAmount,
-          saleUnitMarginPercentage: margins.saleUnitMarginPercentage,
-          quantity: margins.quantity,
-        });
+        pricingRows.push(
+          this.normalizePricingRow({
+            uomId: uom.id,
+            pricingType: price.pricingType,
+            purchaseUnitPrice: margins.purchaseUnitPrice,
+            saleUnitMarginAmount: margins.saleUnitMarginAmount,
+            saleUnitMarginPercentage: margins.saleUnitMarginPercentage,
+            purchasePercentage: price.purchasePercentage,
+            salePercentage: price.salePercentage,
+            quantity: margins.quantity,
+          }),
+        );
       }
 
       return {
@@ -2140,11 +2192,7 @@ export class ProductService {
           resolved.pricingRows.map((price) =>
             productPricingRepo.create({
               productId: product.id,
-              uomId: price.uomId,
-              purchaseUnitPrice: price.purchaseUnitPrice,
-              saleUnitMarginAmount: price.saleUnitMarginAmount,
-              saleUnitMarginPercentage: price.saleUnitMarginPercentage,
-              quantity: price.quantity,
+              ...price,
             }),
           ),
         );

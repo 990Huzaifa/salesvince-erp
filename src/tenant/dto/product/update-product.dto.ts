@@ -10,11 +10,18 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { BatchPickStrategy } from 'src/tenant-db/entities/product.entity';
+import {
+  BatchPickStrategy,
+  ProductPricingType,
+} from 'src/tenant-db/entities/product.entity';
 
 class UpdateProductPricingDto {
   @IsUUID()
   uomId: string;
+
+  @IsOptional()
+  @IsEnum(ProductPricingType)
+  pricingType?: ProductPricingType;
 
   @IsNumber()
   purchaseUnitPrice: number;
@@ -24,6 +31,14 @@ class UpdateProductPricingDto {
 
   @IsNumber()
   saleUnitMarginPercentage: number;
+
+  @IsOptional()
+  @IsNumber()
+  purchasePercentage?: number;
+
+  @IsOptional()
+  @IsNumber()
+  salePercentage?: number;
 
   @IsInt()
   quantity: number;

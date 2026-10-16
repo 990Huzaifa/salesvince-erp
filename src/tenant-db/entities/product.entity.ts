@@ -35,6 +35,11 @@ export enum BatchPickStrategy {
     AVG_COST = 'AVG_COST',
 }
 
+export enum ProductPricingType {
+    BY_AMOUNT = 'BY_AMOUNT',
+    BY_MARGIN = 'BY_MARGIN',
+}
+
 @Entity('product_categories')
 export class ProductCategory {
     @PrimaryGeneratedColumn('uuid')
@@ -446,6 +451,13 @@ export class ProductPricing {
     @JoinColumn()
     uom: Uom;
 
+    @Column({
+        type: 'enum',
+        enum: ProductPricingType,
+        default: ProductPricingType.BY_AMOUNT,
+    })
+    pricingType: ProductPricingType;
+
     @Column({type: 'decimal', precision: 18, scale: 2})
     purchaseUnitPrice: number;
 
@@ -454,6 +466,12 @@ export class ProductPricing {
 
     @Column({type: 'decimal', precision: 18, scale: 2})
     saleUnitMarginPercentage: number;
+
+    @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
+    purchasePercentage: number;
+
+    @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
+    salePercentage: number;
 
     @Column()
     quantity: number;

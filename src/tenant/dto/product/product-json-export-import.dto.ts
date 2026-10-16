@@ -10,7 +10,10 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { BatchPickStrategy } from 'src/tenant-db/entities/product.entity';
+import {
+  BatchPickStrategy,
+  ProductPricingType,
+} from 'src/tenant-db/entities/product.entity';
 import {
   JsonExportEnvelopeBaseDto,
   JsonImportMode,
@@ -44,6 +47,10 @@ export class ProductJsonPricingItemDto {
   @IsBoolean()
   isBase?: boolean;
 
+  @IsOptional()
+  @IsEnum(ProductPricingType)
+  pricingType?: ProductPricingType;
+
   @IsNumber()
   @Min(1)
   @Type(() => Number)
@@ -68,6 +75,16 @@ export class ProductJsonPricingItemDto {
   @IsNumber()
   @Type(() => Number)
   saleUnitMarginPercentage?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  purchasePercentage?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  salePercentage?: number;
 }
 
 export class ProductJsonItemDto {
