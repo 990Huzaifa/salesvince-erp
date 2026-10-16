@@ -22,6 +22,8 @@ export type PartyVoucherPayload = VoucherPaymentPayload & {
   partyId: string;
   accId: string;
   invoiceId?: string;
+  /** Sale vouchers only — identifies prebooking vs normal receipt. */
+  isPrebooking?: boolean;
 };
 
 export type ExpenseVoucherPayload = VoucherPaymentPayload & {
@@ -97,6 +99,7 @@ export type VoucherUpdatePayload = Partial<VoucherPaymentPayload> & {
   partyId?: string;
   accId?: string;
   invoiceId?: string;
+  isPrebooking?: boolean;
   expenseAccId?: string;
   fromAccId?: string;
   toAccId?: string;
@@ -120,6 +123,7 @@ export type VoucherEntity = ObjectLiteral & {
   status: VoucherStatus;
   partyId?: string;
   accId?: string;
+  isPrebooking?: boolean;
   expenseAccId?: string;
   fromAccId?: string;
   toAccId?: string;
@@ -139,6 +143,8 @@ export type VoucherListOptions = {
   paymentMethod?: string;
   startDate?: string;
   endDate?: string;
+  /** Sale vouchers only. */
+  isPrebooking?: boolean;
 };
 
 export type VoucherConfig<T extends VoucherEntity> = {

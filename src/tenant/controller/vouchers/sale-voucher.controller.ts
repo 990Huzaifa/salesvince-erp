@@ -119,8 +119,17 @@ export class SaleVoucherController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('paymentMethod') paymentMethod?: string,
+    @Query('isPrebooking') isPrebooking?: string,
   ) {
     const user = req.user as TenantRequestUser;
+    const parsedIsPrebooking =
+      isPrebooking === undefined
+        ? undefined
+        : isPrebooking === 'true' || isPrebooking === '1'
+          ? true
+          : isPrebooking === 'false' || isPrebooking === '0'
+            ? false
+            : undefined;
     return this.saleVoucherService.list(
       tenantDb,
       user.businessId!,
@@ -132,6 +141,7 @@ export class SaleVoucherController {
         startDate,
         endDate,
         paymentMethod: paymentMethod?.trim().toUpperCase(),
+        isPrebooking: parsedIsPrebooking,
       },
       user.userId,
     );

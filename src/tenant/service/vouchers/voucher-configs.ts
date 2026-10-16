@@ -55,7 +55,9 @@ export const SALE_VOUCHER_CONFIG: VoucherConfig<SaleVoucher> = {
       voucher.accId,
       partyLedgerAccountId!,
       Number(voucher.paymentAmount),
-      `Receipt from customer - ${voucher.voucherNumber}`,
+      voucher.isPrebooking
+        ? `Prebooking receipt from customer - ${voucher.voucherNumber}`
+        : `Receipt from customer - ${voucher.voucherNumber}`,
     ),
 };
 

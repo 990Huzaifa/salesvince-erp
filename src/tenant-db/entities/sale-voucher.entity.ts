@@ -59,6 +59,10 @@ export class SaleVoucher {
     })
     status: VoucherStatus;
 
+    /** True when this receipt is a prebooking advance (not a normal sale receipt). */
+    @Column({ type: 'boolean', default: false })
+    isPrebooking: boolean;
+
     @CreateDateColumn()
     createdAt: Date;
 

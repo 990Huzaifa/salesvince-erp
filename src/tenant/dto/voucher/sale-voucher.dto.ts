@@ -1,9 +1,21 @@
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsArray, ValidateNested } from 'class-validator';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsBoolean,
+  IsOptional,
+  ValidateNested,
+} from 'class-validator';
 import { PartialType } from '@nestjs/mapped-types';
 import { PartyVoucherPaymentFieldsDto } from './shared-voucher-fields.dto';
 
-export class CreateSaleVoucherItemDto extends PartyVoucherPaymentFieldsDto {}
+export class CreateSaleVoucherItemDto extends PartyVoucherPaymentFieldsDto {
+  /** Mark as prebooking advance receipt. Default false = normal sale voucher. */
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isPrebooking?: boolean;
+}
 
 export class CreateSaleVouchersDto {
   @IsArray()

@@ -18,6 +18,7 @@ import {
   PaymentMethod,
   VoucherStatus,
 } from 'src/tenant-db/entities/voucher.entity';
+import { AccountTransactionReferenceType } from 'src/tenant-db/entities/transaction.entity';
 import { ActivityLogService } from '../activity-log.service';
 import {
   ListAnalyticsService,
@@ -253,6 +254,10 @@ export class VoucherOperationsService {
           dto.invoiceId !== undefined
             ? dto.invoiceId
             : voucher.invoiceId ?? undefined,
+        isPrebooking:
+          dto.isPrebooking !== undefined
+            ? dto.isPrebooking === true
+            : voucher.isPrebooking === true,
       };
     }
 
@@ -458,6 +463,9 @@ export class VoucherOperationsService {
       if (partyDto.invoiceId !== undefined) {
         repo.invoiceId = partyDto.invoiceId ?? null;
       }
+      if (config.referenceType === 'RECEIPT_VOUCHER') {
+        repo.isPrebooking = partyDto.isPrebooking === true;
+      }
     } else if (config.referenceType === 'EXPENSE_VOUCHER') {
       const expenseDto = dto as ExpenseVoucherPayload;
       repo.expenseAccId = expenseDto.expenseAccId;
@@ -520,6 +528,12 @@ export class VoucherOperationsService {
       }
       if (dto.invoiceId !== undefined) {
         voucher.invoiceId = dto.invoiceId ? String(dto.invoiceId) : null;
+      }
+      if (
+        config.referenceType === 'RECEIPT_VOUCHER' &&
+        dto.isPrebooking !== undefined
+      ) {
+        voucher.isPrebooking = dto.isPrebooking === true;
       }
     } else if (config.referenceType === 'EXPENSE_VOUCHER') {
       if (dto.expenseAccId !== undefined) {
@@ -622,6 +636,19 @@ export class VoucherOperationsService {
     return remarks || fallback;
   }
 
+  private resolveJournalReferenceType<T extends VoucherEntity>(
+    config: VoucherConfig<T>,
+    voucher: T,
+  ): AccountTransactionReferenceType {
+    if (
+      config.referenceType === AccountTransactionReferenceType.RECEIPT_VOUCHER &&
+      voucher.isPrebooking === true
+    ) {
+      return AccountTransactionReferenceType.PREBOOKING_VOUCHER;
+    }
+    return config.referenceType;
+  }
+
   private async postApprovalJournal<T extends VoucherEntity>(
     manager: EntityManager,
     businessId: string,
@@ -653,7 +680,7 @@ export class VoucherOperationsService {
 
     await this.transactionService.postJournal(manager, {
       businessId,
-      referenceType: config.referenceType,
+      referenceType: this.resolveJournalReferenceType(config, voucher),
       referenceId: voucher.id,
       partyId: voucher.partyId ?? null,
       transactionDate: voucher.paymentDate,
@@ -892,6 +919,15 @@ export class VoucherOperationsService {
 
     if (options.status) {
       qb.andWhere(`${alias}.status = :status`, { status: options.status });
+    }
+
+    if (
+      options.isPrebooking !== undefined &&
+      config.referenceType === 'RECEIPT_VOUCHER'
+    ) {
+      qb.andWhere(`${alias}.isPrebooking = :isPrebooking`, {
+        isPrebooking: options.isPrebooking,
+      });
     }
 
     if (options.search?.trim()) {
@@ -1143,6 +1179,11 @@ export class VoucherOperationsService {
         );
       }
 
+      const previousReferenceType = this.resolveJournalReferenceType(
+        config,
+        voucher,
+      );
+
       this.applyUpdateFields(voucher, config, dto);
       const validationPayload = this.buildFullCreatePayload(
         voucher,
@@ -1167,7 +1208,7 @@ export class VoucherOperationsService {
 
       await this.transactionService.deleteLedgerEntriesByReference(manager, {
         businessId,
-        referenceType: config.referenceType,
+        referenceType: previousReferenceType,
         referenceId: voucher.id,
       });
 
@@ -1394,7 +1435,7 @@ export class VoucherOperationsService {
     if (voucher.status === VoucherStatus.PAID) {
       await this.transactionService.deleteLedgerEntriesByReference(manager, {
         businessId,
-        referenceType: config.referenceType,
+        referenceType: this.resolveJournalReferenceType(config, voucher),
         referenceId: voucher.id,
       });
     }
