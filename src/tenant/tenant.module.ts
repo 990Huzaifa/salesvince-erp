@@ -118,6 +118,7 @@ import { ReportFinancialTransactionService } from './service/report/report-finan
 import { ReportTaxService } from './service/report/report-tax.service';
 import { ReportSaleChartService } from './service/report/report-sale-chart.service';
 import { ReportSaleOverviewService } from './service/report/report-sale-overview.service';
+import { ReportPrebookingService } from './service/report/report-prebooking.service';
 import { ReportCustomerLowPaymentService } from './service/report/report-customer-low-payment.service';
 import { ReportReceivablePayableService } from './service/report/report-receivable-payable.service';
 import { ReportReceivingService } from './service/report/report-receiving.service';
@@ -344,6 +345,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     ReportTaxService,
     ReportSaleChartService,
     ReportSaleOverviewService,
+    ReportPrebookingService,
     ReportCustomerLowPaymentService,
     ReportReceivablePayableService,
     ReportReceivingService,

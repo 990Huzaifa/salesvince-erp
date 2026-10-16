@@ -764,6 +764,7 @@ export class SaleOrderService {
         : null,
       customerBalance: options?.customerBalance ?? null,
       orderStatus: order.orderStatus,
+      isPrebooking: order.isPrebooking === true,
       orderTotal: order.orderTotal,
       deliveryCost: Number(order.deliveryCost ?? 0),
       taxPercentage: order.taxPercentage,
@@ -845,6 +846,7 @@ export class SaleOrderService {
       businessId: string;
       actorUserId: string;
       orderStatus: OrderStatus;
+      isPrebooking?: boolean;
       dto: CreateSaleOrderDto;
     },
   ): Promise<SaleOrder> { 
@@ -884,6 +886,7 @@ export class SaleOrderService {
           customerId: params.dto.customerId,
           businessId: params.businessId,
           orderStatus: params.orderStatus,
+          isPrebooking: params.isPrebooking === true,
           orderTotal: totals.orderTotal,
           taxPercentage: totals.taxPercentage,
           taxAmount: totals.taxAmount,
@@ -1024,6 +1027,7 @@ export class SaleOrderService {
       businessId: scopedBusinessId,
       actorUserId,
       orderStatus: OrderStatus.PREBOOKED,
+      isPrebooking: true,
       dto,
     });
 

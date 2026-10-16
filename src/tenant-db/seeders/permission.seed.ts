@@ -278,6 +278,7 @@ export const TENANT_PERMISSIONS = [
   { key: 'VIEW_CUSTOMER_LOW_PAYMENT_REPORT', name: 'View Customer Low Payment Report' },
   { key: 'VIEW_PROFIT_REPORT', name: 'View Profit Report' },
   { key: 'VIEW_SALE_OVERVIEW_REPORT', name: 'View Sale Overview Report' },
+  { key: 'VIEW_PREBOOKING_REPORT', name: 'View Prebooking Report' },
   { key: 'VIEW_SALE_CHART_REPORT', name: 'View Sale Chart Report' },
   { key: 'VIEW_SALES_SUMMARY_REPORT', name: 'View Sales Summary Report' },
   { key: 'VIEW_PURCHASE_SUMMARY_REPORT', name: 'View Purchase Summary Report' },

@@ -41,6 +41,10 @@ export class SaleOrder {
     @Column({ type: 'enum', enum: OrderStatus })
     orderStatus: OrderStatus;
 
+    /** True when created via prebook API; stays true after approve/fulfill. */
+    @Column({ type: 'boolean', default: false })
+    isPrebooking: boolean;
+
     @Column({ type: 'decimal', precision: 18, scale: 2})
     orderTotal: number;
 

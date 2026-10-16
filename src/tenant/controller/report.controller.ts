@@ -27,6 +27,7 @@ import { ReportFinancialTransactionService } from '../service/report/report-fina
 import { ReportTaxService } from '../service/report/report-tax.service';
 import { ReportSaleChartService } from '../service/report/report-sale-chart.service';
 import { ReportSaleOverviewService } from '../service/report/report-sale-overview.service';
+import { ReportPrebookingService } from '../service/report/report-prebooking.service';
 import { ReportCustomerLowPaymentService } from '../service/report/report-customer-low-payment.service';
 import { ReportReceivablePayableService } from '../service/report/report-receivable-payable.service';
 import { ReportReceivingService } from '../service/report/report-receiving.service';
@@ -50,6 +51,7 @@ import {
 } from '../dto/report/report-financial.query.dto';
 import { ReportSaleChartQueryDto } from '../dto/report/report-sale-chart.query.dto';
 import { ReportSaleOverviewQueryDto } from '../dto/report/report-sale-overview.query.dto';
+import { ReportPrebookingQueryDto } from '../dto/report/report-prebooking.query.dto';
 import { ReportCustomerLowPaymentQueryDto } from '../dto/report/report-customer-low-payment.query.dto';
 import { ReportPaginationQueryDto } from '../dto/report/report-pagination.query.dto';
 import { ReportInvoiceSummaryQueryDto } from '../dto/report/report-invoice-summary.query.dto';
@@ -81,6 +83,7 @@ export class ReportController {
     private readonly reportTaxService: ReportTaxService,
     private readonly reportSaleChartService: ReportSaleChartService,
     private readonly reportSaleOverviewService: ReportSaleOverviewService,
+    private readonly reportPrebookingService: ReportPrebookingService,
     private readonly reportCustomerLowPaymentService: ReportCustomerLowPaymentService,
     private readonly reportReceivablePayableService: ReportReceivablePayableService,
     private readonly reportReceivingService: ReportReceivingService,
@@ -346,6 +349,30 @@ export class ReportController {
         year: query.year,
         partyId: query.partyId,
         cityId: query.cityId,
+      },
+      user.userId,
+    );
+  }
+
+  @Get('prebooking')
+  @RequirePermissions('VIEW_PREBOOKING_REPORT')
+  getPrebookingReport(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportPrebookingQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportPrebookingService.getPrebookingReport(
+      tenantDb,
+      user.businessId,
+      {
+        startDate: query.startDate,
+        endDate: query.endDate,
+        paymentStatus: query.paymentStatus,
+        customerId: query.customerId,
+        cityId: query.cityId,
+        warehouseId: query.warehouseId,
+        search: query.search,
       },
       user.userId,
     );
