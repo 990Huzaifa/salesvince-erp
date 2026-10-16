@@ -211,10 +211,16 @@ export class SaleOrderService {
     return customer;
   }
 
+  private isDraftLikeStatus(status: OrderStatus): boolean {
+    return (
+      status === OrderStatus.PENDING || status === OrderStatus.PREBOOKED
+    );
+  }
+
   private assertPendingStatus(order: SaleOrder): void {
-    if (order.orderStatus !== OrderStatus.PENDING) {
+    if (!this.isDraftLikeStatus(order.orderStatus)) {
       throw new BadRequestException(
-        'Only pending sale orders can be modified or deleted',
+        'Only pending or prebooked sale orders can be modified or deleted',
       );
     }
   }
@@ -1004,6 +1010,38 @@ export class SaleOrderService {
     return { data: this.mapSaleOrder(created) };
   }
 
+  /**
+   * Creates a PREBOOKED sale order. Same payload as create; does not reserve stock.
+   */
+  async createPrebook(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    dto: CreateSaleOrderDto,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const created = await this.createOrderWithStatus(tenantDb, {
+      businessId: scopedBusinessId,
+      actorUserId,
+      orderStatus: OrderStatus.PREBOOKED,
+      dto,
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'SALE_ORDER_PREBOOKED',
+      description: `Sale order ${created.orderNumber} prebooked (no stock reserved)`,
+      metadata: {
+        saleOrderId: created.id,
+        orderNumber: created.orderNumber,
+        orderStatus: created.orderStatus,
+      },
+    });
+
+    return { data: this.mapSaleOrder(created) };
+  }
+
   async createAndApproved(
     tenantDb: DataSource,
     businessId: string | undefined,
@@ -1185,9 +1223,9 @@ export class SaleOrderService {
         );
       }
 
-      if (order.orderStatus !== OrderStatus.PENDING) {
+      if (!this.isDraftLikeStatus(order.orderStatus)) {
         throw new BadRequestException(
-          'Only pending sale orders can be approved and sold',
+          'Only pending or prebooked sale orders can be approved and sold',
         );
       }
 
@@ -1920,7 +1958,7 @@ export class SaleOrderService {
     };
 
     if (
-      order.orderStatus === OrderStatus.PENDING ||
+      this.isDraftLikeStatus(order.orderStatus) ||
       order.orderStatus === OrderStatus.REJECTED
     ) {
       await tenantDb.getRepository(SaleOrder).remove(order);
@@ -2055,9 +2093,9 @@ export class SaleOrderService {
       throw new BadRequestException('Cancelled sale orders cannot be approved');
     }
 
-    if (order.orderStatus !== OrderStatus.PENDING) {
+    if (!this.isDraftLikeStatus(order.orderStatus)) {
       throw new BadRequestException(
-        'Only pending sale orders can be approved',
+        'Only pending or prebooked sale orders can be approved',
       );
     }
 
@@ -2102,9 +2140,9 @@ export class SaleOrderService {
       orderId,
     );
 
-    if (order.orderStatus !== OrderStatus.PENDING) {
+    if (!this.isDraftLikeStatus(order.orderStatus)) {
       throw new BadRequestException(
-        'Only pending sale orders can be rejected',
+        'Only pending or prebooked sale orders can be rejected',
       );
     }
 
@@ -2837,12 +2875,12 @@ export class SaleOrderService {
           continue;
         }
 
-        if (order.orderStatus !== OrderStatus.PENDING) {
+        if (!this.isDraftLikeStatus(order.orderStatus)) {
           this.tenantJobService.appendLog(jobId, {
             row: row.row,
             name: rowLabel,
             status: 'error',
-            error: 'Only pending sale orders can receive imported items',
+            error: 'Only pending or prebooked sale orders can receive imported items',
           });
           continue;
         }

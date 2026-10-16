@@ -126,6 +126,22 @@ export class SaleOrderController {
     );
   }
 
+  @Post('create-prebook')
+  @RequirePermissions('CREATE_SALE_ORDER')
+  createPrebook(
+    @TenantConnection() tenantDb: DataSource,
+    @Body() dto: CreateSaleOrderDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.saleOrderService.createPrebook(
+      tenantDb,
+      user.businessId,
+      dto,
+      user.userId,
+    );
+  }
+
   @Post('create-and-approve')
   @RequirePermissions('APPROVE_SALE_ORDER')
   createAndApproved(

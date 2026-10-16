@@ -9,6 +9,7 @@ import { Warehouse } from "./warehouse.entity";
 
 
 export enum OrderStatus {
+    PREBOOKED = 'PREBOOKED',
     PENDING = 'PENDING',
     APPROVED = 'APPROVED',
     REJECTED = 'REJECTED',
