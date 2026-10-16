@@ -19,3 +19,17 @@ export class FinanceAdvanceLedgerQueryDto extends FinanceLedgerQueryDto {
   @IsIn(['credit_first', 'debit_first'])
   sortOrder?: 'credit_first' | 'debit_first';
 }
+
+/** Prebooking sub-ledger for a customer receivable account. */
+export class FinancePrebookingLedgerQueryDto extends ReportPaginationQueryDto {
+  @IsUUID()
+  customerId: string;
+
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @IsOptional()
+  @IsString()
+  endDate?: string;
+}

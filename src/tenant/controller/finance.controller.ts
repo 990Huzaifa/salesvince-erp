@@ -13,6 +13,7 @@ import { FinanceService } from '../service/finance.service';
 import {
   FinanceAdvanceLedgerQueryDto,
   FinanceLedgerQueryDto,
+  FinancePrebookingLedgerQueryDto,
 } from '../dto/finance/finance-ledger.query.dto';
 
 @Controller('tenant/finance')
@@ -64,6 +65,28 @@ export class FinanceController {
         startDate: query.startDate,
         endDate: query.endDate,
         sortOrder: query.sortOrder,
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
+      },
+      user.userId,
+    );
+  }
+
+  @Get('prebooking-ledger')
+  @RequirePermissions('VIEW_PREBOOKING_LEDGER')
+  getPrebookingLedger(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: FinancePrebookingLedgerQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.financeService.getPrebookingLedger(
+      tenantDb,
+      user.businessId,
+      {
+        customerId: query.customerId,
+        startDate: query.startDate,
+        endDate: query.endDate,
         page: query.page ?? 1,
         limit: query.limit ?? 20,
       },

@@ -8,8 +8,15 @@ import {
   ChartOfAccount,
   ChartOfAccountKind,
 } from 'src/tenant-db/entities/chart-of-account.entity';
-import { Party } from 'src/tenant-db/entities/party.entity';
-import { Transaction } from 'src/tenant-db/entities/transaction.entity';
+import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
+import {
+  AccountTransactionReferenceType,
+  Transaction,
+} from 'src/tenant-db/entities/transaction.entity';
+import {
+  computeBalanceMovement,
+  getAccountBalanceNature,
+} from 'src/tenant-db/helpers/transaction-balance.helper';
 import { ActivityLogService } from './activity-log.service';
 import { paginateItems } from './report/report-query.helper';
 
@@ -28,6 +35,14 @@ export type AdvanceLedgerQueryOptions = {
   startDate?: string;
   endDate?: string;
   sortOrder?: AdvanceLedgerSortOrder;
+  page?: number;
+  limit?: number;
+};
+
+export type PrebookingLedgerQueryOptions = {
+  customerId: string;
+  startDate?: string;
+  endDate?: string;
   page?: number;
   limit?: number;
 };
@@ -475,6 +490,190 @@ export class FinanceService {
         endDate: options.endDate ?? null,
       },
       poolTotal,
+      entries: pagedEntries,
+      meta,
+    };
+  }
+
+  /**
+   * Customer prebooking sub-ledger: only PREBOOKING_VOUCHER lines on the
+   * customer's receivable account, with a running balance and referenceType.
+   */
+  async getPrebookingLedger(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    options: PrebookingLedgerQueryOptions,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const customerId = options.customerId?.trim();
+    if (!customerId) {
+      throw new BadRequestException('customerId is required');
+    }
+
+    const customer = await tenantDb.getRepository(Party).findOne({
+      where: {
+        id: customerId,
+        businessId: scopedBusinessId,
+        deletedAt: IsNull(),
+      },
+    });
+    if (!customer) {
+      throw new NotFoundException('Customer not found');
+    }
+    if (
+      customer.type !== PartyType.CUSTOMER &&
+      customer.type !== PartyType.BOTH
+    ) {
+      throw new BadRequestException('Party must be a customer');
+    }
+    if (!customer.receivableAccountId) {
+      throw new BadRequestException(
+        'Customer receivable account is required for prebooking ledger',
+      );
+    }
+
+    const account = await tenantDb.getRepository(ChartOfAccount).findOne({
+      where: {
+        id: customer.receivableAccountId,
+        businessId: scopedBusinessId,
+        deletedAt: IsNull(),
+      },
+    });
+    if (!account) {
+      throw new NotFoundException('Customer receivable account not found');
+    }
+
+    const { startDate, endDate } = this.parseDateRange(
+      options.startDate,
+      options.endDate,
+    );
+
+    const qb = tenantDb
+      .getRepository(Transaction)
+      .createQueryBuilder('t')
+      .where('t.businessId = :businessId', { businessId: scopedBusinessId })
+      .andWhere('t.chartOfAccountId = :chartOfAccountId', {
+        chartOfAccountId: account.id,
+      })
+      .andWhere('t.referenceType = :referenceType', {
+        referenceType: AccountTransactionReferenceType.PREBOOKING_VOUCHER,
+      });
+
+    if (startDate) {
+      qb.andWhere('t.transactionDate >= :startDate', { startDate });
+    }
+    if (endDate) {
+      qb.andWhere('t.transactionDate <= :endDate', { endDate });
+    }
+
+    const transactions = await qb
+      .orderBy('t.transactionDate', 'ASC')
+      .addOrderBy('t.createdAt', 'ASC')
+      .addOrderBy('t.id', 'ASC')
+      .getMany();
+
+    const nature = getAccountBalanceNature(account);
+    let openingBalance = 0;
+
+    if (startDate) {
+      const priorRows = await tenantDb
+        .getRepository(Transaction)
+        .createQueryBuilder('t')
+        .where('t.businessId = :businessId', { businessId: scopedBusinessId })
+        .andWhere('t.chartOfAccountId = :chartOfAccountId', {
+          chartOfAccountId: account.id,
+        })
+        .andWhere('t.referenceType = :referenceType', {
+          referenceType: AccountTransactionReferenceType.PREBOOKING_VOUCHER,
+        })
+        .andWhere('t.transactionDate < :startDate', { startDate })
+        .orderBy('t.transactionDate', 'ASC')
+        .addOrderBy('t.createdAt', 'ASC')
+        .addOrderBy('t.id', 'ASC')
+        .getMany();
+
+      openingBalance = this.roundAmount(
+        priorRows.reduce((sum, tx) => {
+          const debit = this.amount(tx.debitAmount);
+          const credit = this.amount(tx.creditAmount);
+          return sum + computeBalanceMovement(nature, debit, credit);
+        }, 0),
+      );
+    }
+
+    let runningBalance = openingBalance;
+    let periodDebit = 0;
+    let periodCredit = 0;
+
+    const entries = transactions.map((tx) => {
+      const debit = this.amount(tx.debitAmount);
+      const credit = this.amount(tx.creditAmount);
+      periodDebit = this.roundAmount(periodDebit + debit);
+      periodCredit = this.roundAmount(periodCredit + credit);
+      runningBalance = this.roundAmount(
+        runningBalance + computeBalanceMovement(nature, debit, credit),
+      );
+
+      return {
+        id: tx.id,
+        description: tx.description,
+        transactionDate: tx.transactionDate,
+        referenceType: tx.referenceType,
+        referenceId: tx.referenceId,
+        debitAmount: debit > 0 ? debit : null,
+        creditAmount: credit > 0 ? credit : null,
+        balance: runningBalance,
+        chartOfAccountId: tx.chartOfAccountId,
+        createdAt: tx.createdAt,
+        updatedAt: tx.updatedAt,
+      };
+    });
+
+    const { items: pagedEntries, meta } = paginateItems(
+      entries,
+      options.page,
+      options.limit,
+    );
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'PREBOOKING_LEDGER_VIEWED',
+      description: `Prebooking ledger viewed for customer ${customer.name}`,
+      metadata: {
+        customerId: customer.id,
+        chartOfAccountId: account.id,
+        startDate: options.startDate ?? null,
+        endDate: options.endDate ?? null,
+        entryCount: meta.total,
+      },
+    });
+
+    return {
+      customer: {
+        id: customer.id,
+        code: customer.code,
+        name: customer.name,
+        type: customer.type,
+      },
+      account: {
+        id: account.id,
+        code: account.code,
+        name: account.name,
+        accountKind: account.accountKind,
+        balanceNature: nature,
+      },
+      period: {
+        startDate: options.startDate ?? null,
+        endDate: options.endDate ?? null,
+      },
+      openingBalance,
+      closingBalance: runningBalance,
+      totals: {
+        periodDebit,
+        periodCredit,
+      },
       entries: pagedEntries,
       meta,
     };

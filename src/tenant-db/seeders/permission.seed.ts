@@ -263,6 +263,7 @@ export const TENANT_PERMISSIONS = [
   // Finance / ledger / transactions
   { key: 'VIEW_LEDGER', name: 'View Ledger' },
   { key: 'VIEW_ADVANCE_LEDGER', name: 'View Advance Ledger' },
+  { key: 'VIEW_PREBOOKING_LEDGER', name: 'View Prebooking Ledger' },
   { key: 'LIST_TRANSACTION', name: 'List Transactions' },
   { key: 'RECALCULATE_LEDGER', name: 'Recalculate Ledger' },
 
