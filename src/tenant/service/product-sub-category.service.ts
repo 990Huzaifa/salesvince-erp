@@ -5,10 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource, Like } from 'typeorm';
-import {
-  ProductCategory,
-  ProductSubCategory,
-} from 'src/tenant-db/entities/product.entity';
+import { ProductSubCategory } from 'src/tenant-db/entities/product.entity';
 import { ensureChartOfAccountForSubCategory } from 'src/tenant-db/helpers/product-chart-of-account.helper';
 import { ActivityLogService } from './activity-log.service';
 import * as XLSX from 'xlsx';
@@ -43,7 +40,7 @@ export class ProductSubCategoryService {
 
   private parseSubCategoryRowsFromFile(
     file: Express.Multer.File,
-  ): Array<{ row: number; categorySlug: string; name: string; slug: string }> {
+  ): Array<{ row: number; name: string; slug: string }> {
     const extension = file.originalname.split('.').pop()?.toLowerCase();
     if (!extension || !['csv', 'xls', 'xlsx'].includes(extension)) {
       throw new BadRequestException('Only CSV, XLS, and XLSX files are supported');
@@ -62,32 +59,21 @@ export class ProductSubCategoryService {
       raw: false,
     });
 
-    const subCategories: Array<{
-      row: number;
-      categorySlug: string;
-      name: string;
-      slug: string;
-    }> = [];
+    const subCategories: Array<{ row: number; name: string; slug: string }> = [];
 
     rows.forEach((row, index) => {
       if (!row?.length) {
         return;
       }
-      const categorySlug = this.sanitizeText(String(row[0] ?? '')).toLowerCase();
-      const name = this.sanitizeText(String(row[1] ?? ''));
-      if (
-        !categorySlug ||
-        !name ||
-        categorySlug === 'category' ||
-        name.toLowerCase() === 'name'
-      ) {
+      const name = this.sanitizeText(String(row[0] ?? ''));
+      if (!name || name.toLowerCase() === 'name') {
         return;
       }
       const slug = this.slugify(name);
       if (!slug) {
         return;
       }
-      subCategories.push({ row: index + 1, categorySlug, name, slug });
+      subCategories.push({ row: index + 1, name, slug });
     });
 
     return subCategories;
@@ -138,32 +124,17 @@ export class ProductSubCategoryService {
   private async processImportJob(
     tenantDb: DataSource,
     jobId: string,
-    rows: Array<{ row: number; categorySlug: string; name: string; slug: string }>,
+    rows: Array<{ row: number; name: string; slug: string }>,
     user: any,
     tenantCode: string,
   ) {
-    const job = this.tenantJobService.startJob(jobId);
-    const categoryRepo = tenantDb.getRepository(ProductCategory);
+    this.tenantJobService.startJob(jobId);
     const subCategoryRepo = tenantDb.getRepository(ProductSubCategory);
 
     for (const row of rows) {
       try {
-        const category = await categoryRepo.findOne({
-          where: { slug: row.categorySlug, businessId: user.businessId },
-        });
-        if (!category) {
-          this.tenantJobService.appendLog(jobId, {
-            row: row.row,
-            name: row.name,
-            status: 'error',
-            error: `Category "${row.categorySlug}" not found`,
-          });
-          continue;
-        }
-
         const exists = await subCategoryRepo.findOne({
           where: {
-            categoryId: category.id,
             slug: row.slug,
             businessId: user.businessId,
           },
@@ -183,11 +154,11 @@ export class ProductSubCategoryService {
             manager.getRepository(ProductSubCategory).create({
               name: row.name,
               slug: row.slug,
-              categoryId: category.id,
+              categoryId: null,
               businessId: user.businessId,
             }),
           );
-          await ensureChartOfAccountForSubCategory(manager, subCategory, category);
+          await ensureChartOfAccountForSubCategory(manager, subCategory);
           return subCategory;
         });
 
@@ -197,7 +168,6 @@ export class ProductSubCategoryService {
           status: 'success',
           metadata: {
             productSubCategoryId: created.id,
-            categoryId: created.categoryId,
             slug: created.slug,
           },
         });
@@ -231,36 +201,22 @@ export class ProductSubCategoryService {
     await this.notifyImportCompletion(tenantDb, completedJob, user, tenantCode, 'completed');
   }
 
-  private async ensureCategoryExists(tenantDb: DataSource, categoryId: string, user: any) {
-    const category = await tenantDb.getRepository(ProductCategory).findOne({
-      where: { id: categoryId, businessId: user.businessId },
-      select: ['id'],
-    });
-
-    if (!category) {
-      throw new NotFoundException('Product category not found');
-    }
-  }
-
   async create(
     tenantDb: DataSource,
     dto: CreateProductSubCategoryDto,
     user: any,
   ) {
-    const categoryId = dto.categoryId.trim();
     const name = dto.name.trim();
     const slug = dto.slug.trim().toLowerCase();
 
-    await this.ensureCategoryExists(tenantDb, categoryId, user);
-
     const subCategoryRepo = tenantDb.getRepository(ProductSubCategory);
     const existingSubCategory = await subCategoryRepo.findOne({
-      where: { categoryId, slug, businessId: user.businessId },
+      where: { slug, businessId: user.businessId },
     });
 
     if (existingSubCategory) {
       throw new ConflictException(
-        'Product sub category with this slug already exists for the category',
+        'Product sub category with this slug already exists',
       );
     }
 
@@ -269,14 +225,13 @@ export class ProductSubCategoryService {
         manager.getRepository(ProductSubCategory).create({
           name,
           slug,
-          categoryId,
+          categoryId: null,
           businessId: user.businessId,
         }),
       );
       await ensureChartOfAccountForSubCategory(manager, subCategory);
       return manager.getRepository(ProductSubCategory).findOneOrFail({
         where: { id: subCategory.id },
-        relations: ['category'],
       });
     });
 
@@ -288,7 +243,6 @@ export class ProductSubCategoryService {
       metadata: {
         productSubCategoryId: createdSubCategory.id,
         businessId: createdSubCategory.businessId,
-        categoryId: createdSubCategory.categoryId,
         slug: createdSubCategory.slug,
       },
     });
@@ -301,7 +255,6 @@ export class ProductSubCategoryService {
     page: number,
     limit: number,
     search: string,
-    categoryId: string | undefined,
     user: any,
   ) {
     const subCategoryRepo = tenantDb.getRepository(ProductSubCategory);
@@ -310,16 +263,8 @@ export class ProductSubCategoryService {
       { slug: Like(`%${search}%`), businessId: user.businessId },
     ];
 
-    if (categoryId?.trim()) {
-      const trimmedCategoryId = categoryId.trim();
-      where.forEach((condition) => {
-        condition.categoryId = trimmedCategoryId;
-      });
-    }
-
     const [subCategories, total] = await subCategoryRepo.findAndCount({
       where,
-      relations: ['category'],
       order: { createdAt: 'DESC' },
       skip: (page - 1) * limit,
       take: limit,
@@ -330,7 +275,7 @@ export class ProductSubCategoryService {
       businessId: user.businessId,
       action: 'PRODUCT_SUB_CATEGORY_LISTED',
       description: 'Product sub categories listed',
-      metadata: { total, page, limit, categoryId: categoryId?.trim() || null },
+      metadata: { total, page, limit },
     });
 
     return { result: subCategories, meta: { total, page, limit } };
@@ -339,7 +284,6 @@ export class ProductSubCategoryService {
   async view(tenantDb: DataSource, id: string, user: any) {
     const subCategory = await tenantDb.getRepository(ProductSubCategory).findOne({
       where: { id, businessId: user.businessId },
-      relations: ['category'],
     });
 
     if (!subCategory) {
@@ -372,23 +316,15 @@ export class ProductSubCategoryService {
       throw new NotFoundException('Product sub category not found');
     }
 
-    if (dto.categoryId !== undefined) {
-      const nextCategoryId = dto.categoryId.trim();
-      if (nextCategoryId !== subCategory.categoryId) {
-        await this.ensureCategoryExists(tenantDb, nextCategoryId, user);
-        subCategory.categoryId = nextCategoryId;
-      }
-    }
-
     if (dto.slug !== undefined) {
       const nextSlug = dto.slug.trim().toLowerCase();
       if (nextSlug !== subCategory.slug) {
         const slugTaken = await subCategoryRepo.findOne({
-          where: { categoryId: subCategory.categoryId, slug: nextSlug, businessId: user.businessId },
+          where: { slug: nextSlug, businessId: user.businessId },
         });
         if (slugTaken && slugTaken.id !== subCategory.id) {
           throw new ConflictException(
-            'Product sub category with this slug already exists for the category',
+            'Product sub category with this slug already exists',
           );
         }
         subCategory.slug = nextSlug;
@@ -409,14 +345,12 @@ export class ProductSubCategoryService {
       metadata: {
         productSubCategoryId: subCategory.id,
         businessId: subCategory.businessId,
-        categoryId: subCategory.categoryId,
         slug: subCategory.slug,
       },
     });
 
     return subCategoryRepo.findOne({
       where: { id },
-      relations: ['category'],
     });
   }
 
@@ -433,7 +367,7 @@ export class ProductSubCategoryService {
     const rows = this.parseSubCategoryRowsFromFile(file);
     if (!rows.length) {
       throw new BadRequestException(
-        'No sub categories found in file. Expected columns: category slug, sub category name',
+        'No sub categories found in file. Expected column: sub category name',
       );
     }
 

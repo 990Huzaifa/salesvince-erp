@@ -1,4 +1,4 @@
-import { IsString, IsUUID } from 'class-validator';
+import { IsString } from 'class-validator';
 
 export class CreateProductSubCategoryDto {
   @IsString()
@@ -6,7 +6,4 @@ export class CreateProductSubCategoryDto {
 
   @IsString()
   slug: string;
-
-  @IsUUID()
-  categoryId: string;
 }

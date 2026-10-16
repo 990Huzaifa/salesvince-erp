@@ -103,12 +103,15 @@ export class ProductSubCategory {
     @JoinColumn({ name: 'businessId' })
     business: Business;
 
-    @Column()
-    categoryId: string;
+    @Column({ type: 'uuid', nullable: true })
+    categoryId: string | null;
 
-    @ManyToOne(() => ProductCategory, (category) => category.subCategories, { onDelete: 'RESTRICT' })
+    @ManyToOne(() => ProductCategory, (category) => category.subCategories, {
+        nullable: true,
+        onDelete: 'RESTRICT',
+    })
     @JoinColumn()
-    category: ProductCategory;
+    category: ProductCategory | null;
 
     @Column({ type: 'uuid', nullable: true })
     chartOfAccountId: string | null;

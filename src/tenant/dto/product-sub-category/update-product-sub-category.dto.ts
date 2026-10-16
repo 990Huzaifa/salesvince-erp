@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 
 export class UpdateProductSubCategoryDto {
   @IsString()
@@ -8,8 +8,4 @@ export class UpdateProductSubCategoryDto {
   @IsString()
   @IsOptional()
   slug?: string;
-
-  @IsUUID()
-  @IsOptional()
-  categoryId?: string;
 }

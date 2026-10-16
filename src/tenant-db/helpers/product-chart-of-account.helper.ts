@@ -128,15 +128,14 @@ export async function ensureChartOfAccountForCategory(
 
 /**
  * Ensures a non-postable inventory group account exists for a product sub-category.
+ * Sub-categories are standalone and hang directly under Inventory.
  */
 export async function ensureChartOfAccountForSubCategory(
   manager: EntityManager,
   subCategory: ProductSubCategory,
-  category?: ProductCategory,
 ): Promise<ChartOfAccount> {
   const coaRepo = manager.getRepository(ChartOfAccount);
   const subCategoryRepo = manager.getRepository(ProductSubCategory);
-  const categoryRepo = manager.getRepository(ProductCategory);
 
   if (subCategory.chartOfAccountId) {
     const existing = await coaRepo.findOne({
@@ -164,23 +163,9 @@ export async function ensureChartOfAccountForSubCategory(
     return byLink;
   }
 
-  const resolvedCategory =
-    category ??
-    (await categoryRepo.findOne({
-      where: { id: subCategory.categoryId, businessId: subCategory.businessId },
-    }));
-  if (!resolvedCategory) {
-    throw new NotFoundException('Product category not found for sub-category COA');
-  }
-
-  const categoryAccount = await ensureChartOfAccountForCategory(
-    manager,
-    resolvedCategory,
-  );
-
   const account = await createLinkedAccount(manager, {
     businessId: subCategory.businessId,
-    parentCode: categoryAccount.code,
+    parentCode: COA_PARENT_CODES.INVENTORY,
     name: subCategory.name,
     isPostable: false,
     accountKind: ChartOfAccountKind.PRODUCT_SUB_CATEGORY,

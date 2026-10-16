@@ -70,7 +70,6 @@ export class ProductSubCategoryController {
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
     @Query('search') search: string = '',
-    @Query('categoryId') categoryId: string | undefined,
     @Req() req: Request,
   ) {
     return this.productSubCategoryService.list(
@@ -78,7 +77,6 @@ export class ProductSubCategoryController {
       page,
       limit,
       search,
-      categoryId,
       req.user,
     );
   }

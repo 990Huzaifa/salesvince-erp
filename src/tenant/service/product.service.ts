@@ -179,22 +179,15 @@ export class ProductService {
   private async ensureSubCategoryExists(
     tenantDb: DataSource,
     subCategoryId: string,
-    categoryId: string,
     user: any,
   ) {
     const subCategory = await tenantDb.getRepository(ProductSubCategory).findOne({
       where: { id: subCategoryId, businessId: user.businessId },
-      select: ['id', 'categoryId'],
+      select: ['id'],
     });
 
     if (!subCategory) {
       throw new NotFoundException('Product sub category not found');
-    }
-
-    if (subCategory.categoryId !== categoryId) {
-      throw new BadRequestException(
-        'Sub category does not belong to the selected category',
-      );
     }
   }
 
@@ -291,7 +284,7 @@ export class ProductService {
     const skuCode = dto.skuCode?.trim();
 
     await this.ensureCategoryExists(tenantDb, categoryId, user);
-    await this.ensureSubCategoryExists(tenantDb, subCategoryId, categoryId, user);
+    await this.ensureSubCategoryExists(tenantDb, subCategoryId, user);
     if (barcode) {
       await this.ensureBarcodeUnique(tenantDb, barcode);
     }
@@ -329,18 +322,9 @@ export class ProductService {
     }
 
     if (dto.subCategoryId !== undefined) {
-      const categoryId = dto.categoryId?.trim() ?? product.categoryId;
       await this.ensureSubCategoryExists(
         tenantDb,
         dto.subCategoryId.trim(),
-        categoryId,
-        user,
-      );
-    } else if (dto.categoryId !== undefined && product.subCategoryId) {
-      await this.ensureSubCategoryExists(
-        tenantDb,
-        product.subCategoryId,
-        dto.categoryId.trim(),
         user,
       );
     }
@@ -835,17 +819,9 @@ export class ProductService {
         await this.ensureSubCategoryExists(
           tenantDb,
           nextSubCategoryId,
-          product.categoryId,
           user,
         );
         product.subCategoryId = nextSubCategoryId;
-      } else if (dto.categoryId !== undefined && product.subCategoryId) {
-        await this.ensureSubCategoryExists(
-          tenantDb,
-          product.subCategoryId,
-          product.categoryId,
-          user,
-        );
       }
 
       if (dto.brandId !== undefined) {
@@ -1453,12 +1429,11 @@ export class ProductService {
 
   private async findOrCreateSubCategory(
     manager: EntityManager,
-    category: ProductCategory,
     name: string,
     user: { businessId: string },
     cache: Map<string, ProductSubCategory>,
   ): Promise<ProductSubCategory> {
-    const cacheKey = `${category.id}:${name.toLowerCase()}`;
+    const cacheKey = name.toLowerCase();
     const cached = cache.get(cacheKey);
     if (cached) {
       return cached;
@@ -1468,7 +1443,6 @@ export class ProductService {
     const slug = this.slugifyImportText(name);
     let subCategory = await subCategoryRepo.findOne({
       where: {
-        categoryId: category.id,
         name,
         businessId: user.businessId,
       },
@@ -1476,7 +1450,6 @@ export class ProductService {
     if (!subCategory && slug) {
       subCategory = await subCategoryRepo.findOne({
         where: {
-          categoryId: category.id,
           slug,
           businessId: user.businessId,
         },
@@ -1488,11 +1461,11 @@ export class ProductService {
         subCategoryRepo.create({
           name,
           slug: slug || this.slugifyImportText(name),
-          categoryId: category.id,
+          categoryId: null,
           businessId: user.businessId,
         }),
       );
-      await ensureChartOfAccountForSubCategory(manager, subCategory, category);
+      await ensureChartOfAccountForSubCategory(manager, subCategory);
     }
 
     cache.set(cacheKey, subCategory);
@@ -1632,7 +1605,6 @@ export class ProductService {
           );
           const subCategory = await this.findOrCreateSubCategory(
             manager,
-            category,
             row.subCategory,
             user,
             subCategoryCache,
@@ -2072,7 +2044,6 @@ export class ProductService {
       );
       const subCategory = await this.findOrCreateSubCategory(
         manager,
-        category,
         item.subCategory.name.trim(),
         user,
         caches.subCategory,
