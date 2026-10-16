@@ -83,6 +83,7 @@ import { ClaimDiscardController } from './controller/claim/claim-discard.control
 import { ClaimFulfillmentController } from './controller/claim/claim-fulfillment.controller';
 import { ClaimAdditionalCostController } from './controller/claim/claim-additional-cost.controller';
 import { ClaimMasterController } from './controller/claim/claim-master.controller';
+import { ClaimReportController } from './controller/claim/claim-report.controller';
 import { ClaimService } from './service/claim/claim.service';
 import { ClaimStockService } from './service/claim/claim-stock.service';
 import { ClaimVendorShipmentService } from './service/claim/claim-vendor-shipment.service';
@@ -91,6 +92,7 @@ import { ClaimDiscardService } from './service/claim/claim-discard.service';
 import { ClaimFulfillmentService } from './service/claim/claim-fulfillment.service';
 import { ClaimAdditionalCostService } from './service/claim/claim-additional-cost.service';
 import { ClaimMasterService } from './service/claim/claim-master.service';
+import { ClaimReportService } from './service/claim/claim-report.service';
 import { FinanceController } from './controller/finance.controller';
 import { FinanceService } from './service/finance.service';
 import { TenantNotificationController } from './controller/tenant-notification.controller';
@@ -249,6 +251,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     ClaimFulfillmentController,
     ClaimAdditionalCostController,
     ClaimMasterController,
+    ClaimReportController,
     FinanceController,
     ReportController,
     DashboardController,
@@ -328,6 +331,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     ClaimFulfillmentService,
     ClaimAdditionalCostService,
     ClaimMasterService,
+    ClaimReportService,
     FinanceService,
     MasterGeoHelperService,
     ReportService,
