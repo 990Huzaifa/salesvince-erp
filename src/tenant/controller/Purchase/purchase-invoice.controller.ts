@@ -20,6 +20,7 @@ import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { PurchaseInvoiceService } from '../../service/purchase/purchase-invoice.service';
+import { WarehouseSlipPdfService } from '../../service/warehouse-slip-pdf.service';
 import { parseBooleanQuery, sendPdf } from 'src/common/pdf';
 
 @Controller('tenant/purchase-invoices')
@@ -33,6 +34,7 @@ import { parseBooleanQuery, sendPdf } from 'src/common/pdf';
 export class PurchaseInvoiceController {
   constructor(
     private readonly purchaseInvoiceService: PurchaseInvoiceService,
+    private readonly warehouseSlipPdfService: WarehouseSlipPdfService,
   ) {}
 
   @Get()
@@ -88,6 +90,26 @@ export class PurchaseInvoiceController {
       showBalanceDetails,
       user.tenantId,
     );
+    sendPdf(res, { buffer, filename });
+  }
+
+  @Get(':id/warehouse-slip/pdf')
+  @RequirePermissions('VIEW_PURCHASE_INVOICE')
+  async downloadWarehouseSlipPdf(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const user = req.user as TenantRequestUser;
+    const { buffer, filename } =
+      await this.warehouseSlipPdfService.generateForPurchaseInvoice(
+        tenantDb,
+        user.businessId,
+        id,
+        user.userId,
+        user.tenantId,
+      );
     sendPdf(res, { buffer, filename });
   }
 

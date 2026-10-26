@@ -145,6 +145,7 @@ import { InventoryMovementService } from './service/inventory/inventory-movement
 import { ProductMergeService } from './service/inventory/product-merge.service';
 import { StockTransferService } from './service/inventory/stock-transfer.service';
 import { OpeningStockService } from './service/inventory/opening-stock.service';
+import { WarehouseSlipPdfService } from './service/warehouse-slip-pdf.service';
 import { BatchPurchaseLinkBackfillService } from './service/inventory/batch-purchase-link-backfill.service';
 import { MissingTradingLedgerBackfillService } from './service/missing-trading-ledger-backfill.service';
 import { InventoryForecastController } from './controller/inventory-forecast.controller';
@@ -368,6 +369,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     ProductMergeService,
     StockTransferService,
     OpeningStockService,
+    WarehouseSlipPdfService,
     BatchPurchaseLinkBackfillService,
     MissingTradingLedgerBackfillService,
     InventoryForecastService,

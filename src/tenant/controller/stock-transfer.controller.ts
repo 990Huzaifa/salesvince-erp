@@ -9,9 +9,10 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
 import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
@@ -21,8 +22,10 @@ import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
+import { sendPdf } from 'src/common/pdf';
 import { StockTransferStatus } from 'src/tenant-db/entities/stock-transfer.entity';
 import { StockTransferService } from '../service/inventory/stock-transfer.service';
+import { WarehouseSlipPdfService } from '../service/warehouse-slip-pdf.service';
 import { CreateStockTransferDto } from '../dto/stock-transfer/create-stock-transfer.dto';
 import { UpdateStockTransferDto } from '../dto/stock-transfer/update-stock-transfer.dto';
 
@@ -35,7 +38,10 @@ import { UpdateStockTransferDto } from '../dto/stock-transfer/update-stock-trans
   TenantPermissionGuard,
 )
 export class StockTransferController {
-  constructor(private readonly stockTransferService: StockTransferService) {}
+  constructor(
+    private readonly stockTransferService: StockTransferService,
+    private readonly warehouseSlipPdfService: WarehouseSlipPdfService,
+  ) {}
 
   @Post('create')
   @RequirePermissions('CREATE_TRANSFER_STOCK')
@@ -95,6 +101,26 @@ export class StockTransferController {
       },
       user.userId,
     );
+  }
+
+  @Get(':id/warehouse-slip/pdf')
+  @RequirePermissions('VIEW_TRANSFER_STOCK')
+  async downloadWarehouseSlipPdf(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const user = req.user as TenantRequestUser;
+    const { buffer, filename } =
+      await this.warehouseSlipPdfService.generateForStockTransfer(
+        tenantDb,
+        user.businessId,
+        id,
+        user.userId,
+        user.tenantId,
+      );
+    sendPdf(res, { buffer, filename });
   }
 
   @Get(':id')

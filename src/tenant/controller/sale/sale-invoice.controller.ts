@@ -21,6 +21,7 @@ import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { SaleInvoiceService } from '../../service/sale/sale-invoice.service';
+import { WarehouseSlipPdfService } from '../../service/warehouse-slip-pdf.service';
 import { sendPdf } from 'src/common/pdf';
 
 @Controller('tenant/sale-invoices')
@@ -32,7 +33,10 @@ import { sendPdf } from 'src/common/pdf';
   TenantPermissionGuard,
 )
 export class SaleInvoiceController {
-  constructor(private readonly saleInvoiceService: SaleInvoiceService) {}
+  constructor(
+    private readonly saleInvoiceService: SaleInvoiceService,
+    private readonly warehouseSlipPdfService: WarehouseSlipPdfService,
+  ) {}
 
   @Get()
   @RequirePermissions('LIST_SALE_INVOICE')
@@ -86,6 +90,26 @@ export class SaleInvoiceController {
       showBalanceDetails,
       user.tenantId,
     );
+    sendPdf(res, { buffer, filename });
+  }
+
+  @Get(':id/warehouse-slip/pdf')
+  @RequirePermissions('VIEW_SALE_INVOICE')
+  async downloadWarehouseSlipPdf(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const user = req.user as TenantRequestUser;
+    const { buffer, filename } =
+      await this.warehouseSlipPdfService.generateForSaleInvoice(
+        tenantDb,
+        user.businessId,
+        id,
+        user.userId,
+        user.tenantId,
+      );
     sendPdf(res, { buffer, filename });
   }
 
