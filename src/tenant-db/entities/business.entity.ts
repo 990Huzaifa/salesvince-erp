@@ -27,6 +27,7 @@ import { DeliveryNote } from './delivery-note.entity';
 import { SaleInvoice } from './sale-invoice.entity';
 import { SaleReturn } from './sale-return.entity';
 import { StockTransfer } from './stock-transfer.entity';
+import { OpeningStock } from './opening-stock.entity';
 import {
     Department,
     Designation,
@@ -144,6 +145,11 @@ export class Business {
         onDelete: 'CASCADE',
     })
     stockTransfers: StockTransfer[];
+
+    @OneToMany(() => OpeningStock, (openingStock) => openingStock.business, {
+        onDelete: 'CASCADE',
+    })
+    openingStocks: OpeningStock[];
 
     @OneToMany(() => PurchaseInvoice, (purchaseInvoice) => purchaseInvoice.business, { onDelete: 'CASCADE' })
     purchaseInvoices: PurchaseInvoice[];

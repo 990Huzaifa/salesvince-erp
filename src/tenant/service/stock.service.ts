@@ -28,7 +28,8 @@ export type ReceiveStockLineInput = {
 export type ReceiveStockInput = {
   businessId: string;
   warehouseId: string;
-  vendorId: string;
+  /** Optional — omit/null for opening stock (no vendor). Required for purchase/GRN. */
+  vendorId?: string | null;
   referenceType: ReferenceType;
   batchDate: Date;
   batchNumberPrefix: string;
@@ -505,7 +506,7 @@ export class StockService {
         batchRepo.create({
           businessId: input.businessId,
           warehouseId: input.warehouseId,
-          vendorId: input.vendorId,
+          vendorId: input.vendorId ?? null,
           batchNumber,
           productId: line.productId,
           uomId: line.uomId,

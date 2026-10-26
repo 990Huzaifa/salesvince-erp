@@ -389,14 +389,17 @@ export class StockTransferService {
 
     const receiveByVendor = new Map<
       string,
-      Array<{
-        productId: string;
-        uomId: string;
-        quantity: number;
-        purchaseUnitPrice: number;
-        saleUnitPrice: number;
-        expiryDate: Date | null;
-      }>
+      {
+        vendorId: string | null;
+        lines: Array<{
+          productId: string;
+          uomId: string;
+          quantity: number;
+          purchaseUnitPrice: number;
+          saleUnitPrice: number;
+          expiryDate: Date | null;
+        }>;
+      }
     >();
 
     for (const allocation of allAllocations) {
@@ -407,8 +410,12 @@ export class StockTransferService {
         );
       }
 
-      const lines = receiveByVendor.get(batch.vendorId) ?? [];
-      lines.push({
+      const vendorKey = batch.vendorId ?? '__none__';
+      const group = receiveByVendor.get(vendorKey) ?? {
+        vendorId: batch.vendorId ?? null,
+        lines: [],
+      };
+      group.lines.push({
         productId: batch.productId,
         uomId: batch.uomId,
         quantity: allocation.quantity,
@@ -416,21 +423,21 @@ export class StockTransferService {
         saleUnitPrice: Number(batch.saleUnitPrice),
         expiryDate: batch.expiryDate ?? null,
       });
-      receiveByVendor.set(batch.vendorId, lines);
+      receiveByVendor.set(vendorKey, group);
     }
 
     const transferDate = new Date(transfer.transferDate);
     const prefix = `TRF-${transfer.transferNumber}`;
 
-    for (const [vendorId, lines] of receiveByVendor.entries()) {
+    for (const group of receiveByVendor.values()) {
       await this.stockService.receiveStockIn(manager, {
         businessId: transfer.businessId,
         warehouseId: transfer.toWarehouseId,
-        vendorId,
+        vendorId: group.vendorId,
         referenceType: ReferenceType.TRANSFER,
         batchDate: transferDate,
         batchNumberPrefix: prefix,
-        lines,
+        lines: group.lines,
       });
     }
   }

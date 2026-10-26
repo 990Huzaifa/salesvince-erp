@@ -5,6 +5,7 @@ import { Grn } from "./grn.entity";
 import { StockBalance, Batch, StockMovement } from "./stock.entity";
 import { ClaimVendorShipmentItem } from "./claim/claim-vendor-shipments.entity";
 import { StockTransfer } from "./stock-transfer.entity";
+import { OpeningStock } from "./opening-stock.entity";
 
 @Entity('warehouses')
 export class Warehouse {
@@ -87,4 +88,7 @@ export class Warehouse {
 
     @OneToMany(() => StockTransfer, (transfer) => transfer.toWarehouse)
     incomingStockTransfers: StockTransfer[];
+
+    @OneToMany(() => OpeningStock, (openingStock) => openingStock.warehouse)
+    openingStocks: OpeningStock[];
 }    

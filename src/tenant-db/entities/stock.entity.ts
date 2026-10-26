@@ -19,6 +19,7 @@ export enum ReferenceType {
     TRANSFER = 'TRANSFER',
     ADJUSTMENT = 'ADJUSTMENT',
     MERGE = 'MERGE',
+    OPENING = 'OPENING',
 }
 
 
@@ -41,12 +42,15 @@ export class Batch {
     @JoinColumn({ name: 'warehouseId' })
     warehouse: Warehouse;
 
-    @Column({type: 'uuid'})
-    vendorId: string;
+    @Column({ type: 'uuid', nullable: true })
+    vendorId: string | null;
 
-    @ManyToOne(() => Party, (party) => party.batches, { onDelete: 'CASCADE' })
+    @ManyToOne(() => Party, (party) => party.batches, {
+        onDelete: 'SET NULL',
+        nullable: true,
+    })
     @JoinColumn({ name: 'vendorId' })
-    vendor: Party;
+    vendor: Party | null;
 
     @Column()
     batchNumber: string;

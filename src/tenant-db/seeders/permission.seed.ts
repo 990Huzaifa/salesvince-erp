@@ -38,6 +38,8 @@ export const TENANT_PERMISSIONS = [
   { key: 'CREATE_LOAN_RECEIPT_VOUCHER', name: 'Create Loan Receipt Voucher' },
   { key: 'CREATE_LOAN_PAYMENT_VOUCHER', name: 'Create Loan Payment Voucher' },
   { key: 'CREATE_OPENING_STOCK', name: 'Create Opening Stock' },
+  { key: 'APPROVE_OPENING_STOCK', name: 'Approve Opening Stock' },
+  { key: 'REJECT_OPENING_STOCK', name: 'Reject Opening Stock' },
   { key: 'CREATE_PURCHASE_STOCK', name: 'Create Purchase Stock' },
   { key: 'APPROVE_PURCHASE_STOCK', name: 'Approve Purchase Stock (GRN)' },
   { key: 'REJECT_PURCHASE_STOCK', name: 'Reject Purchase Stock (GRN)' },

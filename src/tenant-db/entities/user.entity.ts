@@ -15,6 +15,7 @@ import { PurchaseQuotation } from './purchase-quotation.entity';
 import { SaleQuotation } from './sale-quotation.entity';
 import { DeleteUserRequest } from './delete-user-request.entity';
 import { StockTransfer } from './stock-transfer.entity';
+import { OpeningStock } from './opening-stock.entity';
 
 export enum UserStatus {
     ACTIVE = 'ACTIVE',
@@ -108,6 +109,11 @@ export class User {
         onDelete: 'CASCADE',
     })
     stockTransfers: StockTransfer[];
+
+    @OneToMany(() => OpeningStock, (openingStock) => openingStock.createdByUser, {
+        onDelete: 'CASCADE',
+    })
+    openingStocks: OpeningStock[];
 
     @OneToMany(() => PurchaseOrder, (purchaseOrder) => purchaseOrder.createdByUser, { onDelete: 'CASCADE' })
     purchaseOrders: PurchaseOrder[];
