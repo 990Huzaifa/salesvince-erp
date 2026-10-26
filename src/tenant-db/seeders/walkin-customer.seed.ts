@@ -10,40 +10,75 @@ export const WALKIN_CUSTOMER_NAME = 'Walkin Customer';
 
 type TenantDb = DataSource | EntityManager;
 
+async function ensureReceivableAccount(
+  manager: EntityManager,
+  businessId: string,
+  party: Party,
+): Promise<Party> {
+  const partyRepo = manager.getRepository(Party);
+
+  if (party.receivableAccountId) {
+    return partyRepo.findOneOrFail({
+      where: { id: party.id },
+      relations: { receivableAccount: true },
+    });
+  }
+
+  await seedDefaultChartOfAccountsForBusiness(manager, businessId);
+  const { receivableAccount } = await createChartOfAccountsForParty(
+    manager,
+    party,
+  );
+  party.receivableAccountId = receivableAccount?.id ?? null;
+  await partyRepo.save(party);
+
+  return partyRepo.findOneOrFail({
+    where: { id: party.id },
+    relations: { receivableAccount: true },
+  });
+}
+
 async function ensureWalkinCustomerInManager(
   manager: EntityManager,
   businessId: string,
 ): Promise<Party> {
   const partyRepo = manager.getRepository(Party);
 
-  const existing = await partyRepo.findOne({
-    where: [
-      { businessId, code: WALKIN_CUSTOMER_CODE, deletedAt: IsNull() },
-      {
-        businessId,
-        name: WALKIN_CUSTOMER_NAME,
-        type: PartyType.CUSTOMER,
-        deletedAt: IsNull(),
-      },
-    ],
+  // 1) Exact code — unique on (businessId, code), including soft-deleted.
+  //    Never generate a new walkin if this code already exists.
+  const byCode = await partyRepo.findOne({
+    where: { businessId, code: WALKIN_CUSTOMER_CODE },
+    withDeleted: true,
   });
 
-  if (existing) {
-    if (!existing.receivableAccountId) {
-      await seedDefaultChartOfAccountsForBusiness(manager, businessId);
-      const { receivableAccount } = await createChartOfAccountsForParty(
-        manager,
-        existing,
-      );
-      existing.receivableAccountId = receivableAccount?.id ?? null;
-      await partyRepo.save(existing);
+  if (byCode) {
+    if (byCode.deletedAt) {
+      await partyRepo.recover(byCode);
+      byCode.deletedAt = null;
     }
-    return partyRepo.findOneOrFail({
-      where: { id: existing.id },
-      relations: { receivableAccount: true },
-    });
+    if (byCode.name !== WALKIN_CUSTOMER_NAME) {
+      byCode.name = WALKIN_CUSTOMER_NAME;
+      await partyRepo.save(byCode);
+    }
+    return ensureReceivableAccount(manager, businessId, byCode);
   }
 
+  // 2) Reuse an active customer that already has the Walkin name (legacy rows
+  //    created with an auto code). Do not insert another party.
+  const byName = await partyRepo.findOne({
+    where: {
+      businessId,
+      name: WALKIN_CUSTOMER_NAME,
+      type: PartyType.CUSTOMER,
+      deletedAt: IsNull(),
+    },
+  });
+
+  if (byName) {
+    return ensureReceivableAccount(manager, businessId, byName);
+  }
+
+  // 3) Create once with the fixed code — never an auto-generated CUS-#####.
   await seedDefaultChartOfAccountsForBusiness(manager, businessId);
 
   let party = await partyRepo.save(
@@ -89,6 +124,9 @@ async function ensureWalkinCustomerInManager(
 /**
  * Ensures a default Walkin Customer exists for a business, with a postable
  * receivable COA (same path as a normal customer create).
+ *
+ * Idempotent: if `CUS-WALKIN` already exists (even soft-deleted), it is reused
+ * / restored — a new party is never generated for that code.
  *
  * Safe inside an outer transaction (EntityManager) or as a standalone call (DataSource).
  */
