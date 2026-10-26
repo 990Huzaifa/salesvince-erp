@@ -103,11 +103,21 @@ export class OpeningStockService {
         ? {
             id: item.product.id,
             name: item.product.name,
+            skuCode: item.product.skuCode,
             barcode: item.product.barcode,
           }
         : undefined,
       productFlavour: item.productFlavour
-        ? { id: item.productFlavour.id }
+        ? {
+            id: item.productFlavour.id,
+            name: item.productFlavour.flavour?.name,
+            flavour: item.productFlavour.flavour
+              ? {
+                  id: item.productFlavour.flavour.id,
+                  name: item.productFlavour.flavour.name,
+                }
+              : undefined,
+          }
         : null,
       uom: item.uom ? { id: item.uom.id, name: item.uom.name } : undefined,
       createdAt: item.createdAt,
@@ -302,6 +312,7 @@ export class OpeningStockService {
       qb.leftJoinAndSelect('os.items', 'items')
         .leftJoinAndSelect('items.product', 'product')
         .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+        .leftJoinAndSelect('productFlavour.flavour', 'flavour')
         .leftJoinAndSelect('items.uom', 'uom')
         .leftJoinAndSelect('os.warehouse', 'warehouse');
     }

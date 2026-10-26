@@ -1,9 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource, IsNull } from 'typeorm';
 import { Business } from 'src/tenant-db/entities/business.entity';
 import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
 import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity';
 import { StockTransfer } from 'src/tenant-db/entities/stock-transfer.entity';
+import { OpeningStock } from 'src/tenant-db/entities/opening-stock.entity';
 import {
   PdfLogoService,
   PdfRendererService,
@@ -157,7 +162,10 @@ export class WarehouseSlipPdfService {
       partyCode: invoice.customer?.code,
       warehouseLabel: warehouseLabels.join(', ') || undefined,
       notes: null,
-      totalQuantity: items.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+      totalQuantity: items.reduce(
+        (sum, item) => sum + Number(item.quantity || 0),
+        0,
+      ),
       items,
     };
 
@@ -221,7 +229,10 @@ export class WarehouseSlipPdfService {
       partyCode: invoice.vendor?.code,
       warehouseLabel: this.formatWarehouseLabel(invoice.grn?.warehouse),
       notes: null,
-      totalQuantity: items.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+      totalQuantity: items.reduce(
+        (sum, item) => sum + Number(item.quantity || 0),
+        0,
+      ),
       items,
     };
 
@@ -280,7 +291,10 @@ export class WarehouseSlipPdfService {
       fromWarehouse: this.formatWarehouseLabel(transfer.fromWarehouse),
       toWarehouse: this.formatWarehouseLabel(transfer.toWarehouse),
       notes: transfer.notes,
-      totalQuantity: items.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+      totalQuantity: items.reduce(
+        (sum, item) => sum + Number(item.quantity || 0),
+        0,
+      ),
       items,
     };
 
@@ -297,6 +311,67 @@ export class WarehouseSlipPdfService {
       action: 'STOCK_TRANSFER_WAREHOUSE_SLIP_PDF_DOWNLOADED',
       description: `Warehouse slip PDF downloaded for stock transfer ${transfer.transferNumber}`,
       metadata: { stockTransferId: transfer.id },
+    });
+
+    return result;
+  }
+
+  async generateForOpeningStock(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    openingStockId: string,
+    actorUserId: string,
+    tenantId?: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+
+    const opening = await tenantDb
+      .getRepository(OpeningStock)
+      .createQueryBuilder('opening')
+      .leftJoinAndSelect('opening.warehouse', 'warehouse')
+      .leftJoinAndSelect('opening.items', 'items')
+      .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
+      .leftJoinAndSelect('items.uom', 'uom')
+      .where('opening.id = :openingStockId', { openingStockId })
+      .andWhere('opening.businessId = :businessId', {
+        businessId: scopedBusinessId,
+      })
+      .andWhere('opening.deletedAt IS NULL')
+      .getOne();
+
+    if (!opening) {
+      throw new NotFoundException('Opening stock not found');
+    }
+
+    const items = (opening.items ?? []).map((item) => this.mapLineItem(item));
+    const slip: WarehouseSlipDto = {
+      documentTypeLabel: 'Opening Stock',
+      documentNumber: opening.openingNumber,
+      documentDate: opening.openingDate,
+      warehouseLabel: this.formatWarehouseLabel(opening.warehouse),
+      notes: opening.notes,
+      totalQuantity: items.reduce(
+        (sum, item) => sum + Number(item.quantity || 0),
+        0,
+      ),
+      items,
+    };
+
+    const result = await this.renderSlipPdf(
+      tenantDb,
+      scopedBusinessId,
+      slip,
+      tenantId,
+    );
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'OPENING_STOCK_WAREHOUSE_SLIP_PDF_DOWNLOADED',
+      description: `Warehouse slip PDF downloaded for opening stock ${opening.openingNumber}`,
+      metadata: { openingStockId: opening.id },
     });
 
     return result;

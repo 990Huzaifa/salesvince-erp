@@ -9,12 +9,13 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
 import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
@@ -31,6 +32,8 @@ import { OpeningStockStatus } from 'src/tenant-db/entities/opening-stock.entity'
 import { OpeningStockService } from '../service/inventory/opening-stock.service';
 import { CreateOpeningStockDto } from '../dto/opening-stock/create-opening-stock.dto';
 import { UpdateOpeningStockDto } from '../dto/opening-stock/update-opening-stock.dto';
+import { WarehouseSlipPdfService } from '../service/warehouse-slip-pdf.service';
+import { sendPdf } from 'src/common/pdf';
 
 @Controller('tenant/opening-stocks')
 @UseGuards(
@@ -41,7 +44,10 @@ import { UpdateOpeningStockDto } from '../dto/opening-stock/update-opening-stock
   TenantPermissionGuard,
 )
 export class OpeningStockController {
-  constructor(private readonly openingStockService: OpeningStockService) {}
+  constructor(
+    private readonly openingStockService: OpeningStockService,
+    private readonly warehouseSlipPdfService: WarehouseSlipPdfService,
+  ) {}
 
   @Post('create')
   @RequirePermissions('CREATE_OPENING_STOCK')
@@ -119,6 +125,26 @@ export class OpeningStockController {
       },
       user.userId,
     );
+  }
+
+  @Get(':id/warehouse-slip/pdf')
+  @RequirePermissions('VIEW_OPENING_STOCK')
+  async downloadWarehouseSlipPdf(
+    @TenantConnection() tenantDb: DataSource,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const user = req.user as TenantRequestUser;
+    const { buffer, filename } =
+      await this.warehouseSlipPdfService.generateForOpeningStock(
+        tenantDb,
+        user.businessId,
+        id,
+        user.userId,
+        user.tenantId,
+      );
+    sendPdf(res, { buffer, filename });
   }
 
   @Get(':id')
