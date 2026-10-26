@@ -119,12 +119,12 @@ export const buildWarehouseSlipPdfHtml = (
     ? [
         renderMetaRow('Code', slip.partyCode),
         renderMetaRow('Name', slip.partyName),
+        ...warehouseRows,
       ]
     : warehouseRows;
   const documentRows = [
     renderMetaRow('Document No.', slip.documentNumber),
     renderMetaRow('Date', formatDocumentDate(slip.documentDate) || '-'),
-    ...(slip.partyLabel ? warehouseRows : []),
   ];
 
   const notesHtml = slip.notes?.trim()
@@ -176,8 +176,9 @@ export const buildWarehouseSlipPdfHtml = (
     .quantity-table { width:260px; max-width:260px; font-size:12px; }
     .quantity-table td { padding:8px 10px; border:1px solid var(--border); background:var(--surface-muted); font-weight:700; }
     .quantity-table td:last-child { color:var(--primary); text-align:right; font-variant-numeric:tabular-nums; }
-    .signatures { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px; margin-top:32px; text-align:center; font-size:10px; }
-    .signatures div { padding-top:7px; border-top:1px solid var(--border); }
+    .signatures { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px; margin-top:18mm; text-align:center; font-size:10px; }
+    .signatures div { display:flex; min-height:30mm; flex-direction:column; justify-content:flex-end; }
+    .signatures div::before { content:""; margin-bottom:7px; border-top:1px solid var(--border); }
     @media print {
       .notes,.items-table tr,.quantity-wrap,.signatures { break-inside:avoid; }
     }
