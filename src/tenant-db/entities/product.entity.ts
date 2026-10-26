@@ -12,7 +12,6 @@ import { User } from './user.entity';
 // import { PurchaseStockItem } from './purchase-stock.entity';
 // import { OpeningStockItem } from './opening-stock.entity';
 // import { StockBalance, StockMovement } from './stock.entity';
-// import { StockTransferItem } from './stock-transfer.entity';
 // import { SchemeProduct, SchemeProductCategory } from './scheme.entity';
 import { Business } from './business.entity';
 import { ChartOfAccount } from './chart-of-account.entity';
@@ -28,6 +27,7 @@ import { SaleInvoiceItem } from './sale-invoice.entity';
 import { DeliveryNoteItem } from './delivery-note.entity';
 import { SaleReturnItem } from './sale-return.entity';
 import { ClaimVendorShipmentItem } from './claim/claim-vendor-shipments.entity';
+import { StockTransferItem } from './stock-transfer.entity';
 
 export enum BatchPickStrategy {
     FIFO = 'FIFO',
@@ -219,6 +219,9 @@ export class Uom {
     @OneToMany(() => SaleReturnItem, (saleReturnItem) => saleReturnItem.uom)
     saleReturnItems: SaleReturnItem[];
 
+    @OneToMany(() => StockTransferItem, (stockTransferItem) => stockTransferItem.uom)
+    stockTransferItems: StockTransferItem[];
+
     @OneToMany(() => ClaimVendorShipmentItem, (shipmentItem) => shipmentItem.uom)
     claimVendorShipmentItems: ClaimVendorShipmentItem[];
 }
@@ -366,6 +369,9 @@ export class Product {
     @OneToMany(() => SaleReturnItem, (saleReturnItem) => saleReturnItem.product)
     saleReturnItems: SaleReturnItem[];
 
+    @OneToMany(() => StockTransferItem, (stockTransferItem) => stockTransferItem.product)
+    stockTransferItems: StockTransferItem[];
+
     @OneToMany(() => Batch, (batch) => batch.product, { onDelete: 'CASCADE' })
     batches: Batch[];
 
@@ -427,6 +433,12 @@ export class ProductFlavour {
 
     @OneToMany(() => SaleInvoiceItem, (saleInvoiceItem) => saleInvoiceItem.productFlavour)
     saleInvoiceItems: SaleInvoiceItem[];
+
+    @OneToMany(
+        () => StockTransferItem,
+        (stockTransferItem) => stockTransferItem.productFlavour,
+    )
+    stockTransferItems: StockTransferItem[];
 
     @OneToMany(() => SaleReturnItem, (saleReturnItem) => saleReturnItem.productFlavour)
     saleReturnItems: SaleReturnItem[];

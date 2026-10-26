@@ -4,6 +4,7 @@ import { PurchaseOrder } from "./purchase-order.entity";
 import { Grn } from "./grn.entity";
 import { StockBalance, Batch, StockMovement } from "./stock.entity";
 import { ClaimVendorShipmentItem } from "./claim/claim-vendor-shipments.entity";
+import { StockTransfer } from "./stock-transfer.entity";
 
 @Entity('warehouses')
 export class Warehouse {
@@ -80,4 +81,10 @@ export class Warehouse {
 
     @OneToMany(() => ClaimVendorShipmentItem, (shipmentItem) => shipmentItem.warehouse)
     claimVendorShipmentItems: ClaimVendorShipmentItem[];
+
+    @OneToMany(() => StockTransfer, (transfer) => transfer.fromWarehouse)
+    outgoingStockTransfers: StockTransfer[];
+
+    @OneToMany(() => StockTransfer, (transfer) => transfer.toWarehouse)
+    incomingStockTransfers: StockTransfer[];
 }    

@@ -137,10 +137,12 @@ import { SqlAgentChatService } from './service/sql-agent-chat.service';
 import { LoanController } from './controller/loan.controller';
 import { LoanService } from './service/loan.service';
 import { InventoryController } from './controller/inventory.controller';
+import { StockTransferController } from './controller/stock-transfer.controller';
 import { InventoryBalanceService } from './service/inventory/inventory-balance.service';
 import { InventoryBatchService } from './service/inventory/inventory-batch.service';
 import { InventoryMovementService } from './service/inventory/inventory-movement.service';
 import { ProductMergeService } from './service/inventory/product-merge.service';
+import { StockTransferService } from './service/inventory/stock-transfer.service';
 import { BatchPurchaseLinkBackfillService } from './service/inventory/batch-purchase-link-backfill.service';
 import { MissingTradingLedgerBackfillService } from './service/missing-trading-ledger-backfill.service';
 import { InventoryForecastController } from './controller/inventory-forecast.controller';
@@ -259,6 +261,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     SqlAgentController,
     LoanController,
     InventoryController,
+    StockTransferController,
     InventoryForecastController,
     ActivityLogController,
     DepartmentController,
@@ -360,6 +363,7 @@ import { Subscription } from 'src/master-db/entities/subscription.entity';
     InventoryBatchService,
     InventoryMovementService,
     ProductMergeService,
+    StockTransferService,
     BatchPurchaseLinkBackfillService,
     MissingTradingLedgerBackfillService,
     InventoryForecastService,

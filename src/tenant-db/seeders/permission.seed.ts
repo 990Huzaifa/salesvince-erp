@@ -48,6 +48,8 @@ export const TENANT_PERMISSIONS = [
   { key: 'APPROVE_DELIVERY_NOTE', name: 'Approve Delivery Note' },
   { key: 'REJECT_DELIVERY_NOTE', name: 'Reject Delivery Note' },
   { key: 'CREATE_TRANSFER_STOCK', name: 'Create Transfer Stock' },
+  { key: 'APPROVE_TRANSFER_STOCK', name: 'Approve Transfer Stock' },
+  { key: 'REJECT_TRANSFER_STOCK', name: 'Reject Transfer Stock' },
   { key: 'CREATE_CHART_OF_ACCOUNT', name: 'Create Chart of Account' },
   { key: 'CREATE_PARTY', name: 'Create Party' },
   { key: 'CREATE_SALE_QUOTATION', name: 'Create Sale Quotation' },
