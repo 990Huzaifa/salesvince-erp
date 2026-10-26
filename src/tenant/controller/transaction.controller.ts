@@ -1,7 +1,16 @@
 import { TenantBusinessAccessGuard } from "src/auth/tenant-business-access.guard";
 import { TenantCode, TenantConnection } from "src/common/tenant/tenant-connection.decorator";
 import { DataSource } from "typeorm";
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from "@nestjs/common";
+import {
+    Body,
+    Controller,
+    Get,
+    ParseUUIDPipe,
+    Post,
+    Query,
+    Req,
+    UseGuards,
+} from "@nestjs/common";
 import type { Request } from "express";
 import { TenantPermissionGuard } from "src/auth/tenant-permission.guard";
 import { TenantRequestUser } from "src/auth/tenant-jwt.strategy";
@@ -36,6 +45,32 @@ export class TransactionController {
             limit: limit,
             search: search,
         }, user.userId);
+    }
+
+    /**
+     * Post opening balance for a COA that has no ledger rows yet.
+     * Debit/credit is decided from account nature (assets/expenses → debit, etc.).
+     */
+    @Post('opening-balance')
+    @RequirePermissions('UPDATE_CHART_OF_ACCOUNT')
+    createOpeningBalance(
+        @TenantConnection() tenantDb: DataSource,
+        @Req() req: Request,
+        @Query('chartOfAccountId', ParseUUIDPipe) chartOfAccountId: string,
+        @Query('amount') amount: string,
+        @Query('transactionDate') transactionDate?: string,
+    ) {
+        const user = req.user as TenantRequestUser;
+        return this.transactionService.createOpeningBalanceForAccount(
+            tenantDb,
+            user.businessId,
+            {
+                chartOfAccountId,
+                amount: Number(amount),
+                transactionDate,
+            },
+            user.userId,
+        );
     }
 
     @Post('recalculate')

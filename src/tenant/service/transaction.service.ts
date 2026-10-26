@@ -534,6 +534,116 @@ export class TransactionService {
     });
   }
 
+  /**
+   * Posts an OPENING_BALANCE ledger entry for an existing COA that has
+   * no transactions yet. Debit vs credit is derived from account nature.
+   */
+  async createOpeningBalanceForAccount(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    input: {
+      chartOfAccountId: string;
+      amount: number;
+      transactionDate?: string;
+    },
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const amount = this.roundAmount(Number(input.amount));
+
+    if (!Number.isFinite(amount) || this.isEffectivelyZero(amount)) {
+      throw new BadRequestException('amount must be a non-zero number');
+    }
+
+    const account = await tenantDb.getRepository(ChartOfAccount).findOne({
+      where: {
+        id: input.chartOfAccountId,
+        businessId: scopedBusinessId,
+        deletedAt: IsNull(),
+      },
+    });
+
+    if (!account) {
+      throw new NotFoundException('Chart of account not found');
+    }
+
+    if (!account.isPostable) {
+      throw new BadRequestException(
+        'Opening balance can only be posted to a postable chart of account',
+      );
+    }
+
+    const existingCount = await tenantDb.getRepository(Transaction).count({
+      where: {
+        businessId: scopedBusinessId,
+        chartOfAccountId: account.id,
+      },
+    });
+
+    if (existingCount > 0) {
+      throw new BadRequestException(
+        'Opening balance can only be applied to an account with no existing transactions',
+      );
+    }
+
+    const nature = getAccountBalanceNature(account);
+    const transactionDate = input.transactionDate
+      ? new Date(input.transactionDate)
+      : undefined;
+
+    const saved = await tenantDb.transaction(async (manager) =>
+      this.postBusinessAccountOpeningBalance(manager, {
+        businessId: scopedBusinessId,
+        account,
+        openingBalance: amount,
+        transactionDate,
+      }),
+    );
+
+    if (!saved) {
+      throw new BadRequestException('Failed to create opening balance transaction');
+    }
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'COA_OPENING_BALANCE_CREATED',
+      description: `Opening balance posted for ${account.code} - ${account.name}`,
+      metadata: {
+        chartOfAccountId: account.id,
+        code: account.code,
+        amount,
+        nature,
+        transactionId: saved.id,
+        debitAmount: saved.debitAmount,
+        creditAmount: saved.creditAmount,
+      },
+    });
+
+    return {
+      data: {
+        id: saved.id,
+        chartOfAccountId: account.id,
+        chartOfAccount: {
+          id: account.id,
+          code: account.code,
+          name: account.name,
+          accountKind: account.accountKind,
+        },
+        referenceType: saved.referenceType,
+        transactionDate: saved.transactionDate,
+        description: saved.description,
+        amount: Math.abs(amount),
+        nature,
+        side: saved.debitAmount != null ? 'DEBIT' : 'CREDIT',
+        debitAmount: saved.debitAmount,
+        creditAmount: saved.creditAmount,
+        currentBalance: saved.currentBalance,
+        createdAt: saved.createdAt,
+      },
+    };
+  }
+
   async listTransactions(
     tenantDb: DataSource,
     businessId: string | undefined,
