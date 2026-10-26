@@ -105,19 +105,6 @@ export const buildWarehouseSlipPdfHtml = (
     ? `<img src="${escapeHtml(logoDataUri)}" alt="Company Logo" />`
     : `<span class="logo-fallback">${escapeHtml(initials)}</span>`;
 
-  const documentRows = [
-    renderMetaRow('Type', slip.documentTypeLabel || 'Document'),
-    renderMetaRow('Document No.', slip.documentNumber),
-    renderMetaRow('Date', formatDocumentDate(slip.documentDate) || '-'),
-  ];
-  if (slip.partyLabel) {
-    const partyValue = [
-      slip.partyCode ? `${slip.partyCode} — ` : '',
-      slip.partyName || '-',
-    ].join('');
-    documentRows.push(renderMetaRow(slip.partyLabel, partyValue));
-  }
-
   const warehouseRows: string[] = [];
   if (slip.warehouseLabel)
     warehouseRows.push(renderMetaRow('Warehouse', slip.warehouseLabel));
@@ -127,6 +114,18 @@ export const buildWarehouseSlipPdfHtml = (
     warehouseRows.push(renderMetaRow('To', slip.toWarehouse));
   if (!warehouseRows.length)
     warehouseRows.push(renderMetaRow('Warehouse', '-'));
+
+  const partyRows = slip.partyLabel
+    ? [
+        renderMetaRow('Code', slip.partyCode),
+        renderMetaRow('Name', slip.partyName),
+      ]
+    : warehouseRows;
+  const documentRows = [
+    renderMetaRow('Document No.', slip.documentNumber),
+    renderMetaRow('Date', formatDocumentDate(slip.documentDate) || '-'),
+    ...(slip.partyLabel ? warehouseRows : []),
+  ];
 
   const notesHtml = slip.notes?.trim()
     ? `<section class="notes"><strong>Notes</strong><span>${escapeHtml(slip.notes.trim())}</span></section>`
@@ -145,26 +144,27 @@ export const buildWarehouseSlipPdfHtml = (
     html, body { margin:0; padding:0; background:#fff; color:var(--foreground); font-family:Arial,sans-serif; }
     body { width:190mm; font-size:10px; line-height:1.45; }
     .pdf-content { width:190mm; margin:0 auto; padding:0; }
-    .document-header { display:flex; justify-content:space-between; align-items:center; gap:20px; padding-bottom:14px; margin-bottom:14px; border-bottom:3px solid var(--primary); }
-    .company { display:flex; align-items:center; gap:12px; min-width:0; }
-    .logo-box,.logo-fallback { width:56px; height:56px; flex:0 0 56px; display:flex; align-items:center; justify-content:center; object-fit:contain; border-radius:8px; }
-    .logo-fallback { background:var(--row-a); color:var(--primary); font-size:21px; font-weight:700; }
+    .document-header { border-bottom:3px solid var(--primary); padding-bottom:10px; margin-bottom:14px; }
+    .document-header-main { display:flex; justify-content:space-between; align-items:flex-end; gap:16px; }
+    .document-heading { flex:1; }
+    h1 { margin:0; color:var(--foreground); font-size:68px; line-height:.9; font-weight:300; }
+    .document-meta { margin-top:10px; font-size:12px; line-height:1.5; }
+    .document-subtitle { margin-top:3px; color:var(--muted); font-size:10px; }
+    .company { min-width:130px; text-align:center; }
+    .logo-box { width:76px; height:76px; margin:0 auto; display:flex; align-items:center; justify-content:center; overflow:hidden; }
     .logo-box img { width:100%; height:100%; object-fit:contain; }
-    .company-details { display:grid; gap:2px; min-width:0; color:var(--muted); font-size:10px; overflow-wrap:anywhere; }
-    .company-name { color:var(--foreground); font-size:14px; font-weight:700; }
-    .document-heading { flex:0 0 auto; text-align:right; }
-    h1 { margin:0; color:var(--foreground); font-size:32px; line-height:1.1; font-weight:700; }
-    .document-meta { display:flex; flex-direction:column; align-items:flex-end; gap:2px; margin-top:5px; color:var(--muted); font-size:10px; }
-    .document-subtitle { margin:2px 0 0; color:var(--muted); font-size:10px; }
-    .document-number { color:var(--primary); font-size:12px; font-weight:700; }
-    .meta-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; }
-    .meta-card { min-width:0; padding:12px; border:1px solid var(--border); border-radius:10px; }
-    .section-title { margin-bottom:7px; padding:5px 8px; background:var(--primary); color:var(--primary-text); font-size:11px; font-weight:700; }
-    .info-list { font-size:10px; line-height:1.45; }
-    .info-row { display:grid; grid-template-columns:92px minmax(0,1fr); gap:8px; padding:4px 0; border-bottom:1px solid var(--border); overflow-wrap:anywhere; }
-    .info-row:last-child { border-bottom:0; }
-    .info-row strong { color:var(--muted); }
-    .notes { display:grid; grid-template-columns:70px minmax(0,1fr); gap:8px; margin-bottom:14px; padding:9px 12px; border:1px solid var(--border); border-radius:8px; background:var(--surface-muted); overflow-wrap:anywhere; }
+    .logo-fallback { color:var(--primary); font-size:44px; line-height:1; font-weight:700; }
+    .company-details { color:var(--muted); font-size:11px; overflow-wrap:anywhere; }
+    .company-name { margin-top:4px; color:var(--foreground); font-size:13px; line-height:1.2; font-weight:500; }
+    .company-line { margin-top:2px; color:var(--muted); font-size:11px; }
+    .party-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; }
+    .section-title { margin-bottom:8px; padding:4px 10px; background:var(--primary); color:var(--primary-text); font-size:14px; font-weight:700; }
+    .info-list { font-size:12px; line-height:1.8; }
+    .info-row { display:grid; grid-template-columns:78px minmax(0,1fr); }
+    .document-info .info-row { grid-template-columns:86px minmax(0,1fr); }
+    .info-row span { border-bottom:1px solid var(--border); min-width:0; }
+    .notes { display:grid; grid-template-columns:70px minmax(0,1fr); gap:0; margin-bottom:14px; overflow-wrap:anywhere; }
+    .notes span { border-bottom:1px solid var(--border); }
     table { width:100%; border-collapse:collapse; table-layout:fixed; }
     .items-table { font-size:10px; }
     .items-table thead { background:var(--primary); color:var(--primary-text); }
@@ -181,39 +181,41 @@ export const buildWarehouseSlipPdfHtml = (
     .signatures { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px; margin-top:32px; text-align:center; font-size:10px; }
     .signatures div { padding-top:7px; border-top:1px solid var(--border); }
     @media print {
-      .meta-card,.notes,.items-table tr,.quantity-wrap,.signatures { break-inside:avoid; }
+      .notes,.items-table tr,.quantity-wrap,.signatures { break-inside:avoid; }
     }
   </style>
 </head>
 <body>
   <main class="pdf-content">
     <header class="document-header">
-      <div class="company">
-        <div class="logo-box">${logoHtml}</div>
-        <div class="company-details">
-          <strong class="company-name">${escapeHtml(companyName)}</strong>
-          ${company.phone?.trim() ? `<span><strong>Mobile No:</strong> ${escapeHtml(company.phone.trim())}</span>` : ''}
-          ${companyAddress ? `<span>${escapeHtml(companyAddress)}</span>` : ''}
+      <div class="document-header-main">
+        <div class="document-heading">
+          <h1>Warehouse Slip</h1>
+          <div class="document-meta">
+            <div><strong>Document No.</strong> ${escapeHtml(valueOrDash(slip.documentNumber, '-'))}</div>
+            <div><strong>Printed On:</strong> ${escapeHtml(formatPrintedAt(printedAt))}</div>
+            <div class="document-subtitle">Product movement copy · no pricing</div>
+          </div>
         </div>
-      </div>
-      <div class="document-heading">
-        <h1>Warehouse Slip</h1>
-        <p class="document-subtitle">Product movement copy · no pricing</p>
-        <div class="document-meta">
-          <span class="document-number">${escapeHtml(valueOrDash(slip.documentNumber, '-'))}</span>
-          <span><strong>Printed:</strong> ${escapeHtml(formatPrintedAt(printedAt))}</span>
+        <div class="company">
+          <div class="logo-box">${logoHtml}</div>
+          <div class="company-details">
+            <div class="company-name">${escapeHtml(companyName)}</div>
+            ${company.phone?.trim() ? `<div class="company-line"><strong>Mobile No :</strong> ${escapeHtml(company.phone.trim())}</div>` : ''}
+            ${companyAddress ? `<div class="company-line">${escapeHtml(companyAddress)}</div>` : ''}
+          </div>
         </div>
       </div>
     </header>
 
-    <section class="meta-grid">
-      <div class="meta-card">
-        <div class="section-title">Document Details</div>
-        <div class="info-list">${documentRows.join('')}</div>
+    <section class="party-grid">
+      <div>
+        <div class="section-title">${escapeHtml(slip.partyLabel || 'Warehouse Movement')}</div>
+        <div class="info-list">${partyRows.join('')}</div>
       </div>
-      <div class="meta-card">
-        <div class="section-title">Warehouse Movement</div>
-        <div class="info-list">${warehouseRows.join('')}</div>
+      <div class="document-info">
+        <div class="section-title">${escapeHtml(slip.documentTypeLabel || 'Document')}</div>
+        <div class="info-list">${documentRows.join('')}</div>
       </div>
     </section>
 
