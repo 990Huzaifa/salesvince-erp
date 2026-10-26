@@ -111,7 +111,7 @@ export const buildSaleInvoicePdfHtml = (
   }
 
   const businessName = business.name || 'ESP';
-  const businessAddress = business.address || 'Shahrah e faisal Karachi';
+  const businessAddress = business.address || '';
   const initials =
     businessName
       .split(/\s+/)
@@ -192,7 +192,7 @@ export const buildSaleInvoicePdfHtml = (
       ${logoDataUri ? `<img src="${escapeHtml(logoDataUri)}" alt="Company Logo" />` : `<span class="logo-fallback">${escapeHtml(initials)}</span>`}
     </div><div class="company-name">${escapeHtml(businessName)}</div>
       ${business.phone ? `<div class="company-line"><strong>Mobile No :</strong> ${escapeHtml(business.phone)}</div>` : ''}
-      <div class="company-line">${escapeHtml(businessAddress)}</div>
+      ${businessAddress ? `<div class="company-line">${escapeHtml(businessAddress)}</div>` : ''}
     </div>
   </div></header>
   <section class="party-grid"><div><div class="section-title">Customer</div><div class="info-list">

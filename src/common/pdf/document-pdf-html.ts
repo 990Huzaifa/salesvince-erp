@@ -182,8 +182,7 @@ const formatPartyLines = (
 
 const wrapDocumentPdfHtml = (options: PdfPageOptions): string => {
   const businessName = options.business.legalName || options.business.name;
-  const businessAddress =
-    options.business.address || 'Shahrah e faisal Karachi';
+  const businessAddress = options.business.address || '';
   const logoHtml = options.logoDataUri
     ? `<img class="logo" src="${options.logoDataUri}" alt="Logo" />`
     : '';
@@ -225,7 +224,7 @@ const wrapDocumentPdfHtml = (options: PdfPageOptions): string => {
       <div>
         ${logoHtml}
         <h1 class="business-name">${escapeHtml(businessName)}</h1>
-        <div class="muted">${escapeHtml(businessAddress)}</div>
+        ${businessAddress ? `<div class="muted">${escapeHtml(businessAddress)}</div>` : ''}
         ${options.business.phone ? `<div class="muted">${escapeHtml(options.business.phone)}</div>` : ''}
       </div>
       <div>
