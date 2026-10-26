@@ -22,6 +22,10 @@ export function createTenantDataSource(
         // without metadata during `nest start`.
         entities: [path.join(__dirname, 'entities/**/*.entity{.ts,.js}')],
         migrations: [path.join(__dirname, 'migrations/**/*{.ts,.js}')],
+        // Each migration commits separately so ALTER TYPE ... ADD VALUE is
+        // usable by later migrations (Postgres forbids using a new enum value
+        // in the same transaction that added it).
+        migrationsTransactionMode: 'each',
     });
 }
 
@@ -41,5 +45,6 @@ export function TenantDataSource(
         database,
         entities: [path.join(__dirname, 'entities/**/*.entity{.ts,.js}')],
         migrations: [path.join(__dirname, 'migrations/**/*{.ts,.js}')],
+        migrationsTransactionMode: 'each',
     });
 }
