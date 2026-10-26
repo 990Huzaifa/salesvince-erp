@@ -3,9 +3,7 @@ import {
   IsInt,
   IsNumber,
   IsOptional,
-  IsString,
   IsUUID,
-  MaxLength,
   Min,
 } from 'class-validator';
 
@@ -31,11 +29,6 @@ export class CreateOpeningStockItemDto {
   @IsNumber()
   @Min(0)
   saleUnitPrice: number;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  batchNumber?: string;
 
   @IsOptional()
   @IsDateString()

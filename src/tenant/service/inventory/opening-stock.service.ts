@@ -34,7 +34,6 @@ type ResolvedOpeningLine = {
   quantity: number;
   purchaseUnitPrice: number;
   saleUnitPrice: number;
-  batchNumber: string | null;
   expiryDate: Date | null;
 };
 
@@ -49,7 +48,6 @@ type OpeningImportRow = {
   quantity: number;
   purchaseUnitPrice: number;
   saleUnitPrice: number;
-  batchNumber: string | null;
   expiryDate: string | null;
   notes: string | null;
   openingDate: string | null;
@@ -100,7 +98,6 @@ export class OpeningStockService {
       quantity: item.quantity,
       purchaseUnitPrice: Number(item.purchaseUnitPrice),
       saleUnitPrice: Number(item.saleUnitPrice),
-      batchNumber: item.batchNumber,
       expiryDate: item.expiryDate,
       product: item.product
         ? {
@@ -281,7 +278,6 @@ export class OpeningStockService {
         quantity,
         purchaseUnitPrice: this.roundAmount(item.purchaseUnitPrice),
         saleUnitPrice: this.roundAmount(item.saleUnitPrice),
-        batchNumber: item.batchNumber?.trim() || null,
         expiryDate: item.expiryDate ? new Date(item.expiryDate) : null,
       });
     }
@@ -342,7 +338,6 @@ export class OpeningStockService {
         purchaseUnitPrice: Number(item.purchaseUnitPrice),
         saleUnitPrice: Number(item.saleUnitPrice),
         expiryDate: item.expiryDate ?? null,
-        batchNumber: item.batchNumber ?? undefined,
       })),
     });
   }
@@ -402,7 +397,7 @@ export class OpeningStockService {
         quantity: line.quantity,
         purchaseUnitPrice: line.purchaseUnitPrice,
         saleUnitPrice: line.saleUnitPrice,
-        batchNumber: line.batchNumber,
+        batchNumber: null,
         expiryDate: line.expiryDate,
       }),
     );
@@ -601,7 +596,7 @@ export class OpeningStockService {
             quantity: line.quantity,
             purchaseUnitPrice: line.purchaseUnitPrice,
             saleUnitPrice: line.saleUnitPrice,
-            batchNumber: line.batchNumber,
+            batchNumber: null,
             expiryDate: line.expiryDate,
           }),
         );
@@ -1056,10 +1051,6 @@ export class OpeningStockService {
         quantity: this.roundQuantity(quantity),
         purchaseUnitPrice: this.roundAmount(purchaseUnitPrice),
         saleUnitPrice: this.roundAmount(saleUnitPrice),
-        batchNumber:
-          this.sanitizeImportText(
-            this.getImportRowValue(row, 'batchNumber', 'batch'),
-          ) || null,
         expiryDate:
           this.sanitizeImportText(
             this.getImportRowValue(row, 'expiryDate', 'expiry'),
@@ -1225,7 +1216,6 @@ export class OpeningStockService {
               quantity: row.quantity,
               purchaseUnitPrice: row.purchaseUnitPrice,
               saleUnitPrice: row.saleUnitPrice,
-              batchNumber: row.batchNumber,
               expiryDate: row.expiryDate ? new Date(row.expiryDate) : null,
             });
           }
