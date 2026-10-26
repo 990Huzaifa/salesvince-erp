@@ -92,7 +92,7 @@ export const buildWarehouseSlipPdfHtml = (
       items.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
   );
   const companyName = company.name || 'ESP';
-  const companyAddress = company.address || 'Shahrah e faisal Karachi';
+  const companyAddress = company.address || '';
   const initials =
     companyName
       .split(/\s+/)
