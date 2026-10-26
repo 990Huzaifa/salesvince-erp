@@ -92,7 +92,7 @@ export const buildWarehouseSlipPdfHtml = (
       items.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
   );
   const companyName = company.name || 'ESP';
-  const companyAddress = company.address || '';
+  const companyAddress = company.address || 'Shahrah e faisal Karachi';
   const initials =
     companyName
       .split(/\s+/)
@@ -149,7 +149,6 @@ export const buildWarehouseSlipPdfHtml = (
     .document-heading { flex:1; }
     h1 { margin:0; color:var(--foreground); font-size:68px; line-height:.9; font-weight:300; }
     .document-meta { margin-top:10px; font-size:12px; line-height:1.5; }
-    .document-subtitle { margin-top:3px; color:var(--muted); font-size:10px; }
     .company { min-width:130px; text-align:center; }
     .logo-box { width:76px; height:76px; margin:0 auto; display:flex; align-items:center; justify-content:center; overflow:hidden; }
     .logo-box img { width:100%; height:100%; object-fit:contain; }
@@ -166,17 +165,16 @@ export const buildWarehouseSlipPdfHtml = (
     .notes { display:grid; grid-template-columns:70px minmax(0,1fr); gap:0; margin-bottom:14px; overflow-wrap:anywhere; }
     .notes span { border-bottom:1px solid var(--border); }
     table { width:100%; border-collapse:collapse; table-layout:fixed; }
-    .items-table { font-size:10px; }
+    .items-table { font-size:11px; }
     .items-table thead { background:var(--primary); color:var(--primary-text); }
-    .items-table th { padding:7px 5px; border:1px solid var(--primary); font-weight:700; text-align:center; }
-    .items-table td { height:24px; padding:5px; border:1px solid var(--border); line-height:1.2; vertical-align:middle; }
+    .items-table th { padding:8px 6px; border:1px solid var(--primary); font-weight:700; text-align:center; }
+    .items-table td { height:24px; padding:5.7px 6px; border:1px solid var(--border); line-height:1.15; vertical-align:middle; }
     .items-table .product { overflow-wrap:anywhere; }
     .items-table .quantity { font-weight:700; font-variant-numeric:tabular-nums; }
     .row-a { background:var(--row-a); } .row-b { background:var(--row-b); } .center { text-align:center; }
-    .empty-row td { height:22px; }
     .quantity-wrap { display:flex; justify-content:flex-start; margin-top:10px; }
-    .quantity-table { width:260px; max-width:260px; font-size:11px; }
-    .quantity-table td { padding:7px 10px; border:1px solid var(--border); background:var(--surface-muted); font-weight:700; }
+    .quantity-table { width:260px; max-width:260px; font-size:12px; }
+    .quantity-table td { padding:8px 10px; border:1px solid var(--border); background:var(--surface-muted); font-weight:700; }
     .quantity-table td:last-child { color:var(--primary); text-align:right; font-variant-numeric:tabular-nums; }
     .signatures { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px; margin-top:32px; text-align:center; font-size:10px; }
     .signatures div { padding-top:7px; border-top:1px solid var(--border); }
@@ -194,7 +192,6 @@ export const buildWarehouseSlipPdfHtml = (
           <div class="document-meta">
             <div><strong>Document No.</strong> ${escapeHtml(valueOrDash(slip.documentNumber, '-'))}</div>
             <div><strong>Printed On:</strong> ${escapeHtml(formatPrintedAt(printedAt))}</div>
-            <div class="document-subtitle">Product movement copy · no pricing</div>
           </div>
         </div>
         <div class="company">
@@ -228,7 +225,7 @@ export const buildWarehouseSlipPdfHtml = (
     </table>
 
     <div class="quantity-wrap">
-      <table class="quantity-table"><tbody><tr><td>Total Quantity</td><td>${escapeHtml(formatPakistaniNumber(totalQuantity, 0))}</td></tr></tbody></table>
+      <table class="quantity-table"><colgroup><col style="width:75%"/><col style="width:25%"/></colgroup><tbody><tr><td>Total Quantity</td><td>${escapeHtml(formatPakistaniNumber(totalQuantity, 0))}</td></tr></tbody></table>
     </div>
 
     <footer class="signatures">
