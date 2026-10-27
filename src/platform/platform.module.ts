@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CommonModule } from 'src/common/common.module';
 import { PlatformController } from './platform.controller';
 import { PlatformService } from './platform.service';
 import { Tenant } from '../master-db/entities/tenant.entity';
@@ -78,6 +79,7 @@ import { TenantDocumentTemplateService } from './services/tenant-document-templa
 @Module({
   imports: [
     HttpModule,
+    CommonModule,
     TypeOrmModule.forFeature([
       Tenant,
       TenantProvisioningJob,

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -9,8 +10,12 @@ import {
   Put,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { PermissionGuard } from 'src/auth/permission.guard';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
@@ -23,7 +28,18 @@ import { UpdateDocumentTemplateItemDto } from '../dto/document-template/update-d
 import { SetDocumentTemplateItemActiveDto } from '../dto/document-template/set-document-template-item-active.dto';
 import { UpdateDocumentTemplateStatusDto } from '../dto/document-template/update-document-template-status.dto';
 import { DocumentTemplateItemService } from '../services/document-template-item.service';
-import { DocumentTemplateService } from '../services/document-template.service';
+import {
+  DocumentTemplateService,
+  DocumentTemplateUploadKind,
+} from '../services/document-template.service';
+
+const documentTemplateUploadOptions = {
+  storage: memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+    files: 1,
+  },
+};
 
 @Controller('platform/document-templates')
 @UseGuards(JwtAuthGuard, PermissionGuard)
@@ -48,6 +64,21 @@ export class DocumentTemplateController {
   @Get('/default')
   getDefault(@Req() req: any) {
     return this.documentTemplateService.getDefault(req.user);
+  }
+
+  @RequirePermissions('DOCUMENT_TEMPLATE_MANAGE')
+  @Post('/upload')
+  @UseInterceptors(FileInterceptor('file', documentTemplateUploadOptions))
+  upload(
+    @Query('kind') kind: DocumentTemplateUploadKind = 'file',
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: any,
+  ) {
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+
+    return this.documentTemplateService.uploadAsset(kind, file, req.user);
   }
 
   @RequirePermissions('DOCUMENT_TEMPLATE_MANAGE')

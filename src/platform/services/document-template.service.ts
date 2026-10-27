@@ -5,6 +5,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { randomUUID } from 'crypto';
+import { extname } from 'path';
+import { S3Service } from 'src/common/s3/s3.service';
 import { ActivityLogActorType } from 'src/master-db/entities/activity-log.entity';
 import {
   DocumentTemplate,
@@ -17,6 +20,35 @@ import { UpdateDocumentTemplateDto } from '../dto/document-template/update-docum
 import { UpdateDocumentTemplateStatusDto } from '../dto/document-template/update-document-template-status.dto';
 import { ActivityLogService } from './activity-log.service';
 
+export type DocumentTemplateUploadKind = 'preview' | 'file';
+
+const PREVIEW_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+]);
+
+const FILE_MIME_TYPES = new Set([
+  'text/html',
+  'text/plain',
+  'text/css',
+  'application/json',
+  'application/octet-stream',
+  'text/x-handlebars-template',
+  'application/x-handlebars-template',
+]);
+
+const FILE_EXTENSIONS = new Set([
+  '.html',
+  '.htm',
+  '.hbs',
+  '.handlebars',
+  '.txt',
+  '.css',
+  '.json',
+]);
+
 @Injectable()
 export class DocumentTemplateService {
   constructor(
@@ -25,6 +57,7 @@ export class DocumentTemplateService {
     @InjectRepository(TenantDocumentTemplate)
     private readonly tenantDocumentTemplateRepository: Repository<TenantDocumentTemplate>,
     private readonly activityLogService: ActivityLogService,
+    private readonly s3Service: S3Service,
   ) {}
 
   private async recordAction(
@@ -40,6 +73,95 @@ export class DocumentTemplateService {
       description,
       metadata: metadata ?? null,
     });
+  }
+
+  private resolveSafeExtension(originalName: string, mimeType: string) {
+    const rawExt = extname(originalName || '').toLowerCase();
+    if (rawExt && /^[.][a-z0-9]{1,10}$/i.test(rawExt)) {
+      return rawExt.replace('.', '');
+    }
+
+    if (mimeType.startsWith('image/')) {
+      return mimeType.split('/')[1] || 'bin';
+    }
+
+    if (mimeType.includes('handlebars')) return 'hbs';
+    if (mimeType === 'text/html') return 'html';
+    if (mimeType === 'text/plain') return 'txt';
+    if (mimeType === 'application/json') return 'json';
+    return 'bin';
+  }
+
+  private assertUploadAllowed(
+    kind: DocumentTemplateUploadKind,
+    file: Express.Multer.File,
+  ) {
+    const mimeType = (file.mimetype || '').toLowerCase();
+    const extension = extname(file.originalname || '').toLowerCase();
+
+    if (kind === 'preview') {
+      if (!PREVIEW_MIME_TYPES.has(mimeType)) {
+        throw new BadRequestException(
+          'Preview upload accepts JPEG, PNG, WEBP, or GIF only',
+        );
+      }
+      return;
+    }
+
+    const mimeOk = FILE_MIME_TYPES.has(mimeType) || mimeType.startsWith('text/');
+    const extensionOk = !extension || FILE_EXTENSIONS.has(extension);
+    if (!mimeOk && !extensionOk) {
+      throw new BadRequestException(
+        'Template file upload accepts HTML, Handlebars, TXT, CSS, or JSON files',
+      );
+    }
+  }
+
+  async uploadAsset(
+    kind: DocumentTemplateUploadKind,
+    file: Express.Multer.File,
+    user: { id: string },
+  ) {
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+
+    if (kind !== 'preview' && kind !== 'file') {
+      throw new BadRequestException('kind must be preview or file');
+    }
+
+    this.assertUploadAllowed(kind, file);
+
+    const extension = this.resolveSafeExtension(file.originalname, file.mimetype);
+    const key = `platform/document-templates/${kind}/${randomUUID()}.${extension}`;
+    const uploaded = await this.s3Service.uploadObject(
+      key,
+      file.buffer,
+      file.mimetype || undefined,
+    );
+
+    await this.recordAction(
+      'DOCUMENT_TEMPLATE_UPLOAD',
+      'Document template asset uploaded',
+      user.id,
+      {
+        kind,
+        key: uploaded.key,
+        url: uploaded.url,
+        mimeType: file.mimetype,
+        originalFileName: file.originalname,
+        size: file.size,
+      },
+    );
+
+    return {
+      kind,
+      key: uploaded.key,
+      url: uploaded.url,
+      mimeType: file.mimetype || null,
+      originalFileName: file.originalname || null,
+      size: file.size,
+    };
   }
 
   private async findPackOrFail(id: string): Promise<DocumentTemplate> {
