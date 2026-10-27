@@ -28,6 +28,7 @@ export const PLATFORM_PERMISSIONS = [
     { code: "ROLE_UPDATE", name: "Update Role" },
     { code: "WHATSAPP_TEMPLATE_MANAGE", name: "Manage WhatsApp Templates" },
     { code: "WHATSAPP_ACCOUNT_MANAGE", name: "Manage WhatsApp Accounts" },
+    { code: "DOCUMENT_TEMPLATE_MANAGE", name: "Manage Document Templates" },
 ];
 
 export async function seedPlatformPermissions(dataSource: DataSource) {

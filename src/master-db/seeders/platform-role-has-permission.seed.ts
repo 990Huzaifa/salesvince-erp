@@ -30,6 +30,7 @@ const ROLE_PERMISSION_MAP: Record<string, string[]> = {
         "ROLE_UPDATE",
         "WHATSAPP_TEMPLATE_MANAGE",
         "WHATSAPP_ACCOUNT_MANAGE",
+        "DOCUMENT_TEMPLATE_MANAGE",
     ],
     SUPPORT: ['TENANT_VIEW', 'TENANT_UPDATE'],
     FINANCE: ['BILLING_VIEW'],

@@ -65,6 +65,14 @@ import { WhatsappAccountController } from './controller/whatsapp-account.control
 import { WhatsappAccountService } from './services/whatsapp-account.service';
 import { MetaWhatsappApiService } from './services/meta-whatsapp-api.service';
 import { MetaWhatsappWebhookController } from './controller/meta-whatsapp-webhook.controller';
+import { DocumentTemplate } from 'src/master-db/entities/document-template.entity';
+import { DocumentTemplateItem } from 'src/master-db/entities/document-template-item.entity';
+import { TenantDocumentTemplate } from 'src/master-db/entities/tenant-document-template.entity';
+import { DocumentTemplateController } from './controller/document-template.controller';
+import { TenantDocumentTemplateController } from './controller/tenant-document-template.controller';
+import { DocumentTemplateService } from './services/document-template.service';
+import { DocumentTemplateItemService } from './services/document-template-item.service';
+import { TenantDocumentTemplateService } from './services/tenant-document-template.service';
 
 
 @Module({
@@ -105,10 +113,57 @@ import { MetaWhatsappWebhookController } from './controller/meta-whatsapp-webhoo
       WhatsappTemplate,
       TenantWhatsappAccounts,
       TenantWhatsappAccountTemplates,
+      DocumentTemplate,
+      DocumentTemplateItem,
+      TenantDocumentTemplate,
     ]),
   ],
-  controllers: [PlatformController, PlatformUserController, CustomerController, PlanController, AddonController, ModuleController, SubscriptionController, AnnouncementController, UtilityController, NotificationController, ActivityLogController, InvoiceController, WhatsappTemplateController, WhatsappAccountController, MetaWhatsappWebhookController],
-  providers: [PlatformService, ProvisioningAdminService, TenantDatabaseService, TenantMigrationService, TenantSeederService, CustomerService, PlatformUserService, PlanService, AddonService, SubscriptionService, AnnouncementService, UtilityService, MailService, JwtService, ModuleService, NotificationService, PusherService, ActivityLogService, InvoiceService, WhatsappTemplateService, WhatsappAccountService, MetaWhatsappApiService],
-  exports: [WhatsappAccountService],
+  controllers: [
+    PlatformController,
+    PlatformUserController,
+    CustomerController,
+    PlanController,
+    AddonController,
+    ModuleController,
+    SubscriptionController,
+    AnnouncementController,
+    UtilityController,
+    NotificationController,
+    ActivityLogController,
+    InvoiceController,
+    WhatsappTemplateController,
+    WhatsappAccountController,
+    MetaWhatsappWebhookController,
+    DocumentTemplateController,
+    TenantDocumentTemplateController,
+  ],
+  providers: [
+    PlatformService,
+    ProvisioningAdminService,
+    TenantDatabaseService,
+    TenantMigrationService,
+    TenantSeederService,
+    CustomerService,
+    PlatformUserService,
+    PlanService,
+    AddonService,
+    SubscriptionService,
+    AnnouncementService,
+    UtilityService,
+    MailService,
+    JwtService,
+    ModuleService,
+    NotificationService,
+    PusherService,
+    ActivityLogService,
+    InvoiceService,
+    WhatsappTemplateService,
+    WhatsappAccountService,
+    MetaWhatsappApiService,
+    DocumentTemplateService,
+    DocumentTemplateItemService,
+    TenantDocumentTemplateService,
+  ],
+  exports: [WhatsappAccountService, TenantDocumentTemplateService],
 })
 export class PlatformModule {}
