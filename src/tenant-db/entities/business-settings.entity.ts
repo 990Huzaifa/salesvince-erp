@@ -5,7 +5,6 @@ import {
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
-  RelationId,
   Unique,
   UpdateDateColumn,
 } from 'typeorm';
@@ -25,12 +24,12 @@ export class BusinessSettings {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ type: 'uuid' })
+  businessId: string;
+
   @ManyToOne(() => Business, { onDelete: 'CASCADE', nullable: false })
   @JoinColumn({ name: 'businessId' })
   business: Business;
-
-  @RelationId((row: BusinessSettings) => row.business)
-  businessId: string;
 
   /** Default payment method on vouchers (CASH, CHEQUE, …). */
   @Column({ type: 'enum', enum: PaymentMethod, nullable: true })

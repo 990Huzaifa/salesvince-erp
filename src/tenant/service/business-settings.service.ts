@@ -43,7 +43,7 @@ export class BusinessSettingsService {
     if (!row) {
       row = await repo.save(
         repo.create({
-          business: { id: businessId } as any,
+          businessId,
           defaultPaymentMethod: null,
           defaultVoucherPaymentCoaId: null,
           defaultDocumentTemplateId: null,
