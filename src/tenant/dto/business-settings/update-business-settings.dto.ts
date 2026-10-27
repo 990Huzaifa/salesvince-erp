@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import {
   IsEnum,
+  IsInt,
   IsObject,
   IsOptional,
   IsUUID,
@@ -31,18 +32,21 @@ export class UpdateBusinessSettingsDto {
 
   @IsOptional()
   @ValidateIf((_, v) => v !== null)
-  @IsUUID()
-  defaultCountryId?: string | null;
+  @Type(() => Number)
+  @IsInt()
+  defaultCountryId?: number | null;
 
   @IsOptional()
   @ValidateIf((_, v) => v !== null)
-  @IsUUID()
-  defaultStateId?: string | null;
+  @Type(() => Number)
+  @IsInt()
+  defaultStateId?: number | null;
 
   @IsOptional()
   @ValidateIf((_, v) => v !== null)
-  @IsUUID()
-  defaultCityId?: string | null;
+  @Type(() => Number)
+  @IsInt()
+  defaultCityId?: number | null;
 
   @IsOptional()
   @ValidateIf((_, v) => v !== null)

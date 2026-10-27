@@ -54,15 +54,15 @@ export class BusinessSettings {
   @JoinColumn({ name: 'defaultWarehouseId' })
   defaultWarehouse: Warehouse | null;
 
-  /** Master geo IDs — UI options come from geo fence after platform policy. */
-  @Column({ type: 'uuid', nullable: true })
-  defaultCountryId: string | null;
+  /** Master geo IDs (numeric) — UI options come from geo fence after platform policy. */
+  @Column({ type: 'int', nullable: true })
+  defaultCountryId: number | null;
 
-  @Column({ type: 'uuid', nullable: true })
-  defaultStateId: string | null;
+  @Column({ type: 'int', nullable: true })
+  defaultStateId: number | null;
 
-  @Column({ type: 'uuid', nullable: true })
-  defaultCityId: string | null;
+  @Column({ type: 'int', nullable: true })
+  defaultCityId: number | null;
 
   /** Forward-compatible bag for new defaults without schema churn. */
   @Column({ type: 'jsonb', nullable: true })
