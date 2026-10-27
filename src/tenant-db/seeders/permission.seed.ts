@@ -230,6 +230,8 @@ export const TENANT_PERMISSIONS = [
   { key: 'VIEW_WAREHOUSE', name: 'View Warehouse' },
   { key: 'VIEW_LOAN', name: 'View Loan' },
   { key: 'VIEW_CLAIM', name: 'View Claim' },
+  { key: 'VIEW_BUSINESS_SETTINGS', name: 'View Business Settings' },
+  { key: 'UPDATE_BUSINESS_SETTINGS', name: 'Update Business Settings' },
 
   { key: 'DELETE_USER', name: 'Delete Users' },
   { key: 'LIST_DELETE_USER_REQUEST', name: 'List Delete User Requests' },

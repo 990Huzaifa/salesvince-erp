@@ -28,10 +28,7 @@ import { UpdateDocumentTemplateItemDto } from '../dto/document-template/update-d
 import { SetDocumentTemplateItemActiveDto } from '../dto/document-template/set-document-template-item-active.dto';
 import { UpdateDocumentTemplateStatusDto } from '../dto/document-template/update-document-template-status.dto';
 import { DocumentTemplateItemService } from '../services/document-template-item.service';
-import {
-  DocumentTemplateService,
-  DocumentTemplateUploadKind,
-} from '../services/document-template.service';
+import { DocumentTemplateService } from '../services/document-template.service';
 
 const documentTemplateUploadOptions = {
   storage: memoryStorage(),
@@ -70,8 +67,8 @@ export class DocumentTemplateController {
   @Post('/upload')
   @UseInterceptors(FileInterceptor('file', documentTemplateUploadOptions))
   upload(
-    @Query('kind') kind: DocumentTemplateUploadKind = 'file',
-    @UploadedFile() file: Express.Multer.File,
+    @Query('kind') kind: 'preview' | 'file' = 'file',
+    @UploadedFile() file: any,
     @Req() req: any,
   ) {
     if (!file) {
