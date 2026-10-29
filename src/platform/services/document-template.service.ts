@@ -238,6 +238,53 @@ export class DocumentTemplateService {
     return template;
   }
 
+  /**
+   * Public (no auth): ACTIVE pack + active sub-templates for tenant design integration.
+   */
+  async getPublicById(id: string) {
+    const template = await this.documentTemplateRepository.findOne({
+      where: {
+        id,
+        status: DocumentTemplateStatus.ACTIVE,
+      },
+      relations: ['items'],
+    });
+
+    if (!template) {
+      throw new NotFoundException('Document template not found');
+    }
+
+    const items = (template.items ?? [])
+      .filter((item) => item.isActive !== false)
+      .sort((a, b) => a.documentType.localeCompare(b.documentType))
+      .map((item) => ({
+        id: item.id,
+        documentType: item.documentType,
+        name: item.name,
+        sourceType: item.sourceType,
+        engine: item.engine,
+        content: item.content,
+        fileUrl: item.fileUrl,
+        fileMimeType: item.fileMimeType,
+        pageSettings: item.pageSettings,
+        variables: item.variables,
+        isActive: item.isActive,
+      }));
+
+    return {
+      id: template.id,
+      code: template.code,
+      name: template.name,
+      description: template.description,
+      previewImageUrl: template.previewImageUrl,
+      isDefault: template.isDefault,
+      status: template.status,
+      sortOrder: template.sortOrder,
+      metadata: template.metadata,
+      items,
+    };
+  }
+
   async getDefault(user?: { id: string }) {
     const template = await this.documentTemplateRepository.findOne({
       where: {

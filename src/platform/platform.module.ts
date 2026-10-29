@@ -70,6 +70,7 @@ import { DocumentTemplate } from 'src/master-db/entities/document-template.entit
 import { DocumentTemplateItem } from 'src/master-db/entities/document-template-item.entity';
 import { TenantDocumentTemplate } from 'src/master-db/entities/tenant-document-template.entity';
 import { DocumentTemplateController } from './controller/document-template.controller';
+import { PublicDocumentTemplateController } from './controller/public-document-template.controller';
 import { TenantDocumentTemplateController } from './controller/tenant-document-template.controller';
 import { DocumentTemplateService } from './services/document-template.service';
 import { DocumentTemplateItemService } from './services/document-template-item.service';
@@ -137,6 +138,7 @@ import { TenantDocumentTemplateService } from './services/tenant-document-templa
     WhatsappAccountController,
     MetaWhatsappWebhookController,
     DocumentTemplateController,
+    PublicDocumentTemplateController,
     TenantDocumentTemplateController,
   ],
   providers: [
