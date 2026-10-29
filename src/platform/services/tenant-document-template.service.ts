@@ -332,4 +332,36 @@ export class TenantDocumentTemplateService {
   async countByTemplate(templateId: string): Promise<number> {
     return this.assignmentRepository.count({ where: { templateId } });
   }
+
+  /**
+   * On tenant create/provision: link the global default ACTIVE pack if none assigned yet.
+   * No-op when no default pack exists (does not fail provisioning).
+   */
+  async ensureDefaultAssigned(
+    tenantId: string,
+  ): Promise<{ created: boolean; templateId: string | null }> {
+    await this.assertTenantExists(tenantId);
+
+    const existing = await this.assignmentRepository.find({
+      where: { tenantId },
+      take: 1,
+    });
+    if (existing.length > 0) {
+      return { created: false, templateId: existing[0].templateId };
+    }
+
+    const defaultPack = await this.getDefaultTemplate();
+    if (!defaultPack) {
+      return { created: false, templateId: null };
+    }
+
+    await this.assignmentRepository.save(
+      this.assignmentRepository.create({
+        tenantId,
+        templateId: defaultPack.id,
+      }),
+    );
+
+    return { created: true, templateId: defaultPack.id };
+  }
 }

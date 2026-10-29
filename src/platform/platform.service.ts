@@ -27,6 +27,7 @@ import { ActivityLogActorType } from 'src/master-db/entities/activity-log.entity
 import { TenantModule } from 'src/master-db/entities/tenant-modules.entity';
 import { Module } from 'src/master-db/entities/module.entity';
 import { WhatsappAccountService } from './services/whatsapp-account.service';
+import { TenantDocumentTemplateService } from './services/tenant-document-template.service';
 import { getTenantDatabaseLocation } from 'src/config/database/database-env';
 
 @Injectable()
@@ -63,6 +64,7 @@ export class PlatformService {
     @InjectRepository(Plan)
     private readonly planRepo: Repository<Plan>,
     private readonly whatsappAccountService: WhatsappAccountService,
+    private readonly tenantDocumentTemplateService: TenantDocumentTemplateService,
 
     private readonly provisioningAdminService: ProvisioningAdminService,
     private readonly tenantDatabaseService: TenantDatabaseService,
@@ -503,9 +505,24 @@ export class PlatformService {
         level: 'INFO',
         message: 'Tenant default geo policy created',
       });
-      // 🚧 STOP HERE — (future steps plug below)
 
+      // ===============================
+      // 🔹 STEP 4: Assign default document template pack
+      // ===============================
+      const docTemplateAssign =
+        await this.tenantDocumentTemplateService.ensureDefaultAssigned(
+          tenant.id,
+        );
 
+      await this.logRepo.save({
+        job,
+        level: 'INFO',
+        message: docTemplateAssign.created
+          ? `Default document template pack assigned (${docTemplateAssign.templateId})`
+          : docTemplateAssign.templateId
+            ? 'Document template pack already assigned'
+            : 'No default document template pack found — skipped',
+      });
 
       // 🔥 FINALIZE provisioning (CURRENT SCOPE)
       await this.markProvisioningSuccess(tenant, job, notifyUserId);

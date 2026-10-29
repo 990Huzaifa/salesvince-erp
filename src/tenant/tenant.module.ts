@@ -192,6 +192,7 @@ import { TenantTheme } from 'src/master-db/entities/tenant-themes.entity';
 import { TenantModule as TenantModuleEntity } from 'src/master-db/entities/tenant-modules.entity';
 import { Subscription } from 'src/master-db/entities/subscription.entity';
 import { DocumentTemplate } from 'src/master-db/entities/document-template.entity';
+import { TenantDocumentTemplate } from 'src/master-db/entities/tenant-document-template.entity';
 import { BusinessSettingsController } from './controller/business-settings.controller';
 import { BusinessSettingsService } from './service/business-settings.service';
 
@@ -214,6 +215,7 @@ import { BusinessSettingsService } from './service/business-settings.service';
       TenantModuleEntity,
       Subscription,
       DocumentTemplate,
+      TenantDocumentTemplate,
     ]),
   ],
   controllers: [
