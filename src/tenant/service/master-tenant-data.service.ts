@@ -203,7 +203,7 @@ export class MasterTenantDataService {
         geoPolicy: null,
         theme: null,
         limits: [],
-        documentTemplates: [],
+        assignedTemplatePacks: [],
       };
     }
 
@@ -216,7 +216,7 @@ export class MasterTenantDataService {
       theme,
       modules,
       limits,
-      documentTemplates,
+      assignedTemplatePacks,
     ] = await Promise.all([
       this.getTenantCodeByTenantId(normalizedTenantId),
       this.getTenantSettingsByTenantId(normalizedTenantId),
@@ -234,7 +234,7 @@ export class MasterTenantDataService {
       theme,
       modules,
       limits,
-      documentTemplates,
+      assignedTemplatePacks,
     };
   }
 }

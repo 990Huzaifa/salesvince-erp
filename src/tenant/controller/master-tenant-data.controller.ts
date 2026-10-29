@@ -13,14 +13,4 @@ export class MasterTenantDataController {
   async getTenantMasterData(@TenantId() tenantId: string) {
     return this.masterTenantDataService.getTenantMasterDataByTenantId(tenantId);
   }
-
-  /** Document template packs available for business settings / PDF defaults. */
-  @Get('document-templates')
-  async getDocumentTemplates(@TenantId() tenantId: string) {
-    const data =
-      await this.masterTenantDataService.getDocumentTemplatesByTenantId(
-        tenantId,
-      );
-    return { data };
-  }
 }
