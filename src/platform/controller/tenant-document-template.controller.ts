@@ -78,6 +78,20 @@ export class TenantDocumentTemplateController {
   }
 
   @RequirePermissions('DOCUMENT_TEMPLATE_MANAGE')
+  @Delete('/by-tenant/:tenantId/templates/:templateId')
+  unassignOne(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('templateId', ParseUUIDPipe) templateId: string,
+    @Req() req: any,
+  ) {
+    return this.tenantDocumentTemplateService.unassignOne(
+      tenantId,
+      templateId,
+      req.user,
+    );
+  }
+
+  @RequirePermissions('DOCUMENT_TEMPLATE_MANAGE')
   @Delete('/by-tenant/:tenantId')
   unassign(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,

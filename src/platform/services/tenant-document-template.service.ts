@@ -73,6 +73,24 @@ export class TenantDocumentTemplateService {
     return template;
   }
 
+  private async getDefaultTemplate(): Promise<DocumentTemplate | null> {
+    return this.templateRepository.findOne({
+      where: {
+        isDefault: true,
+        status: DocumentTemplateStatus.ACTIVE,
+      },
+      relations: ['items'],
+    });
+  }
+
+  private async listAssignmentsForTenant(tenantId: string) {
+    return this.assignmentRepository.find({
+      where: { tenantId },
+      relations: ['template', 'template.items'],
+      order: { updatedAt: 'DESC' },
+    });
+  }
+
   async list(
     page = 1,
     limit = 10,
@@ -106,55 +124,45 @@ export class TenantDocumentTemplateService {
   async getByTenant(tenantId: string, user?: { id: string }) {
     await this.assertTenantExists(tenantId);
 
-    const assignment = await this.assignmentRepository.findOne({
-      where: { tenantId },
-      relations: ['template', 'template.items'],
-    });
-
-    if (!assignment) {
-      throw new NotFoundException(
-        'No document template assigned to this tenant',
-      );
-    }
+    const assignments = await this.listAssignmentsForTenant(tenantId);
 
     if (user?.id) {
       await this.recordAction(
         'TENANT_DOCUMENT_TEMPLATE_SHOW',
-        'Tenant document template assignment fetched',
+        'Tenant document template assignments fetched',
         user.id,
-        { tenantId, templateId: assignment.templateId },
+        {
+          tenantId,
+          count: assignments.length,
+          templateIds: assignments.map((row) => row.templateId),
+        },
       );
     }
 
-    return assignment;
+    return {
+      data: assignments,
+      meta: { total: assignments.length },
+    };
   }
 
   /**
-   * Resolve the pack for a tenant: explicit assignment → global default.
+   * Resolve the pack for a tenant: first assigned ACTIVE pack → global default.
    */
   async resolveTemplateForTenant(tenantId: string): Promise<DocumentTemplate> {
     await this.assertTenantExists(tenantId);
 
-    const assignment = await this.assignmentRepository.findOne({
-      where: { tenantId },
-      relations: ['template', 'template.items'],
-    });
+    const assignments = await this.listAssignmentsForTenant(tenantId);
+    const assigned = assignments.find(
+      (row) =>
+        row.template &&
+        row.template.status === DocumentTemplateStatus.ACTIVE,
+    );
 
-    if (
-      assignment?.template &&
-      assignment.template.status === DocumentTemplateStatus.ACTIVE
-    ) {
-      return assignment.template;
+    if (assigned?.template) {
+      return assigned.template;
     }
 
-    const fallback = await this.templateRepository.findOne({
-      where: {
-        isDefault: true,
-        status: DocumentTemplateStatus.ACTIVE,
-      },
-      relations: ['items'],
-    });
-
+    const fallback = await this.getDefaultTemplate();
     if (!fallback) {
       throw new NotFoundException(
         'No document template available for this tenant (no assignment and no default)',
@@ -166,6 +174,7 @@ export class TenantDocumentTemplateService {
 
   /**
    * Resolve a single document-type item for PDF rendering.
+   * Searches assigned packs in order, then falls back to the default pack.
    */
   async resolveItemForTenant(
     tenantId: string,
@@ -174,16 +183,51 @@ export class TenantDocumentTemplateService {
     template: DocumentTemplate;
     item: DocumentTemplateItem;
   }> {
-    const template = await this.resolveTemplateForTenant(tenantId);
+    await this.assertTenantExists(tenantId);
+
+    const assignments = await this.listAssignmentsForTenant(tenantId);
+    const assignedTemplates = assignments
+      .map((row) => row.template)
+      .filter(
+        (template): template is DocumentTemplate =>
+          Boolean(template) &&
+          template.status === DocumentTemplateStatus.ACTIVE,
+      );
+
+    for (const template of assignedTemplates) {
+      const item =
+        template.items?.find(
+          (row) =>
+            row.documentType === documentType && row.isActive !== false,
+        ) ??
+        (await this.itemRepository.findOne({
+          where: {
+            templateId: template.id,
+            documentType,
+            isActive: true,
+          },
+        }));
+
+      if (item) {
+        return { template, item };
+      }
+    }
+
+    const fallback = await this.getDefaultTemplate();
+    if (!fallback) {
+      throw new NotFoundException(
+        'No document template available for this tenant (no assignment and no default)',
+      );
+    }
 
     const item =
-      template.items?.find(
+      fallback.items?.find(
         (row) =>
           row.documentType === documentType && row.isActive !== false,
       ) ??
       (await this.itemRepository.findOne({
         where: {
-          templateId: template.id,
+          templateId: fallback.id,
           documentType,
           isActive: true,
         },
@@ -191,11 +235,11 @@ export class TenantDocumentTemplateService {
 
     if (!item) {
       throw new NotFoundException(
-        `Template pack "${template.code}" has no active item for ${documentType}`,
+        `No active item for ${documentType} in assigned packs or default pack`,
       );
     }
 
-    return { template, item };
+    return { template: fallback, item };
   }
 
   async assign(data: AssignTenantDocumentTemplateDto, user: { id: string }) {
@@ -203,19 +247,19 @@ export class TenantDocumentTemplateService {
     await this.assertAssignableTemplate(data.templateId);
 
     let assignment = await this.assignmentRepository.findOne({
-      where: { tenantId: data.tenantId },
+      where: {
+        tenantId: data.tenantId,
+        templateId: data.templateId,
+      },
     });
 
-    if (assignment) {
-      assignment.templateId = data.templateId;
-    } else {
+    if (!assignment) {
       assignment = this.assignmentRepository.create({
         tenantId: data.tenantId,
         templateId: data.templateId,
       });
+      assignment = await this.assignmentRepository.save(assignment);
     }
-
-    const saved = await this.assignmentRepository.save(assignment);
 
     await this.recordAction(
       'TENANT_DOCUMENT_TEMPLATE_ASSIGN',
@@ -225,7 +269,7 @@ export class TenantDocumentTemplateService {
     );
 
     return this.assignmentRepository.findOne({
-      where: { id: saved.id },
+      where: { id: assignment.id },
       relations: ['template', 'template.items', 'tenant'],
     });
   }
@@ -233,23 +277,53 @@ export class TenantDocumentTemplateService {
   async unassign(tenantId: string, user: { id: string }) {
     await this.assertTenantExists(tenantId);
 
-    const assignment = await this.assignmentRepository.findOne({
+    const assignments = await this.assignmentRepository.find({
       where: { tenantId },
+    });
+
+    if (assignments.length === 0) {
+      throw new NotFoundException(
+        'No document template assigned to this tenant',
+      );
+    }
+
+    const templateIds = assignments.map((row) => row.templateId);
+    await this.assignmentRepository.remove(assignments);
+
+    await this.recordAction(
+      'TENANT_DOCUMENT_TEMPLATE_UNASSIGN',
+      'All document templates unassigned from tenant',
+      user.id,
+      { tenantId, templateIds },
+    );
+
+    return { success: true, removed: templateIds.length };
+  }
+
+  async unassignOne(
+    tenantId: string,
+    templateId: string,
+    user: { id: string },
+  ) {
+    await this.assertTenantExists(tenantId);
+
+    const assignment = await this.assignmentRepository.findOne({
+      where: { tenantId, templateId },
     });
 
     if (!assignment) {
       throw new NotFoundException(
-        'No document template assigned to this tenant',
+        'Document template is not assigned to this tenant',
       );
     }
 
     await this.assignmentRepository.remove(assignment);
 
     await this.recordAction(
-      'TENANT_DOCUMENT_TEMPLATE_UNASSIGN',
+      'TENANT_DOCUMENT_TEMPLATE_UNASSIGN_ONE',
       'Document template unassigned from tenant',
       user.id,
-      { tenantId, templateId: assignment.templateId },
+      { tenantId, templateId },
     );
 
     return { success: true };

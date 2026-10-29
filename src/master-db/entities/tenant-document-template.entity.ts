@@ -13,11 +13,12 @@ import { DocumentTemplate } from './document-template.entity';
 import { Tenant } from './tenant.entity';
 
 @Entity('tenant_document_templates')
-@Unique('UQ_tenant_document_templates_tenant', ['tenantId'])
+@Unique('UQ_tenant_document_templates_tenant_template', ['tenantId', 'templateId'])
 export class TenantDocumentTemplate {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Index('IDX_tenant_document_templates_tenantId')
   @Column({ type: 'uuid' })
   tenantId: string;
 
