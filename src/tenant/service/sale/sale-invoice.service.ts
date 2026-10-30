@@ -3,7 +3,20 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Brackets, DataSource, EntityManager, IsNull } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Brackets, DataSource, EntityManager, IsNull, Repository } from 'typeorm';
+import {
+  DocumentTemplate,
+  DocumentTemplateStatus,
+} from 'src/master-db/entities/document-template.entity';
+import {
+  findActiveInlineDocumentTemplateItem,
+  shouldUseCustomDocumentTemplatePack,
+} from 'src/master-db/helpers/document-template.helper';
+import {
+  DocumentTemplateDocumentType,
+  DocumentTemplateItem,
+} from 'src/master-db/entities/document-template-item.entity';
 import {
   DeliveryNote,
   DeliveryNoteItem,
@@ -30,6 +43,7 @@ import {
 } from 'src/common/pdf';
 import { buildSaleInvoicePdfHtml } from './sale-invoice-pdf.template';
 import { Business } from 'src/tenant-db/entities/business.entity';
+import { BusinessSettings } from 'src/tenant-db/entities/business-settings.entity';
 import {
   endOfDay,
   parseDateRange,
@@ -53,6 +67,8 @@ type CustomerBalanceSnapshot = {
 @Injectable()
 export class SaleInvoiceService {
   constructor(
+    @InjectRepository(DocumentTemplate)
+    private readonly documentTemplateRepository: Repository<DocumentTemplate>,
     private readonly activityLogService: ActivityLogService,
     private readonly masterGeoHelperService: MasterGeoHelperService,
     private readonly listAnalyticsService: ListAnalyticsService,
@@ -66,6 +82,123 @@ export class SaleInvoiceService {
       throw new BadRequestException('Business context is required');
     }
     return businessId;
+  }
+
+  private async getBusinessSaleInvoiceTemplate(
+    tenantDb: DataSource,
+    businessId: string,
+  ): Promise<DocumentTemplateItem | null> {
+    const settings = await tenantDb.getRepository(BusinessSettings).findOne({
+      where: { businessId },
+      select: ['defaultDocumentTemplateId'],
+    });
+    if (!settings?.defaultDocumentTemplateId) return null;
+
+    const pack = await this.documentTemplateRepository.findOne({
+      where: {
+        id: settings.defaultDocumentTemplateId,
+        status: DocumentTemplateStatus.ACTIVE,
+      },
+      relations: { items: true },
+    });
+
+    if (!shouldUseCustomDocumentTemplatePack(pack)) return null;
+
+    return findActiveInlineDocumentTemplateItem(
+      pack.items,
+      DocumentTemplateDocumentType.SALE_INVOICE,
+    );
+  }
+
+  private renderDocumentTemplateHtml(
+    content: string,
+    data: Record<string, unknown>,
+  ): string {
+    const escapeHtml = (value: unknown) =>
+      String(value).replace(/[&<>"']/g, (character) => {
+        const entities: Record<string, string> = {
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        };
+        return entities[character];
+      });
+
+    const readPath = (path: string, scope: Record<string, unknown>) =>
+      path.split('.').reduce<unknown>((current, key) => {
+        if (!current || typeof current !== 'object') return undefined;
+        return (current as Record<string, unknown>)[key];
+      }, scope);
+
+    const interpolate = (
+      markup: string,
+      scope: Record<string, unknown>,
+      itemIndex: number | null = null,
+    ) => markup.replace(
+      /\{\{\s*(@index|[a-zA-Z0-9_.]+)\s*\}\}/g,
+      (_match, path: string) => {
+        if (path === '@index') {
+          return itemIndex == null ? '' : String(itemIndex);
+        }
+        const value = path.split('.').reduce<unknown>((current, key) => {
+          if (!current || typeof current !== 'object') return undefined;
+          return (current as Record<string, unknown>)[key];
+        }, scope);
+        return value == null ? '' : escapeHtml(value);
+      },
+    );
+
+    const eachBlocks: Array<{ path: string; rowMarkup: string }> = [];
+    const withEachMarkers = content.replace(
+      /\{\{#each\s+([a-zA-Z0-9_.]+)\s*\}\}([\s\S]*?)\{\{\/each\}\}/g,
+      (_match, path: string, rowMarkup: string) => {
+        const index = eachBlocks.push({ path, rowMarkup }) - 1;
+        return `\u0000DOCUMENT_TEMPLATE_EACH_${index}\u0000`;
+      },
+    );
+
+    const interpolatedMarkup = interpolate(withEachMarkers, data);
+    const filledContent = interpolatedMarkup.replace(
+      /\u0000DOCUMENT_TEMPLATE_EACH_(\d+)\u0000/g,
+      (_marker, blockIndex: string) => {
+        const block = eachBlocks[Number(blockIndex)];
+        const rows = block ? readPath(block.path, data) : null;
+        if (!block || !Array.isArray(rows)) return '';
+        return rows.map((row: unknown, index: number) => {
+          const rowData = row && typeof row === 'object'
+            ? row as Record<string, unknown>
+            : { value: row };
+          return interpolate(
+            block.rowMarkup,
+            { ...data, ...rowData, item: row, this: row, lineNumber: index + 1 },
+            index,
+          );
+        }).join('');
+      },
+    );
+
+    if (/<html[\s>]/i.test(filledContent)) return filledContent;
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>@page{size:A4;margin:0}html,body{margin:0;min-height:100%;background:#fff;font-family:Arial,sans-serif}</style></head><body>${filledContent}</body></html>`;
+  }
+
+  private formatDocumentTemplateDate(value: Date | string | null | undefined): string {
+    if (!value) return '';
+
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Karachi',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date);
+    const values = Object.fromEntries(
+      parts.map(({ type, value: partValue }) => [type, partValue]),
+    );
+    return `${values.month}/${values.day}/${values.year}`;
   }
 
   private invoiceRelations() {
@@ -619,12 +752,18 @@ export class SaleInvoiceService {
       throw new NotFoundException('Sale invoice not found');
     }
 
-    const [customerGeoNames, customerBalance, business] = await Promise.all([
+    const [
+      customerGeoNames,
+      customerBalance,
+      business,
+      selectedSaleInvoiceTemplate,
+    ] = await Promise.all([
       this.getCustomerGeoNames(invoice),
       this.getCustomerBalanceSnapshot(tenantDb, scopedBusinessId, invoice),
       tenantDb.getRepository(Business).findOne({
         where: { id: scopedBusinessId },
       }),
+      this.getBusinessSaleInvoiceTemplate(tenantDb, scopedBusinessId),
     ]);
 
     if (!business) {
@@ -639,7 +778,71 @@ export class SaleInvoiceService {
       this.pdfLogoService.fetchLogoDataUri(business.logo),
       this.printThemeService.resolveForTenant(tenantId),
     ]);
-    const html = buildSaleInvoicePdfHtml(
+    const templateInvoice = {
+      ...mappedInvoice,
+      invoice_no: mappedInvoice.invoiceNumber,
+      invoice_date: this.formatDocumentTemplateDate(mappedInvoice.invoiceDate),
+      vendor_code: mappedInvoice.customer?.code ?? '',
+      vendor_name: mappedInvoice.customer?.name ?? '',
+      vendor_address: mappedInvoice.customer?.address ?? '',
+      vendor_city: mappedInvoice.customer?.cityName ?? '',
+      total: mappedInvoice.totalAmount,
+      total_tax: mappedInvoice.totalTaxAmount,
+      total_discount: mappedInvoice.totalDiscountAmount,
+      delivery_cost: mappedInvoice.deliveryCost,
+      previous_balance: showBalanceDetails
+        ? mappedInvoice.customerBalance?.previousBalance ?? 0
+        : '',
+      current_balance: showBalanceDetails
+        ? mappedInvoice.customerBalance?.currentBalance ?? 0
+        : '',
+      items: mappedInvoice.items.map((item) => {
+        const quantity = Number(item.quantity ?? 0);
+        const unitPrice = Number(item.saleUnitPrice ?? 0);
+        const discountPercentage = Number(item.discountPercentage ?? 0);
+        const discountAmount = Number(item.discountAmount ?? 0);
+        const hasDiscountAmount =
+          item.discountAmount !== null && item.discountAmount !== undefined;
+        const discountedUnitPrice =
+          quantity > 0 && hasDiscountAmount
+            ? Math.max(0, unitPrice - discountAmount / quantity)
+            : Math.max(0, unitPrice * (1 - discountPercentage / 100));
+
+        return {
+          ...item,
+          product_id: item.product?.skuCode || item.productId || item.product?.id || '',
+          product_name: item.product?.name || '',
+          product: {
+            ...item.product,
+            id: item.product?.skuCode || item.productId || '',
+            title: item.product?.name || '',
+          },
+          measurement_unit: item.uom?.name || '',
+          unit_price: unitPrice,
+          discount: discountPercentage || discountAmount,
+          discount_amount: discountAmount,
+          discounted_unit_price: discountedUnitPrice,
+          discount_in_percentage: discountPercentage > 0 ? 1 : 0,
+          total: Number(item.totalAmount ?? 0),
+        };
+      }),
+    };
+    const customTemplateHtml = selectedSaleInvoiceTemplate?.content
+      ? this.renderDocumentTemplateHtml(selectedSaleInvoiceTemplate.content, {
+          invoice: templateInvoice,
+          companyInfo: {
+            name: business.name,
+            legalName: business.legalName,
+            address: business.address,
+            mobile: business.phone,
+            phone: business.phone,
+            currency: business.currency,
+            logo: logoDataUri,
+          },
+          invoiceNo: mappedInvoice.invoiceNumber,
+        })
+      : null;
+    const html = customTemplateHtml ?? buildSaleInvoicePdfHtml(
       mappedInvoice,
       {
         name: business.name,
