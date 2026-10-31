@@ -18,6 +18,7 @@ import {
 import { BusinessSettings } from 'src/tenant-db/entities/business-settings.entity';
 import { MasterTenantDataService } from './master-tenant-data.service';
 import { PrintThemeService } from './print-theme.service';
+import { buildClassicDocumentPdfHtml } from './classic-document-template';
 
 @Injectable()
 export class DocumentTemplateRendererService {
@@ -55,6 +56,11 @@ export class DocumentTemplateRendererService {
     ]);
     if (!pack) {
       throw new NotFoundException('The selected document template is not active');
+    }
+
+    if ([pack.code, pack.name].some((value) => String(value ?? '').trim().toLowerCase() === 'classic')) {
+      const classicHtml = buildClassicDocumentPdfHtml(documentType, data, themeColors, timeZone);
+      if (classicHtml) return applyPrintThemeToHtml(classicHtml, themeColors);
     }
 
     const item = pack.items?.find((candidate) =>
