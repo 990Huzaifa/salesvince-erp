@@ -92,6 +92,7 @@ export class GrnPdfService {
         preparedBy: actor?.name || 'Admin',
         companyInfo,
       },
+      tenantId,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

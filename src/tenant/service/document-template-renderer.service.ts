@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { applyPrintThemeToHtml } from 'src/common/pdf';
 import {
   DocumentTemplate,
   DocumentTemplateStatus,
@@ -10,12 +11,14 @@ import {
   DocumentTemplateSourceType,
 } from 'src/master-db/entities/document-template-item.entity';
 import { BusinessSettings } from 'src/tenant-db/entities/business-settings.entity';
+import { PrintThemeService } from './print-theme.service';
 
 @Injectable()
 export class DocumentTemplateRendererService {
   constructor(
     @InjectRepository(DocumentTemplate)
     private readonly documentTemplateRepository: Repository<DocumentTemplate>,
+    private readonly printThemeService: PrintThemeService,
   ) {}
 
   async render(
@@ -23,6 +26,7 @@ export class DocumentTemplateRendererService {
     businessId: string,
     documentType: DocumentTemplateDocumentType,
     data: Record<string, unknown>,
+    tenantId?: string | null,
   ): Promise<string> {
     const settings = await tenantDb.getRepository(BusinessSettings).findOne({
       where: { businessId },
@@ -33,10 +37,13 @@ export class DocumentTemplateRendererService {
       throw new NotFoundException('No document template is selected for this business');
     }
 
-    const pack = await this.documentTemplateRepository.findOne({
-      where: { id: templateId, status: DocumentTemplateStatus.ACTIVE },
-      relations: { items: true },
-    });
+    const [pack, themeColors] = await Promise.all([
+      this.documentTemplateRepository.findOne({
+        where: { id: templateId, status: DocumentTemplateStatus.ACTIVE },
+        relations: { items: true },
+      }),
+      this.printThemeService.resolveForTenant(tenantId),
+    ]);
     if (!pack) {
       throw new NotFoundException('The selected document template is not active');
     }
@@ -53,7 +60,10 @@ export class DocumentTemplateRendererService {
       if (!fileUrl) {
         throw new NotFoundException(`The ${documentType} sub-template file is missing`);
       }
-      return `<!doctype html><html lang="en"><head><meta charset="utf-8"><style>@page{size:A4;margin:0}html,body,iframe{width:100%;height:100%;margin:0;border:0}</style></head><body><iframe src="${escapeHtml(fileUrl)}"></iframe></body></html>`;
+      return applyPrintThemeToHtml(
+        `<!doctype html><html lang="en"><head><meta charset="utf-8"><style>@page{size:A4;margin:0}html,body,iframe{width:100%;height:100%;margin:0;border:0}</style></head><body><iframe src="${escapeHtml(fileUrl)}"></iframe></body></html>`,
+        themeColors,
+      );
     }
 
     const content = String(item.content ?? '').trim();
@@ -61,7 +71,15 @@ export class DocumentTemplateRendererService {
       throw new NotFoundException(`The ${documentType} sub-template content is empty`);
     }
 
-    return renderDocumentTemplate(content, data);
+    return applyPrintThemeToHtml(
+      renderDocumentTemplate(content, {
+        ...data,
+        theme: themeColors,
+        primaryColor: themeColors.primary,
+        primary_color: themeColors.primary,
+      }),
+      themeColors,
+    );
   }
 }
 
@@ -247,3 +265,4 @@ const renderDocumentTemplate = (
   if (/<html[\s>]/i.test(contentWithLogo)) return contentWithLogo;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>@page{size:A4;margin:0}html,body{margin:0;min-height:100%;background:#fff;font-family:Arial,sans-serif}</style></head><body>${contentWithLogo}</body></html>`;
 };
+

@@ -1627,6 +1627,7 @@ export class SaleOrderService {
         orderNumber: mappedOrder.orderNumber,
         showBalanceDetails,
       },
+      tenantId,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

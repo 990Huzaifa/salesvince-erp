@@ -25,6 +25,7 @@ export { sendPdf } from './pdf-response.helper';
 export type { SendPdfOptions } from './pdf-response.helper';
 export type { BusinessPdfContext } from './pdf-context.types';
 export {
+  applyPrintThemeToHtml,
   printThemeCssVars,
   resolvePrintThemeColors,
 } from './print-theme-colors';

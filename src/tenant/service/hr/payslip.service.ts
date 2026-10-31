@@ -40,6 +40,7 @@ export class PayslipService {
     businessId: string | undefined,
     id: string,
     actorUserId: string,
+    tenantId?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = assertBusinessId(businessId);
     const payslip = await this.findForBusiness(tenantDb, scopedBusinessId, id, true);
@@ -98,6 +99,7 @@ export class PayslipService {
         companyInfo,
         ...templatePaySlip,
       },
+      tenantId,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

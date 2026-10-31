@@ -99,6 +99,7 @@ export class WarehouseSlipPdfService {
       businessId,
       DocumentTemplateDocumentType.WAREHOUSE_SLIP,
       { slip, warehouseSlip: slip, companyInfo, ...slip },
+      tenantId,
     );
 
     const buffer = await this.pdfRendererService.renderHtmlToPdf({

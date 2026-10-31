@@ -108,6 +108,7 @@ export class OpeningBalancePdfService {
         companyInfo,
         preparedBy: actor?.name || 'Admin',
       },
+      tenantId,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

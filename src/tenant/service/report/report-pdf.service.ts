@@ -293,6 +293,7 @@ export class ReportPdfService {
         filters: document.filters,
         ...document,
       },
+      tenantId,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({ html, enforceSinglePage: false });
     return { buffer, filename: `${safePdfFilenamePart(filename)}.pdf` };

@@ -100,6 +100,7 @@ export class ReportLedgerService {
         ledgerEntries: ledger.entries,
         companyInfo,
       },
+      tenantId,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

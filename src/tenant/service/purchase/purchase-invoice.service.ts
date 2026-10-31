@@ -673,6 +673,7 @@ export class PurchaseInvoiceService {
         invoiceNo: mappedInvoice.invoiceNumber,
         showBalanceDetails,
       },
+      tenantId,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

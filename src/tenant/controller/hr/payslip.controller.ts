@@ -89,6 +89,7 @@ export class PayslipController {
       user.businessId,
       id,
       user.userId,
+      user.tenantId,
     );
     sendPdf(res, { buffer, filename });
   }
