@@ -1,4 +1,4 @@
-import {
+﻿import {
   Body,
   Controller,
   Delete,
@@ -22,7 +22,7 @@ import { TenantConnectionGuard } from 'src/common/guards/tenant-connection.guard
 import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
-import { sendPdf } from 'src/common/pdf';
+import { getClientIp, sendPdf } from 'src/common/pdf';
 import { StockTransferStatus } from 'src/tenant-db/entities/stock-transfer.entity';
 import { StockTransferService } from '../service/inventory/stock-transfer.service';
 import { WarehouseSlipPdfService } from '../service/warehouse-slip-pdf.service';
@@ -119,6 +119,7 @@ export class StockTransferController {
         id,
         user.userId,
         user.tenantId,
+        getClientIp(req),
       );
     sendPdf(res, { buffer, filename });
   }
@@ -205,3 +206,4 @@ export class StockTransferController {
     );
   }
 }
+

@@ -27,6 +27,7 @@ export class OpeningBalancePdfService {
     category: string,
     search?: string,
     tenantId?: string,
+    clientIp?: string,
   ) {
     if (!businessId) throw new BadRequestException('Business context is required');
     if (!/^\d(?:-\d+)*$/.test(parentCode)) {
@@ -109,6 +110,7 @@ export class OpeningBalancePdfService {
         preparedBy: actor?.name || 'Admin',
       },
       tenantId,
+      clientIp,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

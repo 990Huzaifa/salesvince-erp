@@ -55,6 +55,7 @@ export class ReportLedgerService {
     startDate?: string,
     endDate?: string,
     tenantId?: string,
+    clientIp?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = assertBusinessId(businessId);
     const [ledger, business] = await Promise.all([
@@ -101,6 +102,7 @@ export class ReportLedgerService {
         companyInfo,
       },
       tenantId,
+      clientIp,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

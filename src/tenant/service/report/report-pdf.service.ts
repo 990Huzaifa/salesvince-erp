@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+﻿import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, IsNull } from 'typeorm';
 import { DocumentTemplateDocumentType } from 'src/master-db/entities/document-template-item.entity';
 import {
@@ -43,7 +43,7 @@ export class ReportPdfService {
     private readonly documentTemplateRendererService: DocumentTemplateRendererService,
   ) {}
 
-  async generateCustomerBalancesPdf(db: DataSource, businessId: string, actorUserId: string, tenantId?: string) {
+  async generateCustomerBalancesPdf(db: DataSource, businessId: string, actorUserId: string, tenantId?: string, clientIp?: string) {
     const data = await this.reportService.getCustomerBalances(db, businessId, actorUserId);
     const rows = data.data.map((row, index) => ({ serial: index + 1, ...row }));
     const columns: ReportPdfColumn[] = [
@@ -58,10 +58,10 @@ export class ReportPdfService {
       filters: [{ label: 'Report', value: 'Customer Balance' }],
       summary: [{ label: 'Total Customers', value: data.meta.total }, { label: 'Current Receivable', value: money(data.totals.currentBalance) }],
       sections: [{ columns, rows: asRows(rows), emptyMessage: 'No customer balances found' }], minimumRows: 12,
-    }, 'Customer-Balance-Report', tenantId);
+    }, 'Customer-Balance-Report', tenantId, clientIp);
   }
 
-  async generateVendorBalancesPdf(db: DataSource, businessId: string, actorUserId: string, tenantId?: string) {
+  async generateVendorBalancesPdf(db: DataSource, businessId: string, actorUserId: string, tenantId?: string, clientIp?: string) {
     const data = await this.reportService.getVendorBalances(db, businessId, actorUserId);
     const columns: ReportPdfColumn[] = [
       { key: 'serial', label: 'S No.', width: '8%', align: 'center' },
@@ -75,10 +75,10 @@ export class ReportPdfService {
       filters: [{ label: 'Report', value: 'Vendor Balance' }],
       summary: [{ label: 'Total Vendors', value: data.meta.total }, { label: 'Current Payable', value: money(data.totals.currentBalance) }],
       sections: [{ columns, rows: asRows(data.data), emptyMessage: 'No vendor balances found' }], minimumRows: 12,
-    }, 'Vendor-Balance-Report', tenantId);
+    }, 'Vendor-Balance-Report', tenantId, clientIp);
   }
 
-  async generateCashBankBalancesPdf(db: DataSource, businessId: string, actorUserId: string, tenantId?: string) {
+  async generateCashBankBalancesPdf(db: DataSource, businessId: string, actorUserId: string, tenantId?: string, clientIp?: string) {
     const data = await this.reportService.getCashAndBankBalances(db, businessId, actorUserId);
     const columns: ReportPdfColumn[] = [
       { key: 'accountName', label: 'Account Name', width: '34%' }, { key: 'accountCode', label: 'Account Code', width: '18%', align: 'center' }, { key: 'accountType', label: 'Type', width: '14%', align: 'center' }, { key: 'openingBalance', label: 'Opening Balance', width: '17%', align: 'right', format: 'amount' }, { key: 'currentBalance', label: 'Current Balance', width: '17%', align: 'right', format: 'amount' },
@@ -88,10 +88,10 @@ export class ReportPdfService {
       filters: [{ label: 'Report', value: 'Cash & Bank' }],
       summary: [{ label: 'Cash Balance', value: money(data.totals.cash) }, { label: 'Bank Balance', value: money(data.totals.bank) }, { label: 'Total Accounts', value: data.meta.total }],
       sections: [{ columns, rows: asRows(data.data), emptyMessage: 'No cash & bank balances found' }], minimumRows: 12,
-    }, 'Cash-Bank-Balance-Report', tenantId);
+    }, 'Cash-Bank-Balance-Report', tenantId, clientIp);
   }
 
-  async generateEmployeeBalancesPdf(db: DataSource, businessId: string, actorUserId: string, tenantId?: string) {
+  async generateEmployeeBalancesPdf(db: DataSource, businessId: string, actorUserId: string, tenantId?: string, clientIp?: string) {
     const data = await this.reportService.getEmployeeBalances(db, businessId, actorUserId);
     const columns: ReportPdfColumn[] = [
       { key: 'employeeCode', label: 'Employee Code', width: '10%' }, { key: 'fullName', label: 'Full Name', width: '14%' }, { key: 'departmentName', label: 'Department', width: '11%' }, { key: 'designationName', label: 'Designation', width: '11%' }, { key: 'employeeStatus', label: 'Status', width: '8%', align: 'center' }, { key: 'accId', label: 'Account ID', width: '12%' }, { key: 'accountCode', label: 'Account Code', width: '10%' }, { key: 'openingBalance', label: 'Opening Balance', width: '10%', align: 'right', format: 'amount' }, { key: 'currentBalance', label: 'Current Balance', width: '10%', align: 'right', format: 'amount' }, { key: 'balanceType', label: 'Balance Type', width: '9%' },
@@ -101,10 +101,10 @@ export class ReportPdfService {
       filters: [{ label: 'Report', value: 'Employee Balance' }],
       summary: [{ label: 'Current Balance', value: money(data.totals.currentBalance) }, { label: 'Total Employees', value: data.meta.total }],
       sections: [{ columns, rows: asRows(data.data), emptyMessage: 'No employee balances found' }], minimumRows: 12,
-    }, 'Employee-Balance-Report', tenantId);
+    }, 'Employee-Balance-Report', tenantId, clientIp);
   }
 
-  async generateFinancialReportPdf(db: DataSource, businessId: string, actorUserId: string, query: FinancialReportQuery, tenantId?: string) {
+  async generateFinancialReportPdf(db: DataSource, businessId: string, actorUserId: string, query: FinancialReportQuery, tenantId?: string, clientIp?: string) {
     const financial = await this.reportFinancialTransactionService.getFinancialReport(
       db,
       businessId,
@@ -194,10 +194,10 @@ export class ReportPdfService {
         { label: 'Income', value: money(financial.income.total) },
       ],
       sections,
-    }, 'Financial-Report', tenantId);
+    }, 'Financial-Report', tenantId, clientIp);
   }
 
-  async generateReceivingReportPdf(db: DataSource, businessId: string, actorUserId: string, query: { startDate?: string; endDate?: string; partyId?: string }, tenantId?: string) {
+  async generateReceivingReportPdf(db: DataSource, businessId: string, actorUserId: string, query: { startDate?: string; endDate?: string; partyId?: string }, tenantId?: string, clientIp?: string) {
     const data = await this.reportReceivingService.getReceivingReport(
       db,
       businessId,
@@ -235,10 +235,10 @@ export class ReportPdfService {
         { label: 'Total Amount', value: money(data.totals.totalAmount) },
       ],
       sections: [{ columns, rows: asRows(rows), emptyMessage: 'No receiving vouchers found' }],
-    }, 'Receiving-Report', tenantId);
+    }, 'Receiving-Report', tenantId, clientIp);
   }
 
-  async generatePartyLedgerPdf(db: DataSource, businessId: string, actorUserId: string, variant: 'receivable' | 'payable', query: LedgerQuery, tenantId?: string) {
+  async generatePartyLedgerPdf(db: DataSource, businessId: string, actorUserId: string, variant: 'receivable' | 'payable', query: LedgerQuery, tenantId?: string, clientIp?: string) {
     const partyId = variant === 'receivable' ? query.customerId : query.vendorId;
     const options = { startDate: query.startDate, endDate: query.endDate, partyId, allRows: true };
     const data = variant === 'receivable'
@@ -248,10 +248,10 @@ export class ReportPdfService {
     const partyName = partyId ? data.data.find((row) => row.id === partyId)?.name : undefined;
     const filters = [{ label: 'Date Filter', value: dateFilterLabel(query.startDate, query.endDate) }, { label: 'Period', value: formatReportDateRange(data.period.startDate, data.period.endDate) }, { label: variant === 'receivable' ? 'Customer' : 'Vendor', value: partyName }];
     const columns: ReportPdfColumn[] = [{ key: 'serial', label: 'S No.', width: '8%', align: 'center' }, { key: 'code', label: 'Code', width: '10%' }, { key: 'name', label: 'Name', width: '26%' }, { key: 'openingBalance', label: 'Opening', width: '14%', align: 'right', format: 'amount' }, { key: 'periodDebit', label: 'Debit', width: '14%', align: 'right', format: 'amount' }, { key: 'periodCredit', label: 'Credit', width: '14%', align: 'right', format: 'amount' }, { key: 'closingBalance', label: 'Closing', width: '14%', align: 'right', format: 'amount' }];
-    return this.render(db, businessId, actorUserId, { layout: 'party-ledger', title, filters, summary: [{ label: 'Opening Balance', value: money(data.totals.openingBalance) }, { label: 'Period Debit', value: money(data.totals.periodDebit) }, { label: 'Period Credit', value: money(data.totals.periodCredit) }, { label: 'Closing Balance', value: money(data.totals.closingBalance) }], sections: [{ columns, rows: asRows(data.data), emptyMessage: 'No party ledger records found.' }], footerRight: `Party Count: ${data.meta.total}` }, `${variant === 'receivable' ? 'Receivable' : 'Payable'}-Report`, tenantId, DocumentTemplateDocumentType.PARTY_LEDGER);
+    return this.render(db, businessId, actorUserId, { layout: 'party-ledger', title, filters, summary: [{ label: 'Opening Balance', value: money(data.totals.openingBalance) }, { label: 'Period Debit', value: money(data.totals.periodDebit) }, { label: 'Period Credit', value: money(data.totals.periodCredit) }, { label: 'Closing Balance', value: money(data.totals.closingBalance) }], sections: [{ columns, rows: asRows(data.data), emptyMessage: 'No party ledger records found.' }], footerRight: `Party Count: ${data.meta.total}` }, `${variant === 'receivable' ? 'Receivable' : 'Payable'}-Report`, tenantId, clientIp, DocumentTemplateDocumentType.PARTY_LEDGER);
   }
 
-  async generateSummaryPdf(db: DataSource, businessId: string, actorUserId: string, variant: 'sales' | 'purchase', query: SummaryQuery, tenantId?: string) {
+  async generateSummaryPdf(db: DataSource, businessId: string, actorUserId: string, variant: 'sales' | 'purchase', query: SummaryQuery, tenantId?: string, clientIp?: string) {
     const data = variant === 'sales'
       ? await this.reportService.getSalesSummaryReport(db, businessId, { ...query }, actorUserId)
       : await this.reportService.getPurchaseSummaryReport(db, businessId, { ...query }, actorUserId);
@@ -262,10 +262,10 @@ export class ReportPdfService {
     const partyRows = data.partyWise || [];
     const filteredParty = query.partyId ? partyRows.find((row) => row.partyId === query.partyId) : undefined;
     const filteredCity = query.cityId ? (data.cityWise || []).find((row) => row.cityId === query.cityId) : undefined;
-    return this.render(db, businessId, actorUserId, { layout: 'summary', title: sales ? 'Sales Summary' : 'Purchase Summary', filters: [{ label: 'Date Filter', value: dateFilterLabel(query.startDate, query.endDate) }, { label: 'Period', value: formatReportDateRange(data.period.startDate, data.period.endDate) }, { label: sales ? 'Customer' : 'Vendor', value: filteredParty?.partyName }, { label: 'City', value: filteredCity?.cityName }, { label: 'Scope', value: data.filters.scope || 'ALL' }], summary: [{ label: 'Invoices', value: data.totals.invoiceCount }, { label: 'Total Amount', value: money(data.totals.totalAmount) }, { label: 'Tax Amount', value: money(data.totals.totalTaxAmount) }, { label: 'Discount Amount', value: money(data.totals.totalDiscountAmount) }], sections: [{ title: `${partyLabel} Wise Summary`, columns: partyColumns, rows: asRows(partyRows), emptyMessage: `No ${partyLabel.toLowerCase()} wise summary found.` }, { title: 'City Wise Summary', columns: cityColumns, rows: asRows(data.cityWise || []), emptyMessage: 'No city wise summary found.' }], footerRight: `${partyLabel} Count: ${data.meta.partyCount} | City Count: ${data.meta.cityCount}` }, `${sales ? 'Sales' : 'Purchase'}-Summary`, tenantId);
+    return this.render(db, businessId, actorUserId, { layout: 'summary', title: sales ? 'Sales Summary' : 'Purchase Summary', filters: [{ label: 'Date Filter', value: dateFilterLabel(query.startDate, query.endDate) }, { label: 'Period', value: formatReportDateRange(data.period.startDate, data.period.endDate) }, { label: sales ? 'Customer' : 'Vendor', value: filteredParty?.partyName }, { label: 'City', value: filteredCity?.cityName }, { label: 'Scope', value: data.filters.scope || 'ALL' }], summary: [{ label: 'Invoices', value: data.totals.invoiceCount }, { label: 'Total Amount', value: money(data.totals.totalAmount) }, { label: 'Tax Amount', value: money(data.totals.totalTaxAmount) }, { label: 'Discount Amount', value: money(data.totals.totalDiscountAmount) }], sections: [{ title: `${partyLabel} Wise Summary`, columns: partyColumns, rows: asRows(partyRows), emptyMessage: `No ${partyLabel.toLowerCase()} wise summary found.` }, { title: 'City Wise Summary', columns: cityColumns, rows: asRows(data.cityWise || []), emptyMessage: 'No city wise summary found.' }], footerRight: `${partyLabel} Count: ${data.meta.partyCount} | City Count: ${data.meta.cityCount}` }, `${sales ? 'Sales' : 'Purchase'}-Summary`, tenantId, clientIp);
   }
 
-  private async render(db: DataSource, businessId: string, actorUserId: string, input: ReportDocumentInput, filename: string, tenantId?: string, documentType = DocumentTemplateDocumentType.REPORT) {
+  private async render(db: DataSource, businessId: string, actorUserId: string, input: ReportDocumentInput, filename: string, tenantId?: string, clientIp?: string, documentType = DocumentTemplateDocumentType.REPORT) {
     const [business, actor] = await Promise.all([
       db.getRepository(Business).findOne({ where: { id: businessId } }),
       db.getRepository(User).findOne({ where: { id: actorUserId }, select: { id: true, name: true } }),
@@ -294,8 +294,10 @@ export class ReportPdfService {
         ...document,
       },
       tenantId,
+      clientIp,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({ html, enforceSinglePage: false });
     return { buffer, filename: `${safePdfFilenamePart(filename)}.pdf` };
   }
 }
+

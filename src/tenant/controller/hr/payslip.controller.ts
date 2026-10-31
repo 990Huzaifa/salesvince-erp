@@ -20,7 +20,7 @@ import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { PayslipService } from '../../service/hr/payslip.service';
-import { sendPdf } from 'src/common/pdf';
+import { sendPdf, getClientIp } from 'src/common/pdf';
 
 @Controller('tenant/hr/payslips')
 @UseGuards(
@@ -90,6 +90,7 @@ export class PayslipController {
       id,
       user.userId,
       user.tenantId,
+      getClientIp(req),
     );
     sendPdf(res, { buffer, filename });
   }

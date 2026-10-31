@@ -29,6 +29,7 @@ export class GrnPdfService {
     actorUserId: string,
     filters: GrnPdfFilters,
     tenantId?: string,
+    clientIp?: string,
   ) {
     const query = db.getRepository(Grn)
       .createQueryBuilder('grn')
@@ -93,6 +94,7 @@ export class GrnPdfService {
         companyInfo,
       },
       tenantId,
+      clientIp,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

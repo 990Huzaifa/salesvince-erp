@@ -563,6 +563,7 @@ export class PurchaseInvoiceService {
     actorUserId: string,
     showBalanceDetails = true,
     tenantId?: string,
+    clientIp?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const invoice = await tenantDb
@@ -674,6 +675,7 @@ export class PurchaseInvoiceService {
         showBalanceDetails,
       },
       tenantId,
+      clientIp,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

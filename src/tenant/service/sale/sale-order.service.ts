@@ -1536,6 +1536,7 @@ export class SaleOrderService {
     actorUserId: string,
     showBalanceDetails = true,
     tenantId?: string,
+    clientIp?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const order = await this.findOrderForBusiness(
@@ -1628,6 +1629,7 @@ export class SaleOrderService {
         showBalanceDetails,
       },
       tenantId,
+      clientIp,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

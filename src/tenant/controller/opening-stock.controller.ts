@@ -1,4 +1,4 @@
-import {
+﻿import {
   Body,
   Controller,
   Delete,
@@ -33,7 +33,7 @@ import { OpeningStockService } from '../service/inventory/opening-stock.service'
 import { CreateOpeningStockDto } from '../dto/opening-stock/create-opening-stock.dto';
 import { UpdateOpeningStockDto } from '../dto/opening-stock/update-opening-stock.dto';
 import { WarehouseSlipPdfService } from '../service/warehouse-slip-pdf.service';
-import { sendPdf } from 'src/common/pdf';
+import { getClientIp, sendPdf } from 'src/common/pdf';
 
 @Controller('tenant/opening-stocks')
 @UseGuards(
@@ -143,6 +143,7 @@ export class OpeningStockController {
         id,
         user.userId,
         user.tenantId,
+        getClientIp(req),
       );
     sendPdf(res, { buffer, filename });
   }
@@ -231,3 +232,4 @@ export class OpeningStockController {
     );
   }
 }
+

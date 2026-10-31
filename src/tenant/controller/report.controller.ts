@@ -1,4 +1,4 @@
-import {
+﻿import {
   Controller,
   Get,
   Param,
@@ -56,7 +56,7 @@ import { ReportCustomerLowPaymentQueryDto } from '../dto/report/report-customer-
 import { ReportPaginationQueryDto } from '../dto/report/report-pagination.query.dto';
 import { ReportInvoiceSummaryQueryDto } from '../dto/report/report-invoice-summary.query.dto';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
-import { sendPdf } from 'src/common/pdf';
+import { getClientIp, sendPdf } from 'src/common/pdf';
 import { ReportProfitQueryDto } from '../dto/report/report-profit.query.dto';
 import { ReportReceivableQueryDto } from '../dto/report/report-receivable.query.dto';
 import { ReportPayableQueryDto } from '../dto/report/report-payable.query.dto';
@@ -94,7 +94,7 @@ export class ReportController {
   @RequirePermissions('VIEW_CASH_BANK_BALANCE_REPORT')
   async downloadCashAndBankBalancesPdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response) {
     const user = req.user as TenantRequestUser;
-    const result = await this.reportPdfService.generateCashBankBalancesPdf(tenantDb, user.businessId, user.userId, user.tenantId);
+    const result = await this.reportPdfService.generateCashBankBalancesPdf(tenantDb, user.businessId, user.userId, user.tenantId, getClientIp(req));
     sendPdf(res, result);
   }
 
@@ -118,7 +118,7 @@ export class ReportController {
   @RequirePermissions('VIEW_CUSTOMER_BALANCE_REPORT')
   async downloadCustomerBalancesPdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response) {
     const user = req.user as TenantRequestUser;
-    const result = await this.reportPdfService.generateCustomerBalancesPdf(tenantDb, user.businessId, user.userId, user.tenantId);
+    const result = await this.reportPdfService.generateCustomerBalancesPdf(tenantDb, user.businessId, user.userId, user.tenantId, getClientIp(req));
     sendPdf(res, result);
   }
 
@@ -167,7 +167,7 @@ export class ReportController {
   @RequirePermissions('VIEW_RECEIVABLE_REPORT')
   async downloadReceivablePdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response, @Query() query: ReportReceivableQueryDto) {
     const user = req.user as TenantRequestUser;
-    const result = await this.reportPdfService.generatePartyLedgerPdf(tenantDb, user.businessId, user.userId, 'receivable', query, user.tenantId);
+    const result = await this.reportPdfService.generatePartyLedgerPdf(tenantDb, user.businessId, user.userId, 'receivable', query, user.tenantId, getClientIp(req));
     sendPdf(res, result);
   }
 
@@ -197,7 +197,7 @@ export class ReportController {
   @RequirePermissions('VIEW_PAYABLE_REPORT')
   async downloadPayablePdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response, @Query() query: ReportPayableQueryDto) {
     const user = req.user as TenantRequestUser;
-    const result = await this.reportPdfService.generatePartyLedgerPdf(tenantDb, user.businessId, user.userId, 'payable', query, user.tenantId);
+    const result = await this.reportPdfService.generatePartyLedgerPdf(tenantDb, user.businessId, user.userId, 'payable', query, user.tenantId, getClientIp(req));
     sendPdf(res, result);
   }
 
@@ -260,6 +260,7 @@ export class ReportController {
       user.userId,
       query,
       user.tenantId,
+      getClientIp(req),
     );
     sendPdf(res, result);
   }
@@ -268,7 +269,7 @@ export class ReportController {
   @RequirePermissions('VIEW_VENDOR_BALANCE_REPORT')
   async downloadVendorBalancesPdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response) {
     const user = req.user as TenantRequestUser;
-    const result = await this.reportPdfService.generateVendorBalancesPdf(tenantDb, user.businessId, user.userId, user.tenantId);
+    const result = await this.reportPdfService.generateVendorBalancesPdf(tenantDb, user.businessId, user.userId, user.tenantId, getClientIp(req));
     sendPdf(res, result);
   }
 
@@ -292,7 +293,7 @@ export class ReportController {
   @RequirePermissions('VIEW_EMPLOYEE_BALANCE_REPORT')
   async downloadEmployeeBalancesPdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response) {
     const user = req.user as TenantRequestUser;
-    const result = await this.reportPdfService.generateEmployeeBalancesPdf(tenantDb, user.businessId, user.userId, user.tenantId);
+    const result = await this.reportPdfService.generateEmployeeBalancesPdf(tenantDb, user.businessId, user.userId, user.tenantId, getClientIp(req));
     sendPdf(res, result);
   }
 
@@ -404,7 +405,7 @@ export class ReportController {
   @RequirePermissions('VIEW_SALES_SUMMARY_REPORT')
   async downloadSalesSummaryPdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response, @Query() query: ReportInvoiceSummaryQueryDto) {
     const user = req.user as TenantRequestUser;
-    const result = await this.reportPdfService.generateSummaryPdf(tenantDb, user.businessId, user.userId, 'sales', query, user.tenantId);
+    const result = await this.reportPdfService.generateSummaryPdf(tenantDb, user.businessId, user.userId, 'sales', query, user.tenantId, getClientIp(req));
     sendPdf(res, result);
   }
 
@@ -435,7 +436,7 @@ export class ReportController {
   @RequirePermissions('VIEW_PURCHASE_SUMMARY_REPORT')
   async downloadPurchaseSummaryPdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response, @Query() query: ReportInvoiceSummaryQueryDto) {
     const user = req.user as TenantRequestUser;
-    const result = await this.reportPdfService.generateSummaryPdf(tenantDb, user.businessId, user.userId, 'purchase', query, user.tenantId);
+    const result = await this.reportPdfService.generateSummaryPdf(tenantDb, user.businessId, user.userId, 'purchase', query, user.tenantId, getClientIp(req));
     sendPdf(res, result);
   }
 
@@ -504,6 +505,7 @@ export class ReportController {
         startDate,
         endDate,
         user.tenantId,
+        getClientIp(req),
       );
     sendPdf(res, { buffer, filename });
   }
@@ -709,6 +711,7 @@ export class ReportController {
       user.userId,
       query,
       user.tenantId,
+      getClientIp(req),
     );
     sendPdf(res, result);
   }
@@ -764,3 +767,4 @@ export class ReportController {
     );
   }
 }
+

@@ -1,4 +1,4 @@
-import {
+﻿import {
   Body,
   Controller,
   Delete,
@@ -27,7 +27,7 @@ import { GrnService } from '../../service/purchase/grn.service';
 import { CreateGrnDto } from '../../dto/grn/create-grn.dto';
 import { UpdateGrnDto } from '../../dto/grn/update-grn.dto';
 import { GrnPdfService } from '../../service/purchase/grn-pdf.service';
-import { sendPdf } from 'src/common/pdf';
+import { getClientIp, sendPdf } from 'src/common/pdf';
 
 @Controller('tenant/grns')
 @UseGuards(
@@ -124,6 +124,7 @@ export class GrnController {
       user.userId,
       { search, vendorId, warehouseId, purchaseOrderId, status },
       user.tenantId,
+      getClientIp(req),
     );
     sendPdf(res, result);
   }
@@ -210,3 +211,4 @@ export class GrnController {
     );
   }
 }
+

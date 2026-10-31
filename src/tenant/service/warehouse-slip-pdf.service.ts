@@ -78,6 +78,7 @@ export class WarehouseSlipPdfService {
     businessId: string,
     slip: WarehouseSlipDto,
     tenantId?: string,
+    clientIp?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const business = await tenantDb.getRepository(Business).findOne({
       where: { id: businessId, deletedAt: IsNull() },
@@ -100,6 +101,7 @@ export class WarehouseSlipPdfService {
       DocumentTemplateDocumentType.WAREHOUSE_SLIP,
       { slip, warehouseSlip: slip, companyInfo, ...slip },
       tenantId,
+      clientIp,
     );
 
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
@@ -119,6 +121,7 @@ export class WarehouseSlipPdfService {
     invoiceId: string,
     actorUserId: string,
     tenantId?: string,
+    clientIp?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
 
@@ -173,6 +176,7 @@ export class WarehouseSlipPdfService {
       scopedBusinessId,
       slip,
       tenantId,
+      clientIp,
     );
 
     await this.activityLogService.recordActivityLog(tenantDb, {
@@ -192,6 +196,7 @@ export class WarehouseSlipPdfService {
     invoiceId: string,
     actorUserId: string,
     tenantId?: string,
+    clientIp?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
 
@@ -240,6 +245,7 @@ export class WarehouseSlipPdfService {
       scopedBusinessId,
       slip,
       tenantId,
+      clientIp,
     );
 
     await this.activityLogService.recordActivityLog(tenantDb, {
@@ -259,6 +265,7 @@ export class WarehouseSlipPdfService {
     transferId: string,
     actorUserId: string,
     tenantId?: string,
+    clientIp?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
 
@@ -302,6 +309,7 @@ export class WarehouseSlipPdfService {
       scopedBusinessId,
       slip,
       tenantId,
+      clientIp,
     );
 
     await this.activityLogService.recordActivityLog(tenantDb, {
@@ -321,6 +329,7 @@ export class WarehouseSlipPdfService {
     openingStockId: string,
     actorUserId: string,
     tenantId?: string,
+    clientIp?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
 
@@ -363,6 +372,7 @@ export class WarehouseSlipPdfService {
       scopedBusinessId,
       slip,
       tenantId,
+      clientIp,
     );
 
     await this.activityLogService.recordActivityLog(tenantDb, {

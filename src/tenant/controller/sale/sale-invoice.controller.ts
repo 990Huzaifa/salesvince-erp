@@ -22,7 +22,7 @@ import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator'
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { SaleInvoiceService } from '../../service/sale/sale-invoice.service';
 import { WarehouseSlipPdfService } from '../../service/warehouse-slip-pdf.service';
-import { sendPdf } from 'src/common/pdf';
+import { sendPdf, getClientIp } from 'src/common/pdf';
 
 @Controller('tenant/sale-invoices')
 @UseGuards(
@@ -89,6 +89,7 @@ export class SaleInvoiceController {
       user.userId,
       showBalanceDetails,
       user.tenantId,
+      getClientIp(req),
     );
     sendPdf(res, { buffer, filename });
   }
@@ -109,6 +110,7 @@ export class SaleInvoiceController {
         id,
         user.userId,
         user.tenantId,
+        getClientIp(req),
       );
     sendPdf(res, { buffer, filename });
   }

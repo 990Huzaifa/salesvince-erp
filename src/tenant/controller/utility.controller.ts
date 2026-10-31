@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Query, Req, Res, UseGuards } from "@nestjs/common";
+﻿import { BadRequestException, Controller, Get, Query, Req, Res, UseGuards } from "@nestjs/common";
 import type { Request, Response } from "express";
 import { TenantJwtAuthGuard } from "src/auth/tenant-jwt-auth.guard";
 import { TenantConnectionGuard } from "src/common/guards/tenant-connection.guard";
@@ -10,7 +10,7 @@ import type { TenantRequestUser } from "src/auth/tenant-jwt.strategy";
 import { TenantBusinessAccessGuard } from "src/auth/tenant-business-access.guard";
 import { ComponentTypeEnum } from 'src/tenant-db/entities/hr/hr.enums';
 import { ChartOfAccountKind } from 'src/tenant-db/entities/chart-of-account.entity';
-import { sendPdf } from 'src/common/pdf';
+import { getClientIp, sendPdf } from 'src/common/pdf';
 import { OpeningBalancePdfService } from '../service/report/opening-balance-pdf.service';
 
 @Controller('tenant/lists')
@@ -269,6 +269,7 @@ export class TenantUtilityController {
             category,
             search,
             user.tenantId,
+          getClientIp(req),
         );
         sendPdf(res, result);
     }
@@ -480,3 +481,4 @@ export class TenantUtilityController {
         return this.utilityService.getLoans(tenantDb, user.businessId);
     }
 }
+

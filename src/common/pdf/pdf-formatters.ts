@@ -7,6 +7,17 @@ export const toFiniteNumber = asFiniteNumber;
 
 const BUSINESS_TIME_ZONE = 'Asia/Karachi';
 
+const normalizeTimeZone = (timeZone?: string | null): string => {
+  const candidate = String(timeZone || '').trim();
+  if (!candidate) return BUSINESS_TIME_ZONE;
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: candidate });
+    return candidate;
+  } catch {
+    return BUSINESS_TIME_ZONE;
+  }
+};
+
 export const formatPakistaniNumber = (value: unknown, decimals = 2): string => {
   const fixed = asFiniteNumber(value).toFixed(decimals);
   const [signedInteger, fraction] = fixed.split('.');
@@ -31,41 +42,50 @@ export const formatPakistaniNumber = (value: unknown, decimals = 2): string => {
   return `${negative ? '-' : ''}${grouped}${normalizedFraction ? `.${normalizedFraction}` : ''}`;
 };
 
-export const formatDocumentDate = (value?: string | Date | null): string => {
+export const formatDocumentDate = (
+  value?: string | Date | null,
+  timeZone?: string | null,
+): string => {
   if (!value) {
     return '';
   }
 
   // Preserve genuine date-only values. Timestamp values represent instants
-  // and are rendered in the Pakistan business timezone.
+  // and are rendered in the request / business timezone.
   if (typeof value === 'string') {
     const apiDate = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (apiDate) {
       return `${apiDate[2]}/${apiDate[3]}/${apiDate[1]}`;
     }
+    const usDate = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (usDate) {
+      return `${usDate[1].padStart(2, '0')}/${usDate[2].padStart(2, '0')}/${usDate[3]}`;
+    }
   }
 
-  const date = new Date(value);
+  const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) {
     return typeof value === 'string' ? value : '';
   }
   return new Intl.DateTimeFormat('en-US', {
-    timeZone: BUSINESS_TIME_ZONE,
+    timeZone: normalizeTimeZone(timeZone),
     month: '2-digit',
     day: '2-digit',
     year: 'numeric',
   }).format(date);
 };
 
-export const formatPrintedAt = (value: Date = new Date()): string =>
+export const formatPrintedAt = (
+  value: Date = new Date(),
+  timeZone?: string | null,
+): string =>
   new Intl.DateTimeFormat('en-US', {
-    timeZone: BUSINESS_TIME_ZONE,
+    timeZone: normalizeTimeZone(timeZone),
     month: '2-digit',
     day: '2-digit',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit',
     hour12: true,
   }).format(new Date(value));
 

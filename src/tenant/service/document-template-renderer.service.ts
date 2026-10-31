@@ -1,7 +1,12 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { applyPrintThemeToHtml } from 'src/common/pdf';
+import {
+  applyPrintThemeToHtml,
+  formatDocumentDate,
+  formatPrintedAt,
+  resolveTimezoneFromIp,
+} from 'src/common/pdf';
 import {
   DocumentTemplate,
   DocumentTemplateStatus,
@@ -11,6 +16,7 @@ import {
   DocumentTemplateSourceType,
 } from 'src/master-db/entities/document-template-item.entity';
 import { BusinessSettings } from 'src/tenant-db/entities/business-settings.entity';
+import { MasterTenantDataService } from './master-tenant-data.service';
 import { PrintThemeService } from './print-theme.service';
 
 @Injectable()
@@ -19,6 +25,7 @@ export class DocumentTemplateRendererService {
     @InjectRepository(DocumentTemplate)
     private readonly documentTemplateRepository: Repository<DocumentTemplate>,
     private readonly printThemeService: PrintThemeService,
+    private readonly masterTenantDataService: MasterTenantDataService,
   ) {}
 
   async render(
@@ -27,6 +34,7 @@ export class DocumentTemplateRendererService {
     documentType: DocumentTemplateDocumentType,
     data: Record<string, unknown>,
     tenantId?: string | null,
+    clientIp?: string | null,
   ): Promise<string> {
     const settings = await tenantDb.getRepository(BusinessSettings).findOne({
       where: { businessId },
@@ -37,12 +45,13 @@ export class DocumentTemplateRendererService {
       throw new NotFoundException('No document template is selected for this business');
     }
 
-    const [pack, themeColors] = await Promise.all([
+    const [pack, themeColors, timeZone] = await Promise.all([
       this.documentTemplateRepository.findOne({
         where: { id: templateId, status: DocumentTemplateStatus.ACTIVE },
         relations: { items: true },
       }),
       this.printThemeService.resolveForTenant(tenantId),
+      this.resolveTimeZone(tenantId, clientIp),
     ]);
     if (!pack) {
       throw new NotFoundException('The selected document template is not active');
@@ -71,15 +80,43 @@ export class DocumentTemplateRendererService {
       throw new NotFoundException(`The ${documentType} sub-template content is empty`);
     }
 
+    const printedOn = formatDocumentDate(new Date(), timeZone);
+    const printedAt = formatPrintedAt(new Date(), timeZone);
+
     return applyPrintThemeToHtml(
-      renderDocumentTemplate(content, {
-        ...data,
-        theme: themeColors,
-        primaryColor: themeColors.primary,
-        primary_color: themeColors.primary,
-      }),
+      applyPrintedOn(
+        renderDocumentTemplate(
+          content,
+          {
+            ...data,
+            theme: themeColors,
+            primaryColor: themeColors.primary,
+            primary_color: themeColors.primary,
+            printedOn,
+            printed_on: printedOn,
+            printedAt,
+            printed_at: printedAt,
+          },
+          timeZone,
+        ),
+        printedOn,
+      ),
       themeColors,
     );
+  }
+
+  private async resolveTimeZone(
+    tenantId?: string | null,
+    clientIp?: string | null,
+  ): Promise<string> {
+    const tenantSettings =
+      await this.masterTenantDataService.getTenantSettingsByTenantId(tenantId);
+    const fallback =
+      tenantSettings?.timezone?.trim() &&
+      tenantSettings.timezone.trim().toUpperCase() !== 'UTC'
+        ? tenantSettings.timezone.trim()
+        : 'Asia/Karachi';
+    return resolveTimezoneFromIp(clientIp, fallback);
   }
 }
 
@@ -195,9 +232,37 @@ const getCompanyLogoMarkup = (data: Record<string, unknown>): string => {
   return `<img src="${escapeHtml(source)}" alt="${name}" style="display:block;width:auto;height:auto;max-width:128px;max-height:72px;object-fit:contain;margin:0 auto;" />`;
 };
 
+const formatTemplateValue = (
+  value: unknown,
+  timeZone: string,
+): string => {
+  if (value == null) return '';
+  if (value instanceof Date) {
+    return formatDocumentDate(value, timeZone);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (
+      /^\d{4}-\d{2}-\d{2}/.test(trimmed) ||
+      /GMT[+-]\d{4}/i.test(trimmed) ||
+      /Coordinated Universal Time/i.test(trimmed)
+    ) {
+      return formatDocumentDate(trimmed, timeZone) || trimmed;
+    }
+  }
+  return String(value);
+};
+
+const applyPrintedOn = (html: string, printedOn: string): string =>
+  html.replace(
+    /Printed On:<\/strong>\s*[^<]*/gi,
+    `Printed On:</strong> ${escapeHtml(printedOn)}`,
+  );
+
 const renderDocumentTemplate = (
   content: string,
   data: Record<string, unknown>,
+  timeZone: string,
 ): string => {
   const logoMarkup = getCompanyLogoMarkup(data);
   const hasExplicitLogoBinding = /\{\{\s*(?:companyInfo\.)?(?:logo|businessLogo|business_logo|logoUrl)\s*\}\}/i.test(content);
@@ -232,7 +297,7 @@ const renderDocumentTemplate = (
     (_match, path: string) => {
       if (path === '@index') return itemIndex == null ? '' : String(itemIndex);
       const value = readPath(path.startsWith('this.') ? path.slice(5) : path, scope);
-      return value == null ? '' : escapeHtml(value);
+      return value == null ? '' : escapeHtml(formatTemplateValue(value, timeZone));
     },
   );
 

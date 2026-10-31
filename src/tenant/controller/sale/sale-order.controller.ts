@@ -38,7 +38,7 @@ import { UpdateSaleOrderDto } from '../../dto/sale-order/update-sale-order.dto';
 import { EditApprovedSaleOrderDto } from '../../dto/sale-order/edit-approved-sale-order.dto';
 import { BulkApproveAndSaleSaleOrdersDto } from '../../dto/sale-order/bulk-approve-and-sale-sale-orders.dto';
 import { jsonImportUploadOptions } from '../../config/json-import-upload.config';
-import { sendPdf, parseBooleanQuery } from 'src/common/pdf';
+import { sendPdf, parseBooleanQuery, getClientIp } from 'src/common/pdf';
 
 @Controller('tenant/sale-orders')
 @UseGuards(
@@ -303,6 +303,7 @@ export class SaleOrderController {
       user.userId,
       showBalanceDetails,
       user.tenantId,
+      getClientIp(req),
     );
     sendPdf(res, { buffer, filename });
   }

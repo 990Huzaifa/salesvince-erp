@@ -21,7 +21,7 @@ import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator'
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { PurchaseInvoiceService } from '../../service/purchase/purchase-invoice.service';
 import { WarehouseSlipPdfService } from '../../service/warehouse-slip-pdf.service';
-import { parseBooleanQuery, sendPdf } from 'src/common/pdf';
+import { parseBooleanQuery, sendPdf, getClientIp } from 'src/common/pdf';
 
 @Controller('tenant/purchase-invoices')
 @UseGuards(
@@ -89,6 +89,7 @@ export class PurchaseInvoiceController {
       user.userId,
       showBalanceDetails,
       user.tenantId,
+      getClientIp(req),
     );
     sendPdf(res, { buffer, filename });
   }
@@ -109,6 +110,7 @@ export class PurchaseInvoiceController {
         id,
         user.userId,
         user.tenantId,
+        getClientIp(req),
       );
     sendPdf(res, { buffer, filename });
   }
