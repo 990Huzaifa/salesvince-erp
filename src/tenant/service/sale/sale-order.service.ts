@@ -7,6 +7,7 @@ import {
 import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import { Brackets, DataSource, EntityManager, In, IsNull } from 'typeorm';
+import { DocumentTemplateDocumentType } from 'src/master-db/entities/document-template-item.entity';
 import { OrderStatus, SaleOrder, SaleOrderItem } from 'src/tenant-db/entities/sale-order.entity';
 import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
 import {
@@ -65,13 +66,12 @@ import {
   PdfRendererService,
   safePdfFilenamePart,
 } from 'src/common/pdf';
-import { buildSaleInvoicePdfHtml } from './sale-invoice-pdf.template';
 import { Business } from 'src/tenant-db/entities/business.entity';
 import {
   AccountTransactionReferenceType,
   Transaction,
 } from 'src/tenant-db/entities/transaction.entity';
-import { PrintThemeService } from '../print-theme.service';
+import { DocumentTemplateRendererService } from '../document-template-renderer.service';
 
 const ORDER_NUMBER_PREFIX = 'SO';
 
@@ -135,7 +135,7 @@ export class SaleOrderService {
     private readonly listAnalyticsService: ListAnalyticsService,
     private readonly pdfRendererService: PdfRendererService,
     private readonly pdfLogoService: PdfLogoService,
-    private readonly printThemeService: PrintThemeService,
+    private readonly documentTemplateRendererService: DocumentTemplateRendererService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -1555,38 +1555,77 @@ export class SaleOrderService {
     }
 
     const mappedOrder = this.mapSaleOrder(order, { customerBalance });
-    const [logoDataUri, theme] = await Promise.all([
-      this.pdfLogoService.fetchLogoDataUri(business.logo),
-      this.printThemeService.resolveForTenant(tenantId),
-    ]);
-    const html = buildSaleInvoicePdfHtml(
+    const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
+    const hiddenBalanceFields = showBalanceDetails
+      ? {}
+      : {
+          previousBalance: '',
+          previous_balance: '',
+          currentBalance: '',
+          current_balance: '',
+          thisBill: '',
+          this_bill: '',
+          accountBalance: '',
+          account_balance: '',
+          balance: '',
+        };
+    const templateOrder = {
+      ...mappedOrder,
+      customer: mappedOrder.customer
+        ? { ...mappedOrder.customer, ...hiddenBalanceFields }
+        : mappedOrder.customer,
+      customerBalance: mappedOrder.customerBalance
+        ? { ...mappedOrder.customerBalance, ...hiddenBalanceFields }
+        : mappedOrder.customerBalance,
+      ...hiddenBalanceFields,
+      invoice_no: mappedOrder.orderNumber,
+      invoice_date: mappedOrder.orderDate,
+      order_no: mappedOrder.orderNumber,
+      order_date: mappedOrder.orderDate,
+      vendor_code: mappedOrder.customer?.code ?? '',
+      vendor_name: mappedOrder.customer?.name ?? '',
+      vendor_address: order.customer?.address ?? '',
+      vendor_city: '',
+      total: mappedOrder.totalAmount,
+      total_tax: mappedOrder.taxAmount,
+      total_discount: mappedOrder.discountAmount,
+      previous_balance: showBalanceDetails
+        ? mappedOrder.customerBalance?.previousBalance ?? 0
+        : '',
+      current_balance: showBalanceDetails
+        ? mappedOrder.customerBalance?.currentBalance ?? 0
+        : '',
+      this_bill: showBalanceDetails ? mappedOrder.totalAmount : '',
+      items: mappedOrder.items.map((item) => ({
+        ...item,
+        product_id: item.product?.skuCode || item.productId || '',
+        product_name: item.product?.name || '',
+        measurement_unit: item.uom?.name || '',
+        unit_price: item.saleUnitPrice,
+        rate: item.saleUnitPrice,
+        qty: item.quantity,
+        total: item.totalAmount,
+        amount: item.totalAmount,
+      })),
+    };
+    const html = await this.documentTemplateRendererService.render(
+      tenantDb,
+      scopedBusinessId,
+      DocumentTemplateDocumentType.SALE_ORDER,
       {
-        invoiceNumber: mappedOrder.orderNumber,
-        invoiceDate: mappedOrder.orderDate,
-        customer: mappedOrder.customer,
-        customerBalance: mappedOrder.customerBalance,
-        totalDiscountAmount: mappedOrder.discountAmount,
-        totalAmount: mappedOrder.totalAmount,
-        deliveryCost: mappedOrder.deliveryCost,
-        items: mappedOrder.items,
-      },
-      {
-        name: business.name,
-        legalName: business.legalName,
-        address: business.address,
-        phone: business.phone,
-        currency: business.currency,
-      },
-      logoDataUri,
-      showBalanceDetails,
-      new Date(),
-      {
-        documentTitle: 'Sale Order',
-        documentNumberLabel: 'Order No.',
+        order: templateOrder,
+        saleOrder: templateOrder,
+        companyInfo: {
+          name: business.name,
+          legalName: business.legalName,
+          address: business.address,
+          phone: business.phone,
+          mobile: business.phone,
+          currency: business.currency,
+          logo: logoDataUri,
+        },
         orderNumber: mappedOrder.orderNumber,
-        watermarkText:
-          String(mappedOrder.orderStatus || '').toUpperCase() || 'DRAFT',
-        theme,
+        showBalanceDetails,
       },
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({

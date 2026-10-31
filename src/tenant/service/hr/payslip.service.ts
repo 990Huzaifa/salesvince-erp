@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource, IsNull } from 'typeorm';
+import { DocumentTemplateDocumentType } from 'src/master-db/entities/document-template-item.entity';
 import {
   AccountTransactionReferenceType,
 } from 'src/tenant-db/entities/transaction.entity';
@@ -21,15 +22,8 @@ import { ActivityLogService } from '../activity-log.service';
 import { TransactionService } from '../transaction.service';
 import { assertBusinessId, roundAmount } from './hr-common.util';
 import { Business } from 'src/tenant-db/entities/business.entity';
-import {
-  formatDocumentDate,
-  formatMonthName,
-  formatPrintedAt,
-  PdfLogoService,
-  PdfRendererService,
-  safePdfFilenamePart,
-} from 'src/common/pdf';
-import { buildPayslipPdfHtml } from './payslip-pdf.template';
+import { PdfLogoService, PdfRendererService, safePdfFilenamePart } from 'src/common/pdf';
+import { DocumentTemplateRendererService } from '../document-template-renderer.service';
 
 @Injectable()
 export class PayslipService {
@@ -38,6 +32,7 @@ export class PayslipService {
     private readonly transactionService: TransactionService,
     private readonly pdfRendererService: PdfRendererService,
     private readonly pdfLogoService: PdfLogoService,
+    private readonly documentTemplateRendererService: DocumentTemplateRendererService,
   ) {}
 
   async generatePdf(
@@ -72,31 +67,37 @@ export class PayslipService {
       isDeduction: String(line.componentType).toLowerCase() === 'deduction',
     }));
     const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
-    const html = buildPayslipPdfHtml(
+    const templatePaySlip = {
+      ...mapped,
+      paySlipNumber: payslipNumber,
+      payslipNumber,
+      payPeriod: `${mapped.periodMonth}/${mapped.periodYear}`,
+      paymentDate: mapped.paymentDate,
+      currency: mapped.currency || business.currency || 'PKR',
+      employeeName: mapped.employee?.fullName || mapped.employeeId,
+      employeeCode,
+      lines,
+    };
+    const companyInfo = {
+      name: business.name,
+      legalName: business.legalName,
+      address: business.address,
+      phone: business.phone,
+      mobile: business.phone,
+      currency: business.currency,
+      logo: logoDataUri,
+    };
+    const html = await this.documentTemplateRendererService.render(
+      tenantDb,
+      scopedBusinessId,
+      DocumentTemplateDocumentType.PAYSLIP,
       {
-        payslipNumber,
-        periodLabel: `${formatMonthName(mapped.periodMonth)} ${mapped.periodYear}`,
-        payslipDate: formatPrintedAt(mapped.createdAt || mapped.updatedAt),
-        paymentDate: formatDocumentDate(mapped.paymentDate),
-        currency: mapped.currency || business.currency || 'PKR',
-        status: mapped.status,
-        isApproved: String(mapped.status).toLowerCase() === 'approved',
-        employeeName: mapped.employee?.fullName || mapped.employeeId,
-        employeeCode,
-        basicSalary: mapped.basicSalary,
-        grossSalary: mapped.grossSalary,
-        totalDeductions: mapped.totalDeductions,
-        netSalary: mapped.netSalary,
-        lines,
-        business: {
-          name: business.name,
-          legalName: business.legalName,
-          address: business.address,
-          phone: business.phone,
-          currency: business.currency,
-        },
+        paySlip: templatePaySlip,
+        payslip: templatePaySlip,
+        employee: mapped.employee,
+        companyInfo,
+        ...templatePaySlip,
       },
-      logoDataUri,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

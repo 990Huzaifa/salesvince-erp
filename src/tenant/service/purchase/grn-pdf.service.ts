@@ -1,11 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Brackets, DataSource } from 'typeorm';
+import { DocumentTemplateDocumentType } from 'src/master-db/entities/document-template-item.entity';
 import { formatDocumentDate, PdfLogoService, PdfRendererService, safePdfFilenamePart } from 'src/common/pdf';
 import { Business } from 'src/tenant-db/entities/business.entity';
 import { Grn, GrnStatus } from 'src/tenant-db/entities/grn.entity';
 import { User } from 'src/tenant-db/entities/user.entity';
-import { buildReportPdfHtml, type ReportPdfDocument } from '../report/report-pdf.template';
-import { PrintThemeService } from '../print-theme.service';
+import { DocumentTemplateRendererService } from '../document-template-renderer.service';
 
 type GrnPdfFilters = {
   search?: string;
@@ -20,7 +20,7 @@ export class GrnPdfService {
   constructor(
     private readonly pdfRendererService: PdfRendererService,
     private readonly pdfLogoService: PdfLogoService,
-    private readonly printThemeService: PrintThemeService,
+    private readonly documentTemplateRendererService: DocumentTemplateRendererService,
   ) {}
 
   async generateListPdf(
@@ -53,11 +53,10 @@ export class GrnPdfService {
       }));
     }
 
-    const [grns, business, actor, theme] = await Promise.all([
+    const [grns, business, actor] = await Promise.all([
       query.orderBy('grn.grnDate', 'DESC').addOrderBy('grn.createdAt', 'DESC').getMany(),
       db.getRepository(Business).findOne({ where: { id: businessId } }),
       db.getRepository(User).findOne({ where: { id: actorUserId }, select: { id: true, name: true } }),
-      this.printThemeService.resolveForTenant(tenantId),
     ]);
     if (!business) throw new NotFoundException('Business not found');
 
@@ -71,34 +70,31 @@ export class GrnPdfService {
       status: grn.status,
     }));
     const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
-    const document: ReportPdfDocument = {
-      layout: 'balance',
-      title: 'Receiving Report',
-      business: { name: business.name, legalName: business.legalName, address: business.address, phone: business.phone, currency: business.currency },
-      logoDataUri,
-      filters: [
-        { label: 'Report', value: 'Receiving' },
-        { label: 'Search', value: filters.search?.trim() || 'All receiving records' },
-        ...(filters.status ? [{ label: 'Status', value: filters.status }] : []),
-      ],
-      summary: [],
-      sections: [{
-        columns: [
-          { key: 'date', label: 'Date', width: '13%', align: 'center' },
-          { key: 'grnNumber', label: 'GRN Code', width: '14%', align: 'center' },
-          { key: 'purchaseOrder', label: 'PO', width: '13%', align: 'center' },
-          { key: 'vendor', label: 'Vendor', width: '19%' },
-          { key: 'warehouse', label: 'Warehouse', width: '17%' },
-          { key: 'totalAmount', label: 'Amount', width: '13%', align: 'right', format: 'amount' },
-          { key: 'status', label: 'Status', width: '11%', align: 'center' },
-        ],
-        rows,
-        emptyMessage: 'No receiving records found',
-      }],
-      preparedBy: actor?.name || 'Admin',
+    const companyInfo = {
+      name: business.name,
+      legalName: business.legalName,
+      address: business.address,
+      phone: business.phone,
+      mobile: business.phone,
+      currency: business.currency,
+      logo: logoDataUri,
     };
+    const html = await this.documentTemplateRendererService.render(
+      db,
+      businessId,
+      DocumentTemplateDocumentType.GRN,
+      {
+        grns: rows,
+        grnRows: rows,
+        items: rows,
+        rows,
+        filters,
+        preparedBy: actor?.name || 'Admin',
+        companyInfo,
+      },
+    );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
-      html: buildReportPdfHtml(document, new Date(), theme),
+      html,
       enforceSinglePage: false,
     });
 

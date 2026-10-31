@@ -14,10 +14,13 @@ const parseBooleanEnv = (
   return value === 'true';
 };
 
+const defaultLogoHost = process.env.AWS_S3_BUCKET && process.env.AWS_REGION
+  ? `${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_REGION}.amazonaws.com`
+  : 'salesvince-erp.s3.ap-south-1.amazonaws.com';
+
 export const pdfConfig = {
   logoAllowedHosts: splitCsv(
-    process.env.LOGO_ALLOWED_HOSTS ||
-      'salesvince-erp.s3.ap-south-1.amazonaws.com',
+    process.env.LOGO_ALLOWED_HOSTS || defaultLogoHost,
   ),
   puppeteerExecutablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
   // Linux VPS/Docker usually needs no-sandbox unless explicitly disabled.

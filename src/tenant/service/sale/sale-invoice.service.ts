@@ -3,20 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, DataSource, EntityManager, IsNull, Repository } from 'typeorm';
-import {
-  DocumentTemplate,
-  DocumentTemplateStatus,
-} from 'src/master-db/entities/document-template.entity';
-import {
-  findActiveInlineDocumentTemplateItem,
-  shouldUseCustomDocumentTemplatePack,
-} from 'src/master-db/helpers/document-template.helper';
-import {
-  DocumentTemplateDocumentType,
-  DocumentTemplateItem,
-} from 'src/master-db/entities/document-template-item.entity';
+import { Brackets, DataSource, EntityManager, IsNull } from 'typeorm';
+import { DocumentTemplateDocumentType } from 'src/master-db/entities/document-template-item.entity';
 import {
   DeliveryNote,
   DeliveryNoteItem,
@@ -41,15 +29,13 @@ import {
   PdfRendererService,
   safePdfFilenamePart,
 } from 'src/common/pdf';
-import { buildSaleInvoicePdfHtml } from './sale-invoice-pdf.template';
 import { Business } from 'src/tenant-db/entities/business.entity';
-import { BusinessSettings } from 'src/tenant-db/entities/business-settings.entity';
 import {
   endOfDay,
   parseDateRange,
   startOfDay,
 } from '../report/report-query.helper';
-import { PrintThemeService } from '../print-theme.service';
+import { DocumentTemplateRendererService } from '../document-template-renderer.service';
 
 const INVOICE_NUMBER_PREFIX = 'SI';
 
@@ -67,14 +53,12 @@ type CustomerBalanceSnapshot = {
 @Injectable()
 export class SaleInvoiceService {
   constructor(
-    @InjectRepository(DocumentTemplate)
-    private readonly documentTemplateRepository: Repository<DocumentTemplate>,
     private readonly activityLogService: ActivityLogService,
     private readonly masterGeoHelperService: MasterGeoHelperService,
     private readonly listAnalyticsService: ListAnalyticsService,
     private readonly pdfRendererService: PdfRendererService,
     private readonly pdfLogoService: PdfLogoService,
-    private readonly printThemeService: PrintThemeService,
+    private readonly documentTemplateRendererService: DocumentTemplateRendererService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -82,105 +66,6 @@ export class SaleInvoiceService {
       throw new BadRequestException('Business context is required');
     }
     return businessId;
-  }
-
-  private async getBusinessSaleInvoiceTemplate(
-    tenantDb: DataSource,
-    businessId: string,
-  ): Promise<DocumentTemplateItem | null> {
-    const settings = await tenantDb.getRepository(BusinessSettings).findOne({
-      where: { businessId },
-      select: ['defaultDocumentTemplateId'],
-    });
-    if (!settings?.defaultDocumentTemplateId) return null;
-
-    const pack = await this.documentTemplateRepository.findOne({
-      where: {
-        id: settings.defaultDocumentTemplateId,
-        status: DocumentTemplateStatus.ACTIVE,
-      },
-      relations: { items: true },
-    });
-
-    if (!shouldUseCustomDocumentTemplatePack(pack)) return null;
-
-    return findActiveInlineDocumentTemplateItem(
-      pack.items,
-      DocumentTemplateDocumentType.SALE_INVOICE,
-    );
-  }
-
-  private renderDocumentTemplateHtml(
-    content: string,
-    data: Record<string, unknown>,
-  ): string {
-    const escapeHtml = (value: unknown) =>
-      String(value).replace(/[&<>"']/g, (character) => {
-        const entities: Record<string, string> = {
-          '&': '&amp;',
-          '<': '&lt;',
-          '>': '&gt;',
-          '"': '&quot;',
-          "'": '&#39;',
-        };
-        return entities[character];
-      });
-
-    const readPath = (path: string, scope: Record<string, unknown>) =>
-      path.split('.').reduce<unknown>((current, key) => {
-        if (!current || typeof current !== 'object') return undefined;
-        return (current as Record<string, unknown>)[key];
-      }, scope);
-
-    const interpolate = (
-      markup: string,
-      scope: Record<string, unknown>,
-      itemIndex: number | null = null,
-    ) => markup.replace(
-      /\{\{\s*(@index|[a-zA-Z0-9_.]+)\s*\}\}/g,
-      (_match, path: string) => {
-        if (path === '@index') {
-          return itemIndex == null ? '' : String(itemIndex);
-        }
-        const value = path.split('.').reduce<unknown>((current, key) => {
-          if (!current || typeof current !== 'object') return undefined;
-          return (current as Record<string, unknown>)[key];
-        }, scope);
-        return value == null ? '' : escapeHtml(value);
-      },
-    );
-
-    const eachBlocks: Array<{ path: string; rowMarkup: string }> = [];
-    const withEachMarkers = content.replace(
-      /\{\{#each\s+([a-zA-Z0-9_.]+)\s*\}\}([\s\S]*?)\{\{\/each\}\}/g,
-      (_match, path: string, rowMarkup: string) => {
-        const index = eachBlocks.push({ path, rowMarkup }) - 1;
-        return `\u0000DOCUMENT_TEMPLATE_EACH_${index}\u0000`;
-      },
-    );
-
-    const interpolatedMarkup = interpolate(withEachMarkers, data);
-    const filledContent = interpolatedMarkup.replace(
-      /\u0000DOCUMENT_TEMPLATE_EACH_(\d+)\u0000/g,
-      (_marker, blockIndex: string) => {
-        const block = eachBlocks[Number(blockIndex)];
-        const rows = block ? readPath(block.path, data) : null;
-        if (!block || !Array.isArray(rows)) return '';
-        return rows.map((row: unknown, index: number) => {
-          const rowData = row && typeof row === 'object'
-            ? row as Record<string, unknown>
-            : { value: row };
-          return interpolate(
-            block.rowMarkup,
-            { ...data, ...rowData, item: row, this: row, lineNumber: index + 1 },
-            index,
-          );
-        }).join('');
-      },
-    );
-
-    if (/<html[\s>]/i.test(filledContent)) return filledContent;
-    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>@page{size:A4;margin:0}html,body{margin:0;min-height:100%;background:#fff;font-family:Arial,sans-serif}</style></head><body>${filledContent}</body></html>`;
   }
 
   private formatDocumentTemplateDate(value: Date | string | null | undefined): string {
@@ -756,14 +641,12 @@ export class SaleInvoiceService {
       customerGeoNames,
       customerBalance,
       business,
-      selectedSaleInvoiceTemplate,
     ] = await Promise.all([
       this.getCustomerGeoNames(invoice),
       this.getCustomerBalanceSnapshot(tenantDb, scopedBusinessId, invoice),
       tenantDb.getRepository(Business).findOne({
         where: { id: scopedBusinessId },
       }),
-      this.getBusinessSaleInvoiceTemplate(tenantDb, scopedBusinessId),
     ]);
 
     if (!business) {
@@ -774,12 +657,29 @@ export class SaleInvoiceService {
       customerGeoNames,
       customerBalance,
     });
-    const [logoDataUri, theme] = await Promise.all([
-      this.pdfLogoService.fetchLogoDataUri(business.logo),
-      this.printThemeService.resolveForTenant(tenantId),
-    ]);
+    const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
+    const hiddenBalanceFields = showBalanceDetails
+      ? {}
+      : {
+          previousBalance: '',
+          previous_balance: '',
+          currentBalance: '',
+          current_balance: '',
+          thisBill: '',
+          this_bill: '',
+          accountBalance: '',
+          account_balance: '',
+          balance: '',
+        };
     const templateInvoice = {
       ...mappedInvoice,
+      customer: mappedInvoice.customer
+        ? { ...mappedInvoice.customer, ...hiddenBalanceFields }
+        : mappedInvoice.customer,
+      customerBalance: mappedInvoice.customerBalance
+        ? { ...mappedInvoice.customerBalance, ...hiddenBalanceFields }
+        : mappedInvoice.customerBalance,
+      ...hiddenBalanceFields,
       invoice_no: mappedInvoice.invoiceNumber,
       invoice_date: this.formatDocumentTemplateDate(mappedInvoice.invoiceDate),
       vendor_code: mappedInvoice.customer?.code ?? '',
@@ -796,6 +696,7 @@ export class SaleInvoiceService {
       current_balance: showBalanceDetails
         ? mappedInvoice.customerBalance?.currentBalance ?? 0
         : '',
+      this_bill: showBalanceDetails ? mappedInvoice.totalAmount : '',
       items: mappedInvoice.items.map((item) => {
         const quantity = Number(item.quantity ?? 0);
         const unitPrice = Number(item.saleUnitPrice ?? 0);
@@ -827,34 +728,25 @@ export class SaleInvoiceService {
         };
       }),
     };
-    const customTemplateHtml = selectedSaleInvoiceTemplate?.content
-      ? this.renderDocumentTemplateHtml(selectedSaleInvoiceTemplate.content, {
-          invoice: templateInvoice,
-          companyInfo: {
-            name: business.name,
-            legalName: business.legalName,
-            address: business.address,
-            mobile: business.phone,
-            phone: business.phone,
-            currency: business.currency,
-            logo: logoDataUri,
-          },
-          invoiceNo: mappedInvoice.invoiceNumber,
-        })
-      : null;
-    const html = customTemplateHtml ?? buildSaleInvoicePdfHtml(
-      mappedInvoice,
+    const companyInfo = {
+      name: business.name,
+      legalName: business.legalName,
+      address: business.address,
+      mobile: business.phone,
+      phone: business.phone,
+      currency: business.currency,
+      logo: logoDataUri,
+    };
+    const html = await this.documentTemplateRendererService.render(
+      tenantDb,
+      scopedBusinessId,
+      DocumentTemplateDocumentType.SALE_INVOICE,
       {
-        name: business.name,
-        legalName: business.legalName,
-        address: business.address,
-        phone: business.phone,
-        currency: business.currency,
+        invoice: templateInvoice,
+        companyInfo,
+        invoiceNo: mappedInvoice.invoiceNumber,
+        showBalanceDetails,
       },
-      logoDataUri,
-      showBalanceDetails,
-      new Date(),
-      { theme },
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

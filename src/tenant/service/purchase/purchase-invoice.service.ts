@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Brackets, DataSource, EntityManager, IsNull } from 'typeorm';
+import { DocumentTemplateDocumentType } from 'src/master-db/entities/document-template-item.entity';
 import { Grn, GrnItem, GrnStatus } from 'src/tenant-db/entities/grn.entity';
 import {
   PurchaseInvoice,
@@ -25,13 +26,12 @@ import {
   safePdfFilenamePart,
 } from 'src/common/pdf';
 import { Business } from 'src/tenant-db/entities/business.entity';
-import { buildPurchaseInvoicePdfHtml } from './purchase-invoice-pdf.template';
 import {
   endOfDay,
   parseDateRange,
   startOfDay,
 } from '../report/report-query.helper';
-import { PrintThemeService } from '../print-theme.service';
+import { DocumentTemplateRendererService } from '../document-template-renderer.service';
 
 const INVOICE_NUMBER_PREFIX = 'PI';
 
@@ -54,7 +54,7 @@ export class PurchaseInvoiceService {
     private readonly listAnalyticsService: ListAnalyticsService,
     private readonly pdfRendererService: PdfRendererService,
     private readonly pdfLogoService: PdfLogoService,
-    private readonly printThemeService: PrintThemeService,
+    private readonly documentTemplateRendererService: DocumentTemplateRendererService,
   ) {}
 
   private assertBusinessId(businessId?: string): string {
@@ -603,23 +603,76 @@ export class PurchaseInvoiceService {
       vendorGeoNames,
       vendorBalance,
     });
-    const [logoDataUri, theme] = await Promise.all([
-      this.pdfLogoService.fetchLogoDataUri(business.logo),
-      this.printThemeService.resolveForTenant(tenantId),
-    ]);
-    const html = buildPurchaseInvoicePdfHtml(
-      mappedInvoice,
+    const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
+    const hiddenBalanceFields = showBalanceDetails
+      ? {}
+      : {
+          previousBalance: '',
+          previous_balance: '',
+          currentBalance: '',
+          current_balance: '',
+          thisBill: '',
+          this_bill: '',
+          accountBalance: '',
+          account_balance: '',
+          balance: '',
+        };
+    const templateInvoice = {
+      ...mappedInvoice,
+      vendor: mappedInvoice.vendor
+        ? { ...mappedInvoice.vendor, ...hiddenBalanceFields }
+        : mappedInvoice.vendor,
+      vendorBalance: mappedInvoice.vendorBalance
+        ? { ...mappedInvoice.vendorBalance, ...hiddenBalanceFields }
+        : mappedInvoice.vendorBalance,
+      ...hiddenBalanceFields,
+      invoice_no: mappedInvoice.invoiceNumber,
+      invoice_date: mappedInvoice.invoiceDate,
+      vendor_code: mappedInvoice.vendor?.code ?? '',
+      vendor_name: mappedInvoice.vendor?.name ?? '',
+      vendor_address: mappedInvoice.vendor?.address ?? '',
+      vendor_city: mappedInvoice.vendor?.cityName ?? '',
+      total: mappedInvoice.totalAmount,
+      total_tax: mappedInvoice.totalTaxAmount,
+      total_discount: mappedInvoice.totalDiscountAmount,
+      previous_balance: showBalanceDetails
+        ? mappedInvoice.vendorBalance?.previousBalance ?? 0
+        : '',
+      current_balance: showBalanceDetails
+        ? mappedInvoice.vendorBalance?.currentBalance ?? 0
+        : '',
+      this_bill: showBalanceDetails ? mappedInvoice.totalAmount : '',
+      items: mappedInvoice.items.map((item) => ({
+        ...item,
+        product_id: item.product?.skuCode || item.productId || '',
+        product_name: item.product?.name || '',
+        measurement_unit: item.uom?.name || '',
+        unit_price: item.purchaseUnitPrice,
+        rate: item.purchaseUnitPrice,
+        qty: item.quantity,
+        total: item.totalAmount,
+        amount: item.totalAmount,
+      })),
+    };
+    const html = await this.documentTemplateRendererService.render(
+      tenantDb,
+      scopedBusinessId,
+      DocumentTemplateDocumentType.PURCHASE_INVOICE,
       {
-        name: business.name,
-        legalName: business.legalName,
-        address: business.address,
-        phone: business.phone,
-        currency: business.currency,
+        invoice: templateInvoice,
+        purchaseInvoice: templateInvoice,
+        companyInfo: {
+          name: business.name,
+          legalName: business.legalName,
+          address: business.address,
+          phone: business.phone,
+          mobile: business.phone,
+          currency: business.currency,
+          logo: logoDataUri,
+        },
+        invoiceNo: mappedInvoice.invoiceNumber,
+        showBalanceDetails,
       },
-      logoDataUri,
-      showBalanceDetails,
-      new Date(),
-      theme,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, In } from 'typeorm';
+import { DocumentTemplateDocumentType } from 'src/master-db/entities/document-template-item.entity';
 import { PdfLogoService, PdfRendererService, safePdfFilenamePart } from 'src/common/pdf';
 import { Business } from 'src/tenant-db/entities/business.entity';
 import { ChartOfAccount } from 'src/tenant-db/entities/chart-of-account.entity';
@@ -7,8 +8,7 @@ import { AccountTransactionReferenceType, Transaction } from 'src/tenant-db/enti
 import { User } from 'src/tenant-db/entities/user.entity';
 import { computeBalanceMovement, getAccountBalanceNature } from 'src/tenant-db/helpers/transaction-balance.helper';
 import { TenantUtilityService } from '../tenant-utility.service';
-import { buildReportPdfHtml, type ReportPdfDocument } from './report-pdf.template';
-import { PrintThemeService } from '../print-theme.service';
+import { DocumentTemplateRendererService } from '../document-template-renderer.service';
 
 @Injectable()
 export class OpeningBalancePdfService {
@@ -16,7 +16,7 @@ export class OpeningBalancePdfService {
     private readonly utilityService: TenantUtilityService,
     private readonly pdfRendererService: PdfRendererService,
     private readonly pdfLogoService: PdfLogoService,
-    private readonly printThemeService: PrintThemeService,
+    private readonly documentTemplateRendererService: DocumentTemplateRendererService,
   ) {}
 
   async generatePdf(
@@ -33,11 +33,10 @@ export class OpeningBalancePdfService {
       throw new BadRequestException('A valid account parent code is required');
     }
 
-    const [accountList, business, actor, theme] = await Promise.all([
+    const [accountList, business, actor] = await Promise.all([
       this.utilityService.getAccountList(db, parentCode, businessId),
       db.getRepository(Business).findOne({ where: { id: businessId } }),
       db.getRepository(User).findOne({ where: { id: actorUserId }, select: { id: true, name: true } }),
-      this.printThemeService.resolveForTenant(tenantId),
     ]);
     if (!business) throw new NotFoundException('Business not found');
 
@@ -79,36 +78,39 @@ export class OpeningBalancePdfService {
       account.name.toLowerCase().includes(normalizedSearch),
     );
     const rows = matchingAccounts.map((account, index) => ({
+      ...account,
       serial: index + 1,
       code: account.code,
       name: account.name,
       openingBalance: openingBalances.get(account.id) ?? 0,
     }));
     const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
-    const document: ReportPdfDocument = {
-      layout: 'balance',
-      title: 'Opening Balance',
-      business: { name: business.name, legalName: business.legalName, address: business.address, phone: business.phone, currency: business.currency },
-      logoDataUri,
-      filters: [
-        { label: 'Account Type', value: category },
-        ...(search?.trim() ? [{ label: 'Search', value: search.trim() }] : []),
-      ],
-      summary: [],
-      sections: [{
-        columns: [
-          { key: 'serial', label: 'S No.', width: '10%', align: 'center' },
-          { key: 'code', label: 'Account Code', width: '25%' },
-          { key: 'name', label: 'Account Name', width: '40%' },
-          { key: 'openingBalance', label: 'Opening Balance', width: '25%', align: 'right', format: 'amount' },
-        ],
-        rows,
-        emptyMessage: 'No opening balance data found',
-      }],
-      preparedBy: actor?.name || 'Admin',
+    const companyInfo = {
+      name: business.name,
+      legalName: business.legalName,
+      address: business.address,
+      phone: business.phone,
+      mobile: business.phone,
+      currency: business.currency,
+      logo: logoDataUri,
     };
+    const html = await this.documentTemplateRendererService.render(
+      db,
+      businessId,
+      DocumentTemplateDocumentType.ACCOUNTS_LIST,
+      {
+        accounts: rows,
+        accountRows: rows,
+        items: rows,
+        rows,
+        category,
+        search: search?.trim() || '',
+        companyInfo,
+        preparedBy: actor?.name || 'Admin',
+      },
+    );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
-      html: buildReportPdfHtml(document, new Date(), theme),
+      html,
       enforceSinglePage: false,
     });
 

@@ -19,6 +19,24 @@ export class PdfLogoService {
       return null;
     }
 
+    if (logoUrl.startsWith('data:')) {
+      if (logoUrl.length > 4 * Math.ceil(MAX_LOGO_BYTES / 3) + 64) {
+        return null;
+      }
+      const embedded = /^data:([^;,]+);base64,([a-z0-9+/]+={0,2})$/i.exec(logoUrl);
+      if (!embedded || !ALLOWED_MIME_TYPES.has(embedded[1].toLowerCase())) {
+        return null;
+      }
+      const bytes = Buffer.from(embedded[2], 'base64');
+      if (
+        bytes.length === 0 || bytes.length > MAX_LOGO_BYTES ||
+        bytes.toString('base64') !== embedded[2]
+      ) {
+        return null;
+      }
+      return `data:${embedded[1].toLowerCase()};base64,${embedded[2]}`;
+    }
+
     try {
       const parsedUrl = new URL(logoUrl);
       if (

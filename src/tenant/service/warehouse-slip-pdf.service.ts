@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource, IsNull } from 'typeorm';
+import { DocumentTemplateDocumentType } from 'src/master-db/entities/document-template-item.entity';
 import { Business } from 'src/tenant-db/entities/business.entity';
 import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
 import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity';
@@ -15,19 +16,18 @@ import {
   safePdfFilenamePart,
 } from 'src/common/pdf';
 import { ActivityLogService } from './activity-log.service';
-import { PrintThemeService } from './print-theme.service';
+import { DocumentTemplateRendererService } from './document-template-renderer.service';
 import {
-  buildWarehouseSlipPdfHtml,
   type WarehouseSlipDto,
   type WarehouseSlipItemDto,
-} from './warehouse-slip-pdf.template';
+} from './warehouse-slip.types';
 
 @Injectable()
 export class WarehouseSlipPdfService {
   constructor(
     private readonly pdfRendererService: PdfRendererService,
     private readonly pdfLogoService: PdfLogoService,
-    private readonly printThemeService: PrintThemeService,
+    private readonly documentTemplateRendererService: DocumentTemplateRendererService,
     private readonly activityLogService: ActivityLogService,
   ) {}
 
@@ -86,21 +86,19 @@ export class WarehouseSlipPdfService {
       throw new NotFoundException('Business not found');
     }
 
-    const [logoDataUri, theme] = await Promise.all([
-      this.pdfLogoService.fetchLogoDataUri(business.logo),
-      this.printThemeService.resolveForTenant(tenantId),
-    ]);
-
-    const html = buildWarehouseSlipPdfHtml(
-      slip,
-      {
-        name: business.name,
-        phone: business.phone,
-        address: business.address,
-      },
-      logoDataUri,
-      new Date(),
-      { theme },
+    const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
+    const companyInfo = {
+      name: business.name,
+      phone: business.phone,
+      mobile: business.phone,
+      address: business.address,
+      logo: logoDataUri,
+    };
+    const html = await this.documentTemplateRendererService.render(
+      tenantDb,
+      businessId,
+      DocumentTemplateDocumentType.WAREHOUSE_SLIP,
+      { slip, warehouseSlip: slip, companyInfo, ...slip },
     );
 
     const buffer = await this.pdfRendererService.renderHtmlToPdf({

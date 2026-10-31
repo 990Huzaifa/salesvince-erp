@@ -195,6 +195,7 @@ import { DocumentTemplate } from 'src/master-db/entities/document-template.entit
 import { TenantDocumentTemplate } from 'src/master-db/entities/tenant-document-template.entity';
 import { BusinessSettingsController } from './controller/business-settings.controller';
 import { BusinessSettingsService } from './service/business-settings.service';
+import { DocumentTemplateRendererService } from './service/document-template-renderer.service';
 
 @Module({
   imports: [
@@ -292,6 +293,7 @@ import { BusinessSettingsService } from './service/business-settings.service';
     AdminDashboardController,
   ],
   providers: [
+    DocumentTemplateRendererService,
     TenantAuthService,
     NotificationService,
     TenantBusinessService,

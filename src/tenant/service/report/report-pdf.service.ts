@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, IsNull } from 'typeorm';
+import { DocumentTemplateDocumentType } from 'src/master-db/entities/document-template-item.entity';
 import {
   formatDocumentDate,
   formatPakistaniNumber,
@@ -15,12 +16,11 @@ import { ReportFinancialTransactionService } from './report-financial-transactio
 import { ReportReceivablePayableService } from './report-receivable-payable.service';
 import { ReportReceivingService } from './report-receiving.service';
 import {
-  buildReportPdfHtml,
   formatReportDateRange,
   type ReportPdfColumn,
   type ReportPdfDocument,
-} from './report-pdf.template';
-import { PrintThemeService } from '../print-theme.service';
+} from './report-pdf.types';
+import { DocumentTemplateRendererService } from '../document-template-renderer.service';
 
 type SummaryQuery = { startDate?: string; endDate?: string; partyId?: string; cityId?: string };
 type LedgerQuery = { startDate?: string; endDate?: string; customerId?: string; vendorId?: string };
@@ -40,7 +40,7 @@ export class ReportPdfService {
     private readonly reportReceivingService: ReportReceivingService,
     private readonly pdfRendererService: PdfRendererService,
     private readonly pdfLogoService: PdfLogoService,
-    private readonly printThemeService: PrintThemeService,
+    private readonly documentTemplateRendererService: DocumentTemplateRendererService,
   ) {}
 
   async generateCustomerBalancesPdf(db: DataSource, businessId: string, actorUserId: string, tenantId?: string) {
@@ -248,7 +248,7 @@ export class ReportPdfService {
     const partyName = partyId ? data.data.find((row) => row.id === partyId)?.name : undefined;
     const filters = [{ label: 'Date Filter', value: dateFilterLabel(query.startDate, query.endDate) }, { label: 'Period', value: formatReportDateRange(data.period.startDate, data.period.endDate) }, { label: variant === 'receivable' ? 'Customer' : 'Vendor', value: partyName }];
     const columns: ReportPdfColumn[] = [{ key: 'serial', label: 'S No.', width: '8%', align: 'center' }, { key: 'code', label: 'Code', width: '10%' }, { key: 'name', label: 'Name', width: '26%' }, { key: 'openingBalance', label: 'Opening', width: '14%', align: 'right', format: 'amount' }, { key: 'periodDebit', label: 'Debit', width: '14%', align: 'right', format: 'amount' }, { key: 'periodCredit', label: 'Credit', width: '14%', align: 'right', format: 'amount' }, { key: 'closingBalance', label: 'Closing', width: '14%', align: 'right', format: 'amount' }];
-    return this.render(db, businessId, actorUserId, { layout: 'party-ledger', title, filters, summary: [{ label: 'Opening Balance', value: money(data.totals.openingBalance) }, { label: 'Period Debit', value: money(data.totals.periodDebit) }, { label: 'Period Credit', value: money(data.totals.periodCredit) }, { label: 'Closing Balance', value: money(data.totals.closingBalance) }], sections: [{ columns, rows: asRows(data.data), emptyMessage: 'No party ledger records found.' }], footerRight: `Party Count: ${data.meta.total}` }, `${variant === 'receivable' ? 'Receivable' : 'Payable'}-Report`, tenantId);
+    return this.render(db, businessId, actorUserId, { layout: 'party-ledger', title, filters, summary: [{ label: 'Opening Balance', value: money(data.totals.openingBalance) }, { label: 'Period Debit', value: money(data.totals.periodDebit) }, { label: 'Period Credit', value: money(data.totals.periodCredit) }, { label: 'Closing Balance', value: money(data.totals.closingBalance) }], sections: [{ columns, rows: asRows(data.data), emptyMessage: 'No party ledger records found.' }], footerRight: `Party Count: ${data.meta.total}` }, `${variant === 'receivable' ? 'Receivable' : 'Payable'}-Report`, tenantId, DocumentTemplateDocumentType.PARTY_LEDGER);
   }
 
   async generateSummaryPdf(db: DataSource, businessId: string, actorUserId: string, variant: 'sales' | 'purchase', query: SummaryQuery, tenantId?: string) {
@@ -265,11 +265,10 @@ export class ReportPdfService {
     return this.render(db, businessId, actorUserId, { layout: 'summary', title: sales ? 'Sales Summary' : 'Purchase Summary', filters: [{ label: 'Date Filter', value: dateFilterLabel(query.startDate, query.endDate) }, { label: 'Period', value: formatReportDateRange(data.period.startDate, data.period.endDate) }, { label: sales ? 'Customer' : 'Vendor', value: filteredParty?.partyName }, { label: 'City', value: filteredCity?.cityName }, { label: 'Scope', value: data.filters.scope || 'ALL' }], summary: [{ label: 'Invoices', value: data.totals.invoiceCount }, { label: 'Total Amount', value: money(data.totals.totalAmount) }, { label: 'Tax Amount', value: money(data.totals.totalTaxAmount) }, { label: 'Discount Amount', value: money(data.totals.totalDiscountAmount) }], sections: [{ title: `${partyLabel} Wise Summary`, columns: partyColumns, rows: asRows(partyRows), emptyMessage: `No ${partyLabel.toLowerCase()} wise summary found.` }, { title: 'City Wise Summary', columns: cityColumns, rows: asRows(data.cityWise || []), emptyMessage: 'No city wise summary found.' }], footerRight: `${partyLabel} Count: ${data.meta.partyCount} | City Count: ${data.meta.cityCount}` }, `${sales ? 'Sales' : 'Purchase'}-Summary`, tenantId);
   }
 
-  private async render(db: DataSource, businessId: string, actorUserId: string, input: ReportDocumentInput, filename: string, tenantId?: string) {
-    const [business, actor, theme] = await Promise.all([
+  private async render(db: DataSource, businessId: string, actorUserId: string, input: ReportDocumentInput, filename: string, tenantId?: string, documentType = DocumentTemplateDocumentType.REPORT) {
+    const [business, actor] = await Promise.all([
       db.getRepository(Business).findOne({ where: { id: businessId } }),
       db.getRepository(User).findOne({ where: { id: actorUserId }, select: { id: true, name: true } }),
-      this.printThemeService.resolveForTenant(tenantId),
     ]);
     if (!business) throw new NotFoundException('Business not found');
     const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
@@ -279,7 +278,23 @@ export class ReportPdfService {
       business: { name: business.name, legalName: business.legalName, address: business.address, phone: business.phone, currency: business.currency },
       preparedBy: actor?.name || 'Admin',
     };
-    const buffer = await this.pdfRendererService.renderHtmlToPdf({ html: buildReportPdfHtml(document, new Date(), theme), enforceSinglePage: false });
+    const rows = document.sections.flatMap((section) => section.rows);
+    const html = await this.documentTemplateRendererService.render(
+      db,
+      businessId,
+      documentType,
+      {
+        report: document,
+        companyInfo: document.business,
+        reportRows: rows,
+        rows,
+        entries: rows,
+        summary: document.summary,
+        filters: document.filters,
+        ...document,
+      },
+    );
+    const buffer = await this.pdfRendererService.renderHtmlToPdf({ html, enforceSinglePage: false });
     return { buffer, filename: `${safePdfFilenamePart(filename)}.pdf` };
   }
 }

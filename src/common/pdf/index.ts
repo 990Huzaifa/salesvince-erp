@@ -23,12 +23,7 @@ export {
 } from './pdf.errors';
 export { sendPdf } from './pdf-response.helper';
 export type { SendPdfOptions } from './pdf-response.helper';
-export {
-  buildPurchaseInvoicePdfHtml,
-  buildSaleInvoicePdfHtml,
-  buildSaleOrderPdfHtml,
-} from './document-pdf-html';
-export type { BusinessPdfContext } from './document-pdf-html';
+export type { BusinessPdfContext } from './pdf-context.types';
 export {
   printThemeCssVars,
   resolvePrintThemeColors,

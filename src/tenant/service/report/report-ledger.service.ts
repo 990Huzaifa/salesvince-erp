@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, In, IsNull } from 'typeorm';
+import { DocumentTemplateDocumentType } from 'src/master-db/entities/document-template-item.entity';
 import { ChartOfAccount } from 'src/tenant-db/entities/chart-of-account.entity';
 import { Business } from 'src/tenant-db/entities/business.entity';
 import {
@@ -24,8 +25,7 @@ import {
   PdfRendererService,
   safePdfFilenamePart,
 } from 'src/common/pdf';
-import { buildGeneralLedgerPdfHtml } from './general-ledger-pdf.template';
-import { PrintThemeService } from '../print-theme.service';
+import { DocumentTemplateRendererService } from '../document-template-renderer.service';
 
 type PeriodMovementRow = {
   chartOfAccountId: string;
@@ -44,7 +44,7 @@ export class ReportLedgerService {
     private readonly activityLogService: ActivityLogService,
     private readonly pdfRendererService: PdfRendererService,
     private readonly pdfLogoService: PdfLogoService,
-    private readonly printThemeService: PrintThemeService,
+    private readonly documentTemplateRendererService: DocumentTemplateRendererService,
   ) {}
 
   async generateGeneralLedgerPdf(
@@ -73,28 +73,33 @@ export class ReportLedgerService {
       throw new NotFoundException('Business not found');
     }
 
-    const [logoDataUri, theme] = await Promise.all([
-      this.pdfLogoService.fetchLogoDataUri(business.logo),
-      this.printThemeService.resolveForTenant(tenantId),
-    ]);
-    const html = buildGeneralLedgerPdfHtml(
+    const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
+    const companyInfo = {
+      name: business.name,
+      legalName: business.legalName,
+      address: business.address,
+      phone: business.phone,
+      mobile: business.phone,
+      currency: business.currency,
+      logo: logoDataUri,
+    };
+    const templateLedger = {
+      ...ledger,
+      totalDebit: ledger.totals.periodDebit,
+      totalCredit: ledger.totals.periodCredit,
+      closingBalance: ledger.closingBalance,
+    };
+    const html = await this.documentTemplateRendererService.render(
+      tenantDb,
+      scopedBusinessId,
+      DocumentTemplateDocumentType.GENERAL_LEDGER,
       {
+        ledger: templateLedger,
         entries: ledger.entries,
-        totalDebit: ledger.totals.periodDebit,
-        totalCredit: ledger.totals.periodCredit,
-        closingBalance: ledger.closingBalance,
-        business: {
-          name: business.name,
-          legalName: business.legalName,
-          address: business.address,
-          phone: business.phone,
-          currency: business.currency,
-        },
-        preparedBy: 'Admin',
+        transactions: ledger.entries,
+        ledgerEntries: ledger.entries,
+        companyInfo,
       },
-      logoDataUri,
-      new Date(),
-      theme,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,
