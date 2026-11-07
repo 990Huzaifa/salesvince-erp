@@ -6,6 +6,10 @@ import {
 } from '@nestjs/common';
 import { DataSource, In, IsNull } from 'typeorm';
 import { Party, PartyClass, PartyType } from 'src/tenant-db/entities/party.entity';
+import {
+  AccountTransactionReferenceType,
+  Transaction,
+} from 'src/tenant-db/entities/transaction.entity';
 import { seedDefaultChartOfAccountsForBusiness } from 'src/tenant-db/helpers/chart-of-account-bootstrap.helper';
 import {
   createChartOfAccountsForParty,
@@ -980,6 +984,105 @@ export class PartyService {
       entity: JsonExportEntity.PARTIES,
       exportedAt: new Date().toISOString(),
       items,
+    };
+  }
+
+  /**
+   * CSV of system customers: NAME,Opening balance
+   * Opening balance = OPENING_BALANCE ledger amount when present,
+   * else party.receivableOpeningBalance, else 0.
+   */
+  async exportCustomerOpeningBalancesCsv(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    actorUserId: string,
+  ): Promise<{ csv: string; filename: string }> {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const customers = await tenantDb.getRepository(Party).find({
+      where: [
+        {
+          businessId: scopedBusinessId,
+          type: PartyType.CUSTOMER,
+          deletedAt: IsNull(),
+        },
+        {
+          businessId: scopedBusinessId,
+          type: PartyType.BOTH,
+          deletedAt: IsNull(),
+        },
+      ],
+      order: { name: 'ASC' },
+    });
+
+    const receivableAccountIds = customers
+      .map((customer) => customer.receivableAccountId)
+      .filter((id): id is string => Boolean(id));
+
+    const openingByAccountId = new Map<string, number>();
+    if (receivableAccountIds.length) {
+      const openingRows = await tenantDb.getRepository(Transaction).find({
+        where: {
+          businessId: scopedBusinessId,
+          chartOfAccountId: In(receivableAccountIds),
+          referenceType: AccountTransactionReferenceType.OPENING_BALANCE,
+        },
+        select: [
+          'chartOfAccountId',
+          'debitAmount',
+          'creditAmount',
+        ],
+      });
+
+      for (const row of openingRows) {
+        const debit = Number(row.debitAmount ?? 0);
+        const credit = Number(row.creditAmount ?? 0);
+        // Receivable nature: debit increases, credit decreases.
+        const amount = Math.round((debit - credit) * 100) / 100;
+        const previous = openingByAccountId.get(row.chartOfAccountId) ?? 0;
+        openingByAccountId.set(
+          row.chartOfAccountId,
+          Math.round((previous + amount) * 100) / 100,
+        );
+      }
+    }
+
+    const escapeCsv = (value: string | number): string => {
+      const text = String(value);
+      if (/[",\n\r]/.test(text)) {
+        return `"${text.replace(/"/g, '""')}"`;
+      }
+      return text;
+    };
+
+    const lines = ['NAME,Opening balance'];
+    for (const customer of customers) {
+      let opening = 0;
+      if (
+        customer.receivableAccountId &&
+        openingByAccountId.has(customer.receivableAccountId)
+      ) {
+        opening = openingByAccountId.get(customer.receivableAccountId) ?? 0;
+      } else if (customer.receivableOpeningBalance != null) {
+        opening = Number(customer.receivableOpeningBalance) || 0;
+      }
+      lines.push(
+        `${escapeCsv(customer.name)},${escapeCsv(
+          Math.round(opening * 100) / 100,
+        )}`,
+      );
+    }
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'CUSTOMER_OPENING_BALANCE_CSV_EXPORTED',
+      description: `Customer opening balances CSV exported (${customers.length} customers)`,
+      metadata: { count: customers.length },
+    });
+
+    return {
+      csv: `${lines.join('\n')}\n`,
+      filename: 'customer-opening-balances.csv',
     };
   }
 

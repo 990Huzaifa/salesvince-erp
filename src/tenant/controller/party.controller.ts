@@ -11,11 +11,12 @@ import {
   Post,
   Query,
   Req,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
@@ -77,6 +78,28 @@ export class PartyController {
       user.userId,
       query.type,
     );
+  }
+
+  @Get('customers/opening-balances/export')
+  @RequirePermissions('LIST_PARTY')
+  async exportCustomerOpeningBalancesCsv(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const user = req.user as TenantRequestUser;
+    const { csv, filename } =
+      await this.partyService.exportCustomerOpeningBalancesCsv(
+        tenantDb,
+        user.businessId,
+        user.userId,
+      );
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    );
+    res.send(csv);
   }
 
   @Get('import')

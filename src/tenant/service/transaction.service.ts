@@ -678,7 +678,7 @@ export class TransactionService {
     const rows = this.parseCustomerOpeningBalanceRows(file);
     if (!rows.length) {
       throw new BadRequestException(
-        'No rows found. Expected columns: Customer Name, Closing Balance',
+        'No rows found. Expected columns: NAME, Opening balance',
       );
     }
 
@@ -768,6 +768,7 @@ export class TransactionService {
       const name = this.sanitizeImportText(
         this.getImportRowValue(
           raw,
+          'NAME',
           'Customer Name',
           'customerName',
           'customer_name',
@@ -776,18 +777,24 @@ export class TransactionService {
           'party_name',
         ),
       );
-      if (!name || name.toLowerCase() === 'customer name' || name.toLowerCase() === 'name') {
+      const normalizedName = name.toLowerCase();
+      if (
+        !name ||
+        normalizedName === 'customer name' ||
+        normalizedName === 'name'
+      ) {
         return;
       }
 
       const amountRaw = this.getImportRowValue(
         raw,
+        'Opening balance',
+        'Openinhg balance',
+        'openingBalance',
+        'opening_balance',
         'Closing Balance',
         'closingBalance',
         'closing_balance',
-        'Opening Balance',
-        'openingBalance',
-        'opening_balance',
         'Balance',
         'balance',
         'Amount',
@@ -951,16 +958,28 @@ export class TransactionService {
           );
         }
 
-        const existingCount = await txRepo.count({
+        // Re-import safe: only create OPENING_BALANCE when it is still missing.
+        const existingOpeningCount = await txRepo.count({
           where: {
             businessId,
             chartOfAccountId: account.id,
+            referenceType: AccountTransactionReferenceType.OPENING_BALANCE,
           },
         });
-        if (existingCount > 0) {
-          throw new BadRequestException(
-            `Opening balance skipped — "${account.name}" already has ledger entries`,
-          );
+        if (existingOpeningCount > 0) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: row.name,
+            status: 'success',
+            metadata: {
+              skipped: true,
+              reason: 'opening_balance_already_exists',
+              chartOfAccountId: account.id,
+              chartOfAccountCode: account.code,
+              partyId: party?.id ?? null,
+            },
+          });
+          continue;
         }
 
         const amount = this.roundAmount(row.amount);
