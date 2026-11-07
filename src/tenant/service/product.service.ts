@@ -1988,6 +1988,49 @@ export class ProductService {
     };
   }
 
+  /** CSV of products: Name,SKU */
+  async exportProductsCsv(
+    tenantDb: DataSource,
+    user: { userId: string; businessId: string },
+  ): Promise<{ csv: string; filename: string }> {
+    const products = await tenantDb.getRepository(Product).find({
+      where: {
+        businessId: user.businessId,
+        isDelete: false,
+      },
+      select: ['id', 'name', 'skuCode'],
+      order: { name: 'ASC' },
+    });
+
+    const escapeCsv = (value: string | number): string => {
+      const text = String(value ?? '');
+      if (/[",\n\r]/.test(text)) {
+        return `"${text.replace(/"/g, '""')}"`;
+      }
+      return text;
+    };
+
+    const lines = ['Name,SKU'];
+    for (const product of products) {
+      lines.push(
+        `${escapeCsv(product.name)},${escapeCsv(product.skuCode ?? '')}`,
+      );
+    }
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: user.businessId,
+      action: 'PRODUCT_CSV_EXPORTED',
+      description: `Products CSV exported (${products.length} products)`,
+      metadata: { count: products.length },
+    });
+
+    return {
+      csv: `${lines.join('\n')}\n`,
+      filename: 'products.csv',
+    };
+  }
+
   private async upsertProductFromJsonItem(
     tenantDb: DataSource,
     item: ProductJsonItemDto,

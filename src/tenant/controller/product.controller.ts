@@ -8,12 +8,13 @@ import {
   Put,
   Query,
   Req,
+  Res,
   UploadedFile,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
 import { TenantPermissionGuard } from 'src/auth/tenant-permission.guard';
@@ -132,6 +133,26 @@ export class ProductController {
       { userId: user.userId, businessId: user.businessId },
       { isActive: query.isActive },
     );
+  }
+
+  @Get('export-csv')
+  @RequirePermissions('LIST_PRODUCT')
+  async exportProductsCsv(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const user = req.user as TenantRequestUser;
+    const { csv, filename } = await this.productService.exportProductsCsv(
+      tenantDb,
+      { userId: user.userId, businessId: user.businessId },
+    );
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    );
+    res.send(csv);
   }
 
   @Post('import')
