@@ -79,8 +79,9 @@ export class TransactionController {
 
     /**
      * Import customer opening balances from CSV/XLS/XLSX.
-     * Matches customer / receivable COA by exact name, then posts OPENING_BALANCE.
-     * Columns: Customer Name, Closing Balance (aliases: Opening Balance, Amount).
+     * Matches customer / receivable COA by exact name, then upserts OPENING_BALANCE
+     * (create if missing, update amount if already present).
+     * Columns: NAME, Opening balance (aliases: Closing Balance, Amount).
      */
     @Post('opening-balance/import')
     @RequirePermissions('UPDATE_CHART_OF_ACCOUNT')

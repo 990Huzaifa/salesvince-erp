@@ -659,8 +659,9 @@ export class TransactionService {
   }
 
   /**
-   * CSV/XLS import: match customer / receivable COA by exact name and post
-   * opening balances (Closing Balance column treated as opening receivable).
+   * CSV/XLS import: match customer / receivable COA by exact name and
+   * upsert opening balances (add if missing, update amount if present).
+   * Columns: NAME + Opening balance (Closing Balance also accepted).
    */
   async importCustomerOpeningBalances(
     tenantDb: DataSource,
@@ -958,31 +959,22 @@ export class TransactionService {
           );
         }
 
-        // Re-import safe: only create OPENING_BALANCE when it is still missing.
-        const existingOpeningCount = await txRepo.count({
+        const existingOpening = await txRepo.findOne({
           where: {
             businessId,
             chartOfAccountId: account.id,
             referenceType: AccountTransactionReferenceType.OPENING_BALANCE,
           },
+          order: { createdAt: 'DESC', id: 'DESC' },
         });
-        if (existingOpeningCount > 0) {
-          this.tenantJobService.appendLog(jobId, {
-            row: row.row,
-            name: row.name,
-            status: 'success',
-            metadata: {
-              skipped: true,
-              reason: 'opening_balance_already_exists',
-              chartOfAccountId: account.id,
-              chartOfAccountCode: account.code,
-              partyId: party?.id ?? null,
-            },
-          });
-          continue;
-        }
 
         const amount = this.roundAmount(row.amount);
+        const abs = this.roundAmount(Math.abs(amount));
+        const debitCredit =
+          amount > 0
+            ? { debitAmount: abs, creditAmount: undefined as number | undefined }
+            : { debitAmount: undefined as number | undefined, creditAmount: abs };
+        const action = existingOpening ? 'updated' : 'created';
 
         await tenantDb.transaction(async (manager) => {
           if (party) {
@@ -991,6 +983,28 @@ export class TransactionService {
             }
             party.receivableOpeningBalance = amount;
             await manager.getRepository(Party).save(party);
+          }
+
+          if (existingOpening) {
+            const referenceId =
+              existingOpening.referenceId ||
+              party?.id ||
+              account!.id;
+            await this.updateDirectLedgerEntryByReference(manager, {
+              businessId,
+              chartOfAccountId: account!.id,
+              referenceType: AccountTransactionReferenceType.OPENING_BALANCE,
+              referenceId,
+              transactionDate: transactionDate ?? existingOpening.transactionDate,
+              description: party
+                ? `Opening receivable - ${party.name}`
+                : `Opening balance - ${account!.name}`,
+              ...debitCredit,
+            });
+            return;
+          }
+
+          if (party) {
             await this.postPartyOpeningBalances(manager, {
               businessId,
               party: {
@@ -1016,6 +1030,7 @@ export class TransactionService {
           name: row.name,
           status: 'success',
           metadata: {
+            action,
             chartOfAccountId: account.id,
             chartOfAccountCode: account.code,
             chartOfAccountName: account.name,
