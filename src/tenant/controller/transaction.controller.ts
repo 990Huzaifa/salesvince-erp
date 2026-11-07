@@ -2,6 +2,7 @@ import { TenantBusinessAccessGuard } from "src/auth/tenant-business-access.guard
 import { TenantCode, TenantConnection } from "src/common/tenant/tenant-connection.decorator";
 import { DataSource } from "typeorm";
 import {
+    BadRequestException,
     Body,
     Controller,
     Get,
@@ -9,8 +10,11 @@ import {
     Post,
     Query,
     Req,
+    UploadedFile,
     UseGuards,
+    UseInterceptors,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import type { Request } from "express";
 import { TenantPermissionGuard } from "src/auth/tenant-permission.guard";
 import { TenantRequestUser } from "src/auth/tenant-jwt.strategy";
@@ -70,6 +74,37 @@ export class TransactionController {
                 transactionDate,
             },
             user.userId,
+        );
+    }
+
+    /**
+     * Import customer opening balances from CSV/XLS/XLSX.
+     * Matches customer / receivable COA by exact name, then posts OPENING_BALANCE.
+     * Columns: Customer Name, Closing Balance (aliases: Opening Balance, Amount).
+     */
+    @Post('opening-balance/import')
+    @RequirePermissions('UPDATE_CHART_OF_ACCOUNT')
+    @UseInterceptors(FileInterceptor('file'))
+    importCustomerOpeningBalances(
+        @TenantConnection() tenantDb: DataSource,
+        @TenantCode() tenantCode: string,
+        @Req() req: Request,
+        @UploadedFile() file: Express.Multer.File,
+        @Body('transactionDate') transactionDate?: string,
+    ) {
+        if (!file?.buffer?.length) {
+            throw new BadRequestException(
+                'File is required. Use multipart form-data field "file" (CSV/XLS/XLSX).',
+            );
+        }
+        const user = req.user as TenantRequestUser;
+        return this.transactionService.importCustomerOpeningBalances(
+            tenantDb,
+            user.businessId,
+            file,
+            user.userId,
+            tenantCode,
+            transactionDate,
         );
     }
 

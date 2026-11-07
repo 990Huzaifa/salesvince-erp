@@ -1,10 +1,14 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, EntityManager, In, IsNull } from 'typeorm';
+import * as XLSX from 'xlsx';
 import {
   AccountTransactionReferenceType,
   Transaction,
 } from 'src/tenant-db/entities/transaction.entity';
-import { ChartOfAccount } from 'src/tenant-db/entities/chart-of-account.entity';
+import {
+  ChartOfAccount,
+  ChartOfAccountKind,
+} from 'src/tenant-db/entities/chart-of-account.entity';
 import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
 import {
   computeBalanceMovement,
@@ -12,6 +16,7 @@ import {
 } from 'src/tenant-db/helpers/transaction-balance.helper';
 import { recalculateAccountLedgerBalances } from 'src/tenant-db/helpers/ledger-balance-recalculation.helper';
 import { ActivityLogService } from './activity-log.service';
+import { TenantJobService } from './tenant-job.service';
 
 export type JournalLineInput = {
   chartOfAccountId: string;
@@ -45,10 +50,19 @@ export type BusinessAccountOpeningBalanceInput = {
   transactionDate?: Date;
 };
 
+type CustomerOpeningBalanceImportRow = {
+  row: number;
+  name: string;
+  amount: number;
+};
+
 @Injectable()
 export class TransactionService {
 
-  constructor(private readonly activityLogService: ActivityLogService) {}
+  constructor(
+    private readonly activityLogService: ActivityLogService,
+    private readonly tenantJobService: TenantJobService,
+  ) {}
 
   private assertBusinessId(businessId?: string): string {
     if (!businessId) {
@@ -642,6 +656,383 @@ export class TransactionService {
         createdAt: saved.createdAt,
       },
     };
+  }
+
+  /**
+   * CSV/XLS import: match customer / receivable COA by exact name and post
+   * opening balances (Closing Balance column treated as opening receivable).
+   */
+  async importCustomerOpeningBalances(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    file: Express.Multer.File,
+    actorUserId: string,
+    tenantCode: string,
+    transactionDate?: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    if (!file?.buffer?.length) {
+      throw new BadRequestException('File is required');
+    }
+
+    const rows = this.parseCustomerOpeningBalanceRows(file);
+    if (!rows.length) {
+      throw new BadRequestException(
+        'No rows found. Expected columns: Customer Name, Closing Balance',
+      );
+    }
+
+    const parsedDate = transactionDate ? new Date(transactionDate) : undefined;
+    if (parsedDate && Number.isNaN(parsedDate.getTime())) {
+      throw new BadRequestException('transactionDate must be a valid date');
+    }
+
+    const job = this.tenantJobService.createJob({
+      tenantCode,
+      businessId: scopedBusinessId,
+      jobType: 'CUSTOMER_OPENING_BALANCE_IMPORT',
+      fileName: file.originalname || 'customer-opening-balances.csv',
+      createdBy: actorUserId,
+      totalRows: rows.length,
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'TENANT_JOB_STARTED',
+      description: `Customer opening balance import started for ${file.originalname}`,
+      metadata: {
+        jobId: job.id,
+        jobType: job.jobType,
+        fileName: file.originalname,
+        totalRows: rows.length,
+      },
+    });
+
+    void this.processCustomerOpeningBalanceImportJob(
+      tenantDb,
+      job.id,
+      rows,
+      scopedBusinessId,
+      actorUserId,
+      tenantCode,
+      parsedDate,
+    ).catch(async (error) => {
+      this.tenantJobService.failJob(job.id);
+      this.tenantJobService.appendLog(job.id, {
+        row: 0,
+        name: '',
+        status: 'error',
+        error: error instanceof Error ? error.message : 'Unknown processing failure',
+      });
+      await this.activityLogService.recordActivityLog(tenantDb, {
+        actorId: actorUserId,
+        businessId: scopedBusinessId,
+        action: 'TENANT_JOB_FAILED',
+        description: `Customer opening balance import failed for ${file.originalname}`,
+        metadata: {
+          jobId: job.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    });
+
+    return {
+      message: 'Customer opening balance import started',
+      jobId: job.id,
+      status: job.status,
+      totalRows: job.totalRows,
+    };
+  }
+
+  private parseCustomerOpeningBalanceRows(
+    file: Express.Multer.File,
+  ): CustomerOpeningBalanceImportRow[] {
+    const extension = file.originalname.split('.').pop()?.toLowerCase();
+    if (!extension || !['csv', 'xls', 'xlsx'].includes(extension)) {
+      throw new BadRequestException('Only CSV, XLS, and XLSX files are supported');
+    }
+
+    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) return [];
+
+    const sheet = workbook.Sheets[firstSheetName];
+    const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
+      defval: '',
+      raw: false,
+    });
+
+    const rows: CustomerOpeningBalanceImportRow[] = [];
+    rawRows.forEach((raw, index) => {
+      const name = this.sanitizeImportText(
+        this.getImportRowValue(
+          raw,
+          'Customer Name',
+          'customerName',
+          'customer_name',
+          'name',
+          'partyName',
+          'party_name',
+        ),
+      );
+      if (!name || name.toLowerCase() === 'customer name' || name.toLowerCase() === 'name') {
+        return;
+      }
+
+      const amountRaw = this.getImportRowValue(
+        raw,
+        'Closing Balance',
+        'closingBalance',
+        'closing_balance',
+        'Opening Balance',
+        'openingBalance',
+        'opening_balance',
+        'Balance',
+        'balance',
+        'Amount',
+        'amount',
+      );
+      const amount = this.parseImportAmount(amountRaw);
+      if (amount == null) {
+        rows.push({ row: index + 2, name, amount: Number.NaN });
+        return;
+      }
+
+      rows.push({ row: index + 2, name, amount });
+    });
+
+    return rows;
+  }
+
+  private getImportRowValue(
+    row: Record<string, unknown>,
+    ...keys: string[]
+  ): unknown {
+    const entries = Object.entries(row);
+    for (const key of keys) {
+      const normalized = key.replace(/[\s_]+/g, '').toLowerCase();
+      const match = entries.find(
+        ([candidate]) =>
+          candidate.replace(/[\s_]+/g, '').toLowerCase() === normalized,
+      );
+      if (match) return match[1];
+    }
+    return undefined;
+  }
+
+  private sanitizeImportText(value: unknown): string {
+    return String(value ?? '')
+      .replace(/\u00a0/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private parseImportAmount(value: unknown): number | null {
+    if (value == null || value === '') return null;
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? value : null;
+    }
+    const normalized = String(value)
+      .replace(/,/g, '')
+      .replace(/[^\d.\-]/g, '')
+      .trim();
+    if (!normalized || normalized === '-' || normalized === '.') return null;
+    const amount = Number(normalized);
+    return Number.isFinite(amount) ? amount : null;
+  }
+
+  private async processCustomerOpeningBalanceImportJob(
+    tenantDb: DataSource,
+    jobId: string,
+    rows: CustomerOpeningBalanceImportRow[],
+    businessId: string,
+    actorUserId: string,
+    tenantCode: string,
+    transactionDate?: Date,
+  ) {
+    this.tenantJobService.startJob(jobId);
+    const partyRepo = tenantDb.getRepository(Party);
+    const coaRepo = tenantDb.getRepository(ChartOfAccount);
+    const txRepo = tenantDb.getRepository(Transaction);
+
+    for (const row of rows) {
+      try {
+        if (!Number.isFinite(row.amount)) {
+          throw new BadRequestException('Invalid closing/opening balance amount');
+        }
+        if (this.isEffectivelyZero(row.amount)) {
+          this.tenantJobService.appendLog(jobId, {
+            row: row.row,
+            name: row.name,
+            status: 'success',
+            metadata: { skipped: true, reason: 'zero_amount' },
+          });
+          continue;
+        }
+
+        const parties = await partyRepo.find({
+          where: [
+            {
+              businessId,
+              name: row.name,
+              type: PartyType.CUSTOMER,
+              deletedAt: IsNull(),
+            },
+            {
+              businessId,
+              name: row.name,
+              type: PartyType.BOTH,
+              deletedAt: IsNull(),
+            },
+          ],
+        });
+        if (parties.length > 1) {
+          throw new BadRequestException(
+            `Multiple customers found with exact name "${row.name}"`,
+          );
+        }
+
+        let party = parties[0] ?? null;
+        let account: ChartOfAccount | null = null;
+
+        if (party?.receivableAccountId) {
+          account = await coaRepo.findOne({
+            where: {
+              id: party.receivableAccountId,
+              businessId,
+              deletedAt: IsNull(),
+            },
+          });
+        }
+
+        if (!account) {
+          const exactAccounts = await coaRepo.find({
+            where: [
+              {
+                businessId,
+                name: row.name,
+                isPostable: true,
+                deletedAt: IsNull(),
+              },
+              {
+                businessId,
+                name: `${row.name} - Receivable`,
+                isPostable: true,
+                deletedAt: IsNull(),
+              },
+            ],
+          });
+          const receivablePreferred =
+            exactAccounts.find(
+              (item) => item.accountKind === ChartOfAccountKind.PARTY_RECEIVABLE,
+            ) || exactAccounts[0];
+          account = receivablePreferred ?? null;
+
+          if (account?.partyId && !party) {
+            party = await partyRepo.findOne({
+              where: {
+                id: account.partyId,
+                businessId,
+                deletedAt: IsNull(),
+              },
+            });
+          }
+        }
+
+        if (!account) {
+          throw new NotFoundException(
+            `No customer/COA found with exact name "${row.name}"`,
+          );
+        }
+        if (!account.isPostable) {
+          throw new BadRequestException(
+            `COA "${account.name}" is not postable`,
+          );
+        }
+
+        const existingCount = await txRepo.count({
+          where: {
+            businessId,
+            chartOfAccountId: account.id,
+          },
+        });
+        if (existingCount > 0) {
+          throw new BadRequestException(
+            `Opening balance skipped — "${account.name}" already has ledger entries`,
+          );
+        }
+
+        const amount = this.roundAmount(row.amount);
+
+        await tenantDb.transaction(async (manager) => {
+          if (party) {
+            if (!party.receivableAccountId) {
+              party.receivableAccountId = account!.id;
+            }
+            party.receivableOpeningBalance = amount;
+            await manager.getRepository(Party).save(party);
+            await this.postPartyOpeningBalances(manager, {
+              businessId,
+              party: {
+                ...party,
+                receivableAccountId: account!.id,
+              } as Party,
+              receivableOpeningBalance: amount,
+              transactionDate,
+            });
+            return;
+          }
+
+          await this.postBusinessAccountOpeningBalance(manager, {
+            businessId,
+            account: account!,
+            openingBalance: amount,
+            transactionDate,
+          });
+        });
+
+        this.tenantJobService.appendLog(jobId, {
+          row: row.row,
+          name: row.name,
+          status: 'success',
+          metadata: {
+            chartOfAccountId: account.id,
+            chartOfAccountCode: account.code,
+            chartOfAccountName: account.name,
+            partyId: party?.id ?? null,
+            amount,
+          },
+        });
+      } catch (error) {
+        this.tenantJobService.appendLog(jobId, {
+          row: row.row,
+          name: row.name,
+          status: 'error',
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    this.tenantJobService.completeJob(jobId);
+    const completedJob = this.tenantJobService.getJobById(
+      jobId,
+      tenantCode,
+      actorUserId,
+    );
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId,
+      action: 'TENANT_JOB_COMPLETED',
+      description: `Customer opening balance import completed (${completedJob.inserted} ok, ${completedJob.failed} failed)`,
+      metadata: {
+        jobId,
+        inserted: completedJob.inserted,
+        failed: completedJob.failed,
+        totalRows: completedJob.totalRows,
+      },
+    });
   }
 
   async listTransactions(
