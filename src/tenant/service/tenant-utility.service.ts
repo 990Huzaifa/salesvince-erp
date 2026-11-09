@@ -1,7 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { DataSource, In, IsNull } from 'typeorm';
 import { Role } from 'src/tenant-db/entities/role.entity';
-import { Flavour, Product, ProductBrand, ProductCategory, ProductSubCategory, Uom } from 'src/tenant-db/entities/product.entity';
+import {
+  Flavour,
+  Product,
+  ProductBrand,
+  ProductCategory,
+  ProductPricing,
+  ProductPricingType,
+  ProductSubCategory,
+  Uom,
+} from 'src/tenant-db/entities/product.entity';
 import { Permission } from 'src/tenant-db/entities/permission.entity';
 import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import { ChartOfAccount, ChartOfAccountKind } from 'src/tenant-db/entities/chart-of-account.entity';
@@ -218,6 +227,41 @@ export class TenantUtilityService {
     return { result: productBrands };
   }
 
+  private mapProductPricingRow(pricing: ProductPricing) {
+    const purchaseUnitPrice = Number(pricing.purchaseUnitPrice);
+    const saleUnitMarginAmount = Number(pricing.saleUnitMarginAmount ?? 0);
+    const saleUnitMarginPercentage = Number(
+      pricing.saleUnitMarginPercentage ?? 0,
+    );
+    const purchasePercentage = Number(pricing.purchasePercentage ?? 0);
+    const salePercentage = Number(pricing.salePercentage ?? 0);
+    const pricingType = pricing.pricingType ?? ProductPricingType.BY_AMOUNT;
+    const saleUnitPrice =
+      pricingType === ProductPricingType.BY_MARGIN
+        ? Math.round(purchaseUnitPrice * (1 + salePercentage / 100) * 100) / 100
+        : Math.round((purchaseUnitPrice + saleUnitMarginAmount) * 100) / 100;
+
+    return {
+      id: pricing.id,
+      uomId: pricing.uomId,
+      uom: pricing.uom
+        ? {
+            id: pricing.uom.id,
+            name: pricing.uom.name,
+            isBase: pricing.uom.isBase,
+          }
+        : null,
+      pricingType,
+      purchaseUnitPrice,
+      saleUnitMarginAmount,
+      saleUnitMarginPercentage,
+      purchasePercentage,
+      salePercentage,
+      quantity: Number(pricing.quantity),
+      saleUnitPrice,
+    };
+  }
+
   async getProductList(tenantDb: DataSource, businessId: string) {
     const productList = await tenantDb.getRepository(Product).find({
       select: {
@@ -235,7 +279,17 @@ export class TenantUtilityService {
       where: { businessId: businessId },
     });
 
-    return { result: productList };
+    return {
+      result: productList.map((product) => ({
+        id: product.id,
+        name: product.name,
+        skuCode: product.skuCode,
+        flavours: product.flavours,
+        pricing: (product.pricing ?? []).map((row) =>
+          this.mapProductPricingRow(row),
+        ),
+      })),
+    };
   }
 
   async getStockProducts(
@@ -326,12 +380,39 @@ export class TenantUtilityService {
       });
     }
 
+    const aggregatedRows = [...aggregated.values()];
+    const productIds = [...new Set(aggregatedRows.map((row) => row.productId))];
+    const productPricings =
+      productIds.length > 0
+        ? await tenantDb.getRepository(ProductPricing).find({
+            where: { productId: In(productIds) },
+            relations: { uom: true },
+          })
+        : [];
+
+    type MappedPricing = ReturnType<TenantUtilityService['mapProductPricingRow']>;
+    const pricingByProductUom = new Map<string, MappedPricing>();
+    const pricingsByProduct = new Map<string, MappedPricing[]>();
+    for (const pricing of productPricings) {
+      const mapped = this.mapProductPricingRow(pricing);
+      pricingByProductUom.set(
+        this.productUomKey(pricing.productId, pricing.uomId),
+        mapped,
+      );
+      const list = pricingsByProduct.get(pricing.productId) ?? [];
+      list.push(mapped);
+      pricingsByProduct.set(pricing.productId, list);
+    }
+
     return {
-      result: [...aggregated.values()].map((row) => {
+      result: aggregatedRows.map((row) => {
         const productBatches =
           batchesByProductUom.get(this.productUomKey(row.productId, row.uomId)) ??
           [];
-        const pricing = selectStockPricing(row.batchPickStrategy, productBatches);
+        const batchPricing = selectStockPricing(
+          row.batchPickStrategy,
+          productBatches,
+        );
 
         return {
           id: row.productId,
@@ -342,9 +423,14 @@ export class TenantUtilityService {
           uom: row.uom,
           quantityAvailable: row.quantityAvailable,
           quantityOnHand: row.quantityOnHand,
-          purchaseUnitPrice: pricing.purchaseUnitPrice,
-          saleUnitPrice: pricing.saleUnitPrice,
-          selectedBatch: pricing.selectedBatch,
+          purchaseUnitPrice: batchPricing.purchaseUnitPrice,
+          saleUnitPrice: batchPricing.saleUnitPrice,
+          selectedBatch: batchPricing.selectedBatch,
+          pricing:
+            pricingByProductUom.get(
+              this.productUomKey(row.productId, row.uomId),
+            ) ?? null,
+          pricings: pricingsByProduct.get(row.productId) ?? [],
         };
       }),
     };
