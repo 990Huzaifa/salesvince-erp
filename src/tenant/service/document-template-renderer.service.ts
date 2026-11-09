@@ -41,7 +41,12 @@ export class DocumentTemplateRendererService {
       where: { businessId },
       select: ['defaultDocumentTemplateId'],
     });
-    const templateId = settings?.defaultDocumentTemplateId;
+    let templateId = settings?.defaultDocumentTemplateId;
+    if (!templateId) {
+      const packs = await this.masterTenantDataService.getDocumentTemplatesByTenantId(tenantId);
+      const preferredPack = packs.find((pack) => pack.isDefault) || packs[0];
+      templateId = preferredPack?.id;
+    }
     if (!templateId) {
       throw new NotFoundException('No document template is selected for this business');
     }
