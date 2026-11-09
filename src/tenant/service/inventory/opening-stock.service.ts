@@ -14,6 +14,8 @@ import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import {
   Product,
   ProductFlavour,
+  ProductPricing,
+  ProductPricingType,
   Uom,
 } from 'src/tenant-db/entities/product.entity';
 import { ReferenceType } from 'src/tenant-db/entities/stock.entity';
@@ -26,6 +28,36 @@ import { NotificationService } from '../notification.service';
 import { TenantJob, TenantJobService } from '../tenant-job.service';
 
 const OPENING_NUMBER_PREFIX = 'OS';
+
+const WIDE_IMPORT_RESERVED_HEADERS = new Set([
+  'name',
+  'productname',
+  'product',
+  'sku',
+  'skucode',
+  'productsku',
+  'barcode',
+  'productbarcode',
+  'productid',
+  'uom',
+  'uomname',
+  'uomid',
+  'measurementunit',
+  'quantity',
+  'qty',
+  'purchaseunitprice',
+  'purchaseprice',
+  'cost',
+  'saleunitprice',
+  'saleprice',
+  'expirydate',
+  'expiry',
+  'notes',
+  'openingdate',
+  'date',
+  'warehousecode',
+  'warehouse',
+]);
 
 type ResolvedOpeningLine = {
   productId: string;
@@ -42,12 +74,13 @@ type OpeningImportRow = {
   warehouseCode: string;
   productBarcode: string | null;
   productId: string | null;
+  productSku: string | null;
   productName: string | null;
   uomName: string | null;
   uomId: string | null;
   quantity: number;
-  purchaseUnitPrice: number;
-  saleUnitPrice: number;
+  purchaseUnitPrice: number | null;
+  saleUnitPrice: number | null;
   expiryDate: string | null;
   notes: string | null;
   openingDate: string | null;
@@ -986,6 +1019,111 @@ export class OpeningStockService {
     return undefined;
   }
 
+  private isWideSkuWarehouseImport(
+    rawRows: Record<string, unknown>[],
+  ): boolean {
+    if (!rawRows.length) {
+      return false;
+    }
+
+    const headers = Object.keys(rawRows[0]).map((key) =>
+      this.normalizeImportHeaderKey(key),
+    );
+    const hasSku = headers.some((header) =>
+      ['sku', 'skucode', 'productsku'].includes(header),
+    );
+    const hasWarehouseCodeCol = headers.some((header) =>
+      ['warehousecode', 'warehouse'].includes(header),
+    );
+    const hasQuantityCol = headers.some((header) =>
+      ['quantity', 'qty'].includes(header),
+    );
+    const warehouseCols = headers.filter(
+      (header) => header && !WIDE_IMPORT_RESERVED_HEADERS.has(header),
+    );
+
+    return hasSku && !hasWarehouseCodeCol && !hasQuantityCol && warehouseCols.length > 0;
+  }
+
+  private parseWideSkuWarehouseRows(
+    rawRows: Record<string, unknown>[],
+  ): OpeningImportRow[] {
+    if (!rawRows.length) {
+      return [];
+    }
+
+    const headerEntries = Object.keys(rawRows[0]).map((original) => ({
+      original,
+      normalized: this.normalizeImportHeaderKey(original),
+    }));
+    const warehouseHeaders = headerEntries.filter(
+      (entry) =>
+        entry.normalized &&
+        !WIDE_IMPORT_RESERVED_HEADERS.has(entry.normalized),
+    );
+
+    const rows: OpeningImportRow[] = [];
+
+    rawRows.forEach((row, index) => {
+      const productSku = this.sanitizeImportText(
+        this.getImportRowValue(row, 'sku', 'skuCode', 'productSku'),
+      );
+      const productName = this.sanitizeImportText(
+        this.getImportRowValue(row, 'productName', 'product', 'name'),
+      );
+      const productBarcode = this.sanitizeImportText(
+        this.getImportRowValue(row, 'productBarcode', 'barcode'),
+      );
+      const productId = this.sanitizeImportText(
+        this.getImportRowValue(row, 'productId'),
+      );
+      const notes =
+        this.sanitizeImportText(this.getImportRowValue(row, 'notes')) || null;
+      const openingDate =
+        this.sanitizeImportText(
+          this.getImportRowValue(row, 'openingDate', 'date'),
+        ) || null;
+      const expiryDate =
+        this.sanitizeImportText(
+          this.getImportRowValue(row, 'expiryDate', 'expiry'),
+        ) || null;
+
+      if (
+        !productSku ||
+        productSku.toLowerCase() === 'sku' ||
+        productSku.toLowerCase() === 'skucode'
+      ) {
+        return;
+      }
+
+      for (const warehouseHeader of warehouseHeaders) {
+        const quantity = this.parseImportNumber(row[warehouseHeader.original]);
+        if (quantity === null || quantity <= 0) {
+          continue;
+        }
+
+        rows.push({
+          row: index + 2,
+          warehouseCode: warehouseHeader.original.trim(),
+          productBarcode: productBarcode || null,
+          productId: productId || null,
+          productSku,
+          productName: productName || null,
+          uomName: null,
+          uomId: null,
+          quantity: this.roundQuantity(quantity),
+          purchaseUnitPrice: null,
+          saleUnitPrice: null,
+          expiryDate,
+          notes,
+          openingDate,
+        });
+      }
+    });
+
+    return rows;
+  }
+
   private parseOpeningRowsFromFile(file: Express.Multer.File): OpeningImportRow[] {
     const extension = file.originalname.split('.').pop()?.toLowerCase();
     if (!extension || !['csv', 'xls', 'xlsx'].includes(extension)) {
@@ -1004,6 +1142,10 @@ export class OpeningStockService {
       raw: false,
     });
 
+    if (this.isWideSkuWarehouseImport(rawRows)) {
+      return this.parseWideSkuWarehouseRows(rawRows);
+    }
+
     const rows: OpeningImportRow[] = [];
 
     rawRows.forEach((row, index) => {
@@ -1015,6 +1157,9 @@ export class OpeningStockService {
       );
       const productId = this.sanitizeImportText(
         this.getImportRowValue(row, 'productId'),
+      );
+      const productSku = this.sanitizeImportText(
+        this.getImportRowValue(row, 'sku', 'skuCode', 'productSku'),
       );
       const productName = this.sanitizeImportText(
         this.getImportRowValue(row, 'productName', 'product', 'name'),
@@ -1042,12 +1187,12 @@ export class OpeningStockService {
         !warehouseCode ||
         warehouseCode.toLowerCase() === 'warehousecode' ||
         quantity === null ||
-        purchaseUnitPrice === null
+        quantity <= 0
       ) {
         return;
       }
 
-      if (saleUnitPrice === null) {
+      if (purchaseUnitPrice !== null && saleUnitPrice === null) {
         saleUnitPrice = purchaseUnitPrice;
       }
 
@@ -1056,12 +1201,15 @@ export class OpeningStockService {
         warehouseCode,
         productBarcode: productBarcode || null,
         productId: productId || null,
+        productSku: productSku || null,
         productName: productName || null,
         uomName: uomName || null,
         uomId: uomId || null,
         quantity: this.roundQuantity(quantity),
-        purchaseUnitPrice: this.roundAmount(purchaseUnitPrice),
-        saleUnitPrice: this.roundAmount(saleUnitPrice),
+        purchaseUnitPrice:
+          purchaseUnitPrice === null ? null : this.roundAmount(purchaseUnitPrice),
+        saleUnitPrice:
+          saleUnitPrice === null ? null : this.roundAmount(saleUnitPrice),
         expiryDate:
           this.sanitizeImportText(
             this.getImportRowValue(row, 'expiryDate', 'expiry'),
@@ -1085,6 +1233,24 @@ export class OpeningStockService {
   ): Promise<Product> {
     if (row.productId) {
       return this.assertProductForBusiness(manager, businessId, row.productId);
+    }
+
+    if (row.productSku) {
+      const bySku = await manager.getRepository(Product).findOne({
+        where: {
+          businessId,
+          skuCode: row.productSku,
+          isDelete: false,
+        },
+      });
+      if (bySku) {
+        if (!bySku.isActive) {
+          throw new BadRequestException(
+            `Product SKU ${row.productSku} is inactive`,
+          );
+        }
+        return bySku;
+      }
     }
 
     if (row.productBarcode) {
@@ -1124,32 +1290,138 @@ export class OpeningStockService {
     }
 
     throw new NotFoundException(
-      'Product not found (need productId, productBarcode, or productName)',
+      `Product not found (need productId, SKU, productBarcode, or productName)${
+        row.productSku ? `: ${row.productSku}` : ''
+      }`,
     );
   }
 
-  private async resolveImportUom(
+  private async resolveImportPcsPricing(
+    manager: EntityManager,
+    productId: string,
+  ): Promise<ProductPricing> {
+    const pricings = await manager.getRepository(ProductPricing).find({
+      where: { productId },
+      relations: { uom: true },
+    });
+
+    if (!pricings.length) {
+      throw new NotFoundException(
+        `No product pricing found for product ${productId}`,
+      );
+    }
+
+    const pcsPricing =
+      pricings.find((pricing) => pricing.uom?.name?.toLowerCase() === 'pcs') ??
+      pricings.find((pricing) => pricing.uom?.isBase) ??
+      pricings[0];
+
+    if (!pcsPricing?.uomId) {
+      throw new NotFoundException(
+        `PCS/base UOM pricing not found for product ${productId}`,
+      );
+    }
+
+    return pcsPricing;
+  }
+
+  /**
+   * BY_AMOUNT: sale = purchase + saleUnitMarginAmount
+   * BY_MARGIN: purchase stays purchaseUnitPrice;
+   *            sale = purchase * (1 + salePercentage/100)
+   *            (purchasePercentage is purchase-side metadata, not used for stock cost)
+   */
+  private resolvePricesFromPricing(pricing: ProductPricing): {
+    purchaseUnitPrice: number;
+    saleUnitPrice: number;
+  } {
+    const purchaseUnitPrice = this.roundAmount(Number(pricing.purchaseUnitPrice));
+    const pricingType = pricing.pricingType ?? ProductPricingType.BY_AMOUNT;
+
+    if (pricingType === ProductPricingType.BY_MARGIN) {
+      const salePercentage = Number(pricing.salePercentage ?? 0);
+      return {
+        purchaseUnitPrice,
+        saleUnitPrice: this.roundAmount(
+          purchaseUnitPrice * (1 + salePercentage / 100),
+        ),
+      };
+    }
+
+    return {
+      purchaseUnitPrice,
+      saleUnitPrice: this.roundAmount(
+        purchaseUnitPrice + Number(pricing.saleUnitMarginAmount ?? 0),
+      ),
+    };
+  }
+
+  private async resolveImportUomAndPrices(
     manager: EntityManager,
     businessId: string,
+    product: Product,
     row: OpeningImportRow,
-  ): Promise<Uom> {
-    if (row.uomId) {
-      return this.assertUomForBusiness(manager, businessId, row.uomId);
-    }
-
-    if (row.uomName) {
-      const uom = await manager
-        .getRepository(Uom)
-        .createQueryBuilder('uom')
-        .where('uom.businessId = :businessId', { businessId })
-        .andWhere('LOWER(uom.name) = LOWER(:name)', { name: row.uomName })
-        .getOne();
-      if (uom) {
-        return uom;
+  ): Promise<{
+    uom: Uom;
+    purchaseUnitPrice: number;
+    saleUnitPrice: number;
+  }> {
+    if (row.uomId || row.uomName) {
+      let uom: Uom | null = null;
+      if (row.uomId) {
+        uom = await this.assertUomForBusiness(manager, businessId, row.uomId);
+      } else if (row.uomName) {
+        uom =
+          (await manager
+            .getRepository(Uom)
+            .createQueryBuilder('uom')
+            .where('uom.businessId = :businessId', { businessId })
+            .andWhere('LOWER(uom.name) = LOWER(:name)', { name: row.uomName })
+            .getOne()) ?? null;
       }
+
+      if (!uom) {
+        throw new NotFoundException('UOM not found (need uomId or uomName)');
+      }
+
+      if (row.purchaseUnitPrice !== null && row.saleUnitPrice !== null) {
+        return {
+          uom,
+          purchaseUnitPrice: row.purchaseUnitPrice,
+          saleUnitPrice: row.saleUnitPrice,
+        };
+      }
+
+      const pricing = await manager.getRepository(ProductPricing).findOne({
+        where: { productId: product.id, uomId: uom.id },
+      });
+      if (!pricing) {
+        throw new NotFoundException(
+          `Pricing not found for product ${product.skuCode || product.id} / UOM ${uom.name}`,
+        );
+      }
+
+      const fromPricing = this.resolvePricesFromPricing(pricing);
+      return {
+        uom,
+        purchaseUnitPrice: row.purchaseUnitPrice ?? fromPricing.purchaseUnitPrice,
+        saleUnitPrice: row.saleUnitPrice ?? fromPricing.saleUnitPrice,
+      };
     }
 
-    throw new NotFoundException('UOM not found (need uomId or uomName)');
+    const pricing = await this.resolveImportPcsPricing(manager, product.id);
+    const uom = await this.assertUomForBusiness(
+      manager,
+      businessId,
+      pricing.uomId,
+    );
+    const fromPricing = this.resolvePricesFromPricing(pricing);
+
+    return {
+      uom,
+      purchaseUnitPrice: row.purchaseUnitPrice ?? fromPricing.purchaseUnitPrice,
+      saleUnitPrice: row.saleUnitPrice ?? fromPricing.saleUnitPrice,
+    };
   }
 
   private async processImportJob(
@@ -1196,11 +1468,13 @@ export class OpeningStockService {
               user.businessId,
               row,
             );
-            const uom = await this.resolveImportUom(
-              manager,
-              user.businessId,
-              row,
-            );
+            const { uom, purchaseUnitPrice, saleUnitPrice } =
+              await this.resolveImportUomAndPrices(
+                manager,
+                user.businessId,
+                product,
+                row,
+              );
 
             if (row.quantity <= 0) {
               throw new BadRequestException(
@@ -1225,8 +1499,8 @@ export class OpeningStockService {
               productFlavourId: null,
               uomId: uom.id,
               quantity: row.quantity,
-              purchaseUnitPrice: row.purchaseUnitPrice,
-              saleUnitPrice: row.saleUnitPrice,
+              purchaseUnitPrice,
+              saleUnitPrice,
               expiryDate: row.expiryDate ? new Date(row.expiryDate) : null,
             });
           }
@@ -1263,7 +1537,7 @@ export class OpeningStockService {
         for (const row of groupRows) {
           this.tenantJobService.appendLog(jobId, {
             row: row.row,
-            name: `${row.warehouseCode}:${row.productBarcode || row.productName || row.productId}`,
+            name: `${row.warehouseCode}:${row.productSku || row.productBarcode || row.productName || row.productId}`,
             status: 'success',
             metadata: {
               openingStockId: opening.id,
@@ -1277,7 +1551,7 @@ export class OpeningStockService {
         for (const row of groupRows) {
           this.tenantJobService.appendLog(jobId, {
             row: row.row,
-            name: `${row.warehouseCode}:${row.productBarcode || row.productName || row.productId}`,
+            name: `${row.warehouseCode}:${row.productSku || row.productBarcode || row.productName || row.productId}`,
             status: 'error',
             error: message,
           });
@@ -1327,7 +1601,7 @@ export class OpeningStockService {
     const rows = this.parseOpeningRowsFromFile(file);
     if (!rows.length) {
       throw new BadRequestException(
-        'No opening stock rows found. Required columns: warehouseCode, quantity, purchaseUnitPrice, and productId or productBarcode or productName, plus uomId or uomName',
+        'No opening stock rows found. Use either (1) Name,SKU,WH-xxxx columns with qty per warehouse, or (2) warehouseCode, quantity, productId/SKU/barcode/name, and optional uom/prices (PCS pricing used when omitted)',
       );
     }
 
