@@ -3,6 +3,7 @@
   Controller,
   Delete,
   Get,
+  MethodNotAllowedException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -80,6 +81,13 @@ export class OpeningStockController {
       dto,
       user,
       tenantCode,
+    );
+  }
+
+  @Get('import')
+  importOpeningStockMethodNotAllowed() {
+    throw new MethodNotAllowedException(
+      'Use POST /tenant/opening-stocks/import with multipart form-data field "file" (CSV/XLS/XLSX).',
     );
   }
 
