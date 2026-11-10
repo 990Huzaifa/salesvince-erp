@@ -238,17 +238,14 @@ export class PartyService {
       .getRepository(Party)
       .createQueryBuilder('p')
       .leftJoinAndSelect('p.receivableAccount', 'ra')
-      .leftJoinAndSelect('p.payableAccount', 'pa');
-
-      if(options.type === PartyType.CUSTOMER) {
-        qb.where('p.businessId = :businessId', { businessId: scopedBusinessId });
-      }
-      qb.andWhere('p.deletedAt IS NULL')
+      .leftJoinAndSelect('p.payableAccount', 'pa')
+      .where('p.businessId = :businessId', { businessId: scopedBusinessId })
+      .andWhere('p.deletedAt IS NULL')
       .orderBy('p.name', 'ASC')
       .skip(skip)
       .take(limit);
 
-    if (options.search?.trim()) { // search by name, code, email, phone, whatsAppNumber, alternatePhone, ntnNumber, strnNumber, cnic, taxNumber, address, countryName, stateName, cityName
+    if (options.search?.trim()) {
       qb.andWhere(
         '(p.name ILIKE :search OR p.code ILIKE :search OR p.email ILIKE :search)',
         { search: `%${options.search.trim()}%` },
@@ -260,7 +257,7 @@ export class PartyService {
     }
 
     if (options.type) {
-      qb.andWhere('p.type IN (:...types)', { types: [options.type,'BOTH'] });
+      qb.andWhere('p.type IN (:...types)', { types: [options.type, 'BOTH'] });
     }
 
     const [parties, total] = await qb.getManyAndCount();
