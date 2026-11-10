@@ -460,6 +460,8 @@ export class SaleInvoiceService {
       page: number;
       limit: number;
       search?: string;
+      customerId?: string;
+      cityId?: string;
       deliveryNoteId?: string;
       saleOrderId?: string;
       startDate?: string;
@@ -490,6 +492,16 @@ export class SaleInvoiceService {
       })
       .andWhere('invoice.deletedAt IS NULL');
 
+    if (options.customerId) {
+      qb.andWhere('invoice.customerId = :customerId', {
+        customerId: options.customerId,
+      });
+    }
+    if (options.cityId) {
+      qb.andWhere('customer.cityId = :cityId', {
+        cityId: options.cityId,
+      });
+    }
     if (options.deliveryNoteId) {
       qb.andWhere('invoice.deliveryNoteId = :deliveryNoteId', {
         deliveryNoteId: options.deliveryNoteId,

@@ -1403,6 +1403,7 @@ export class SaleOrderService {
       limit: number;
       search?: string;
       customerId?: string;
+      cityId?: string;
       orderStatus?: OrderStatus;
       startDate?: string;
       endDate?: string;
@@ -1433,6 +1434,12 @@ export class SaleOrderService {
     if (options.customerId) {
       qb.andWhere('so.customerId = :customerId', {
         customerId: options.customerId,
+      });
+    }
+
+    if (options.cityId) {
+      qb.andWhere('customer.cityId = :cityId', {
+        cityId: options.cityId,
       });
     }
 

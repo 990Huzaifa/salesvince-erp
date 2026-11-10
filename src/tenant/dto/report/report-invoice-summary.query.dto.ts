@@ -9,4 +9,8 @@ export class ReportInvoiceSummaryQueryDto extends ReportDateRangeQueryDto {
   @IsOptional()
   @IsUUID()
   cityId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  brandId?: string;
 }

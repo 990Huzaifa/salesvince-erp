@@ -15,8 +15,14 @@ import {
   getAccountBalanceNature,
 } from 'src/tenant-db/helpers/transaction-balance.helper';
 import { Employee } from 'src/tenant-db/entities/hr/employee.entity';
-import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
-import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity';
+import {
+  SaleInvoice,
+  SaleInvoiceItem,
+} from 'src/tenant-db/entities/sale-invoice.entity';
+import {
+  PurchaseInvoice,
+  PurchaseInvoiceItem,
+} from 'src/tenant-db/entities/purchase-invoice.entity';
 import { ActivityLogService } from './activity-log.service';
 import { MasterGeoHelperService } from './master-geo-helper.service';
 import { paginateItems } from './report/report-query.helper';
@@ -56,6 +62,7 @@ type InvoiceSummaryReportOptions = {
   endDate?: string;
   partyId?: string;
   cityId?: string;
+  brandId?: string;
 } & PaginationOptions;
 
 type InvoiceSummaryTotals = {
@@ -83,7 +90,20 @@ type InvoiceSummaryCityRow = InvoiceSummaryAggregateRow & {
   cityId: string | null;
 };
 
+type InvoiceSummaryBrandRow = InvoiceSummaryAggregateRow & {
+  brandId: string | null;
+  brandName: string | null;
+};
+
 type InvoiceSummaryKind = 'SALE' | 'PURCHASE';
+
+type InvoiceSummaryFilters = {
+  startDate?: Date;
+  endDate?: Date;
+  partyId?: string;
+  cityId?: string;
+  brandId?: string;
+};
 
 type CostSnapshot = {
   purchaseUnitPrice: number;
@@ -339,7 +359,8 @@ export class ReportService {
     alias: string,
     partyAlias: string,
     businessId: string,
-    filters: { startDate?: Date; endDate?: Date; partyId?: string; cityId?: string },
+    filters: InvoiceSummaryFilters,
+    kind?: InvoiceSummaryKind,
   ) {
     qb.where(`${alias}.businessId = :businessId`, { businessId }).andWhere(
       `${alias}.deletedAt IS NULL`,
@@ -365,8 +386,84 @@ export class ReportService {
         cityId: filters.cityId,
       });
     }
+    if (filters.brandId && kind) {
+      const itemTable =
+        kind === 'SALE' ? 'sale_invoice_items' : 'purchase_invoice_items';
+      const invoiceFk =
+        kind === 'SALE' ? 'saleInvoiceId' : 'purchaseInvoiceId';
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1
+          FROM ${itemTable} brand_item
+          INNER JOIN products brand_product
+            ON brand_product.id = brand_item."productId"
+          WHERE brand_item."${invoiceFk}" = ${alias}.id
+            AND brand_item."deletedAt" IS NULL
+            AND brand_product."brandId" = :brandId
+        )`,
+        { brandId: filters.brandId },
+      );
+    }
 
     return qb;
+  }
+
+  private applyInvoiceSummaryItemFilters(
+    qb: ReturnType<
+      ReturnType<DataSource['getRepository']>['createQueryBuilder']
+    >,
+    businessId: string,
+    filters: InvoiceSummaryFilters,
+  ) {
+    qb.where('invoice.businessId = :businessId', { businessId })
+      .andWhere('invoice.deletedAt IS NULL')
+      .andWhere('item.deletedAt IS NULL');
+
+    if (filters.startDate) {
+      qb.andWhere('invoice.invoiceDate >= :startDate', {
+        startDate: filters.startDate,
+      });
+    }
+    if (filters.endDate) {
+      qb.andWhere('invoice.invoiceDate <= :endDate', {
+        endDate: filters.endDate,
+      });
+    }
+    if (filters.partyId) {
+      qb.andWhere('party.id = :partyId', { partyId: filters.partyId });
+    }
+    if (filters.cityId) {
+      qb.andWhere('party.cityId = :cityId', { cityId: filters.cityId });
+    }
+    if (filters.brandId) {
+      qb.andWhere('product.brandId = :brandId', { brandId: filters.brandId });
+    }
+
+    return qb;
+  }
+
+  private createInvoiceSummaryItemQb(
+    tenantDb: DataSource,
+    kind: InvoiceSummaryKind,
+    partyRelation: string,
+  ) {
+    const ItemEntity = kind === 'SALE' ? SaleInvoiceItem : PurchaseInvoiceItem;
+    const invoiceRelation = kind === 'SALE' ? 'saleInvoice' : 'purchaseInvoice';
+
+    return tenantDb
+      .getRepository(ItemEntity)
+      .createQueryBuilder('item')
+      .innerJoin(`item.${invoiceRelation}`, 'invoice')
+      .innerJoin(`invoice.${partyRelation}`, 'party')
+      .innerJoin('item.product', 'product')
+      .leftJoin('product.brand', 'brand');
+  }
+
+  private brandDisplayName(brandId: string | null, brandName: string | null) {
+    if (!brandId) {
+      return 'Unbranded';
+    }
+    return brandName?.trim() || 'Unknown';
   }
 
   private addInvoiceSummaryAggregates(
@@ -426,6 +523,7 @@ export class ReportService {
     );
     const partyId = options.partyId?.trim() || undefined;
     const cityId = options.cityId?.trim() || undefined;
+    const brandId = options.brandId?.trim() || undefined;
     const partyRelation = kind === 'SALE' ? 'customer' : 'vendor';
     const allowedPartyTypes =
       kind === 'SALE'
@@ -441,7 +539,13 @@ export class ReportService {
       );
     }
 
-    const filters = { startDate, endDate, partyId, cityId };
+    const filters: InvoiceSummaryFilters = {
+      startDate,
+      endDate,
+      partyId,
+      cityId,
+      brandId,
+    };
     const Entity = kind === 'SALE' ? SaleInvoice : PurchaseInvoice;
 
     const baseQb = () =>
@@ -450,57 +554,141 @@ export class ReportService {
         .createQueryBuilder('invoice')
         .innerJoin(`invoice.${partyRelation}`, 'party');
 
-    const totalsRow = await this.applyInvoiceSummaryFilters(
-      this.addInvoiceSummaryAggregates(baseQb(), 'invoice'),
-      'invoice',
-      'party',
-      scopedBusinessId,
-      filters,
-    ).getRawOne<InvoiceSummaryAggregateRow>();
+    const itemBaseQb = () =>
+      this.createInvoiceSummaryItemQb(tenantDb, kind, partyRelation);
 
-    const partyRows = await this.applyInvoiceSummaryFilters(
-      baseQb()
-        .select('party.id', 'partyId')
-        .addSelect('party.code', 'partyCode')
-        .addSelect('party.name', 'partyName')
-        .addSelect('party.cityId', 'cityId')
-        .addSelect('COUNT(*)', 'invoiceCount')
-        .addSelect('COALESCE(SUM(invoice.totalAmount), 0)', 'totalAmount')
-        .addSelect('COALESCE(SUM(invoice.totalTaxAmount), 0)', 'totalTaxAmount')
+    const totalsRow = brandId
+      ? await this.applyInvoiceSummaryItemFilters(
+          itemBaseQb()
+            .select('COUNT(DISTINCT invoice.id)', 'invoiceCount')
+            .addSelect('COALESCE(SUM(item.totalAmount), 0)', 'totalAmount')
+            .addSelect('COALESCE(SUM(item.taxAmount), 0)', 'totalTaxAmount')
+            .addSelect(
+              'COALESCE(SUM(item.discountAmount), 0)',
+              'totalDiscountAmount',
+            ),
+          scopedBusinessId,
+          filters,
+        ).getRawOne<InvoiceSummaryAggregateRow>()
+      : await this.applyInvoiceSummaryFilters(
+          this.addInvoiceSummaryAggregates(baseQb(), 'invoice'),
+          'invoice',
+          'party',
+          scopedBusinessId,
+          filters,
+          kind,
+        ).getRawOne<InvoiceSummaryAggregateRow>();
+
+    const partyRows = brandId
+      ? await this.applyInvoiceSummaryItemFilters(
+          itemBaseQb()
+            .select('party.id', 'partyId')
+            .addSelect('party.code', 'partyCode')
+            .addSelect('party.name', 'partyName')
+            .addSelect('party.cityId', 'cityId')
+            .addSelect('COUNT(DISTINCT invoice.id)', 'invoiceCount')
+            .addSelect('COALESCE(SUM(item.totalAmount), 0)', 'totalAmount')
+            .addSelect('COALESCE(SUM(item.taxAmount), 0)', 'totalTaxAmount')
+            .addSelect(
+              'COALESCE(SUM(item.discountAmount), 0)',
+              'totalDiscountAmount',
+            ),
+          scopedBusinessId,
+          filters,
+        )
+          .groupBy('party.id')
+          .addGroupBy('party.code')
+          .addGroupBy('party.name')
+          .addGroupBy('party.cityId')
+          .orderBy('COALESCE(SUM(item.totalAmount), 0)', 'DESC')
+          .getRawMany<InvoiceSummaryPartyRow>()
+      : await this.applyInvoiceSummaryFilters(
+          baseQb()
+            .select('party.id', 'partyId')
+            .addSelect('party.code', 'partyCode')
+            .addSelect('party.name', 'partyName')
+            .addSelect('party.cityId', 'cityId')
+            .addSelect('COUNT(*)', 'invoiceCount')
+            .addSelect('COALESCE(SUM(invoice.totalAmount), 0)', 'totalAmount')
+            .addSelect(
+              'COALESCE(SUM(invoice.totalTaxAmount), 0)',
+              'totalTaxAmount',
+            )
+            .addSelect(
+              'COALESCE(SUM(invoice.totalDiscountAmount), 0)',
+              'totalDiscountAmount',
+            ),
+          'invoice',
+          'party',
+          scopedBusinessId,
+          filters,
+          kind,
+        )
+          .groupBy('party.id')
+          .addGroupBy('party.code')
+          .addGroupBy('party.name')
+          .addGroupBy('party.cityId')
+          .orderBy('COALESCE(SUM(invoice.totalAmount), 0)', 'DESC')
+          .getRawMany<InvoiceSummaryPartyRow>();
+
+    const cityRows = brandId
+      ? await this.applyInvoiceSummaryItemFilters(
+          itemBaseQb()
+            .select('party.cityId', 'cityId')
+            .addSelect('COUNT(DISTINCT invoice.id)', 'invoiceCount')
+            .addSelect('COALESCE(SUM(item.totalAmount), 0)', 'totalAmount')
+            .addSelect('COALESCE(SUM(item.taxAmount), 0)', 'totalTaxAmount')
+            .addSelect(
+              'COALESCE(SUM(item.discountAmount), 0)',
+              'totalDiscountAmount',
+            ),
+          scopedBusinessId,
+          filters,
+        )
+          .groupBy('party.cityId')
+          .orderBy('COALESCE(SUM(item.totalAmount), 0)', 'DESC')
+          .getRawMany<InvoiceSummaryCityRow>()
+      : await this.applyInvoiceSummaryFilters(
+          baseQb()
+            .select('party.cityId', 'cityId')
+            .addSelect('COUNT(*)', 'invoiceCount')
+            .addSelect('COALESCE(SUM(invoice.totalAmount), 0)', 'totalAmount')
+            .addSelect(
+              'COALESCE(SUM(invoice.totalTaxAmount), 0)',
+              'totalTaxAmount',
+            )
+            .addSelect(
+              'COALESCE(SUM(invoice.totalDiscountAmount), 0)',
+              'totalDiscountAmount',
+            ),
+          'invoice',
+          'party',
+          scopedBusinessId,
+          filters,
+          kind,
+        )
+          .groupBy('party.cityId')
+          .orderBy('COALESCE(SUM(invoice.totalAmount), 0)', 'DESC')
+          .getRawMany<InvoiceSummaryCityRow>();
+
+    const brandRows = await this.applyInvoiceSummaryItemFilters(
+      itemBaseQb()
+        .select('product.brandId', 'brandId')
+        .addSelect('brand.name', 'brandName')
+        .addSelect('COUNT(DISTINCT invoice.id)', 'invoiceCount')
+        .addSelect('COALESCE(SUM(item.totalAmount), 0)', 'totalAmount')
+        .addSelect('COALESCE(SUM(item.taxAmount), 0)', 'totalTaxAmount')
         .addSelect(
-          'COALESCE(SUM(invoice.totalDiscountAmount), 0)',
+          'COALESCE(SUM(item.discountAmount), 0)',
           'totalDiscountAmount',
         ),
-      'invoice',
-      'party',
       scopedBusinessId,
       filters,
     )
-      .groupBy('party.id')
-      .addGroupBy('party.code')
-      .addGroupBy('party.name')
-      .addGroupBy('party.cityId')
-      .orderBy('COALESCE(SUM(invoice.totalAmount), 0)', 'DESC')
-      .getRawMany<InvoiceSummaryPartyRow>();
-
-    const cityRows = await this.applyInvoiceSummaryFilters(
-      baseQb()
-        .select('party.cityId', 'cityId')
-        .addSelect('COUNT(*)', 'invoiceCount')
-        .addSelect('COALESCE(SUM(invoice.totalAmount), 0)', 'totalAmount')
-        .addSelect('COALESCE(SUM(invoice.totalTaxAmount), 0)', 'totalTaxAmount')
-        .addSelect(
-          'COALESCE(SUM(invoice.totalDiscountAmount), 0)',
-          'totalDiscountAmount',
-        ),
-      'invoice',
-      'party',
-      scopedBusinessId,
-      filters,
-    )
-      .groupBy('party.cityId')
-      .orderBy('COALESCE(SUM(invoice.totalAmount), 0)', 'DESC')
-      .getRawMany<InvoiceSummaryCityRow>();
+      .groupBy('product.brandId')
+      .addGroupBy('brand.name')
+      .orderBy('COALESCE(SUM(item.totalAmount), 0)', 'DESC')
+      .getRawMany<InvoiceSummaryBrandRow>();
 
     const cityNames = await this.resolveCityNameMap([
       ...partyRows.map((row) => row.cityId),
@@ -514,12 +702,14 @@ export class ReportService {
             endDate: endDate ?? undefined,
             partyId,
             cityId,
+            brandId,
           })
         : await loadApprovedPurchaseReturnLines(tenantDb, scopedBusinessId, {
             startDate: startDate ?? undefined,
             endDate: endDate ?? undefined,
             partyId,
             cityId,
+            brandId,
           });
 
     const partyWiseAll = partyRows.map((row) => ({
@@ -549,12 +739,34 @@ export class ReportService {
       ),
     }));
 
+    const brandWiseAll = brandRows.map((row) => ({
+      brandId: row.brandId,
+      brandName: this.brandDisplayName(row.brandId, row.brandName),
+      ...this.mapAggregateTotals(
+        this.subtractReturnTotalsFromAggregate(
+          row,
+          returnLines.filter(
+            (line) => (line.brandId ?? null) === (row.brandId ?? null),
+          ),
+        ),
+      ),
+    }));
+
     const totals = this.mapAggregateTotals(
       this.subtractReturnTotalsFromAggregate(totalsRow, returnLines),
     );
 
     const partyPage = this.applyListPagination(partyWiseAll, options);
     const cityPage = this.applyListPagination(cityWiseAll, options);
+    const brandPage = this.applyListPagination(brandWiseAll, options);
+
+    const scope = partyId
+      ? 'PARTY'
+      : brandId
+        ? 'BRAND'
+        : cityId
+          ? 'CITY'
+          : 'ALL';
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
@@ -566,6 +778,7 @@ export class ReportService {
         endDate: options.endDate ?? null,
         partyId: partyId ?? null,
         cityId: cityId ?? null,
+        brandId: brandId ?? null,
         totals,
       },
     });
@@ -579,13 +792,16 @@ export class ReportService {
       filters: {
         partyId: partyId ?? null,
         cityId: cityId ?? null,
-        scope: partyId ? 'PARTY' : cityId ? 'CITY' : 'ALL',
+        brandId: brandId ?? null,
+        scope,
       },
       partyWise: partyPage.items,
       cityWise: cityPage.items,
+      brandWise: brandPage.items,
       meta: {
         partyCount: partyPage.meta.total,
         cityCount: cityPage.meta.total,
+        brandCount: brandPage.meta.total,
         page: partyPage.meta.page,
         limit: partyPage.meta.limit,
       },

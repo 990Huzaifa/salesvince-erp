@@ -415,6 +415,8 @@ export class PurchaseInvoiceService {
       page: number;
       limit: number;
       search?: string;
+      vendorId?: string;
+      cityId?: string;
       grnId?: string;
       purchaseOrderId?: string;
       startDate?: string;
@@ -445,6 +447,16 @@ export class PurchaseInvoiceService {
       })
       .andWhere('invoice.deletedAt IS NULL');
 
+    if (options.vendorId) {
+      qb.andWhere('invoice.vendorId = :vendorId', {
+        vendorId: options.vendorId,
+      });
+    }
+    if (options.cityId) {
+      qb.andWhere('vendor.cityId = :cityId', {
+        cityId: options.cityId,
+      });
+    }
     if (options.grnId) {
       qb.andWhere('invoice.grnId = :grnId', { grnId: options.grnId });
     }

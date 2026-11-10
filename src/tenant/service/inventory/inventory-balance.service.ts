@@ -32,6 +32,9 @@ export class InventoryBalanceService {
     if (dto.productId) {
       qb.andWhere('balance.productId = :productId', { productId: dto.productId });
     }
+    if (dto.brandId) {
+      qb.andWhere('product.brandId = :brandId', { brandId: dto.brandId });
+    }
     if (dto.uomId) {
       qb.andWhere('balance.uomId = :uomId', { uomId: dto.uomId });
     }

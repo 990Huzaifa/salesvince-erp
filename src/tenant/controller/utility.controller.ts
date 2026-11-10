@@ -226,12 +226,14 @@ export class TenantUtilityController {
         @TenantConnection() tenantDb: DataSource,
         @Req() req: Request,
         @Query('warehouseId') warehouseId?: string,
+        @Query('brandId') brandId?: string,
     ) {
         const user = req.user as TenantRequestUser;
         return this.utilityService.getStockProducts(
             tenantDb,
             user.businessId,
             warehouseId,
+            brandId,
         );
     }
 

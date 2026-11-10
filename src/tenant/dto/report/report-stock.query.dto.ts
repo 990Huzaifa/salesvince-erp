@@ -49,6 +49,10 @@ export class ReportStockValuationQueryDto {
   productId?: string;
 
   @IsOptional()
+  @IsUUID()
+  brandId?: string;
+
+  @IsOptional()
   @Type(() => Number)
   page?: number = 1;
 

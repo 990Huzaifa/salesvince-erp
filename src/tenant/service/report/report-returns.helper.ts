@@ -14,6 +14,7 @@ export type MatchedReturnLine = {
   returnDate: Date;
   partyId: string;
   cityId: string | null;
+  brandId: string | null;
   productId: string;
   productName: string;
   skuCode: string | null;
@@ -43,6 +44,7 @@ type ReturnDateFilters = {
   endDate?: Date;
   partyId?: string;
   cityId?: string;
+  brandId?: string;
 };
 
 function matchesInvoiceItem(
@@ -112,6 +114,16 @@ function passesPartyCityFilter(
   return true;
 }
 
+function passesBrandFilter(
+  brandId: string | null | undefined,
+  filters: ReturnDateFilters,
+): boolean {
+  if (filters.brandId && (brandId ?? null) !== filters.brandId) {
+    return false;
+  }
+  return true;
+}
+
 function buildReturnDateWhere(
   filters: ReturnDateFilters,
 ): FindOptionsWhere<SaleReturn>['returnDate'] | undefined {
@@ -169,6 +181,11 @@ export async function loadApprovedSaleReturnLines(
     const orderItems = saleReturn.saleInvoice?.saleOrder?.items ?? [];
 
     for (const returnItem of saleReturn.saleReturnItems ?? []) {
+      const brandId = returnItem.product?.brandId ?? null;
+      if (!passesBrandFilter(brandId, filters)) {
+        continue;
+      }
+
       const invoiceItem = saleReturn.saleInvoice?.items?.find((item) =>
         matchesInvoiceItem(item, returnItem),
       );
@@ -188,6 +205,7 @@ export async function loadApprovedSaleReturnLines(
         returnDate: saleReturn.returnDate,
         partyId: partyId ?? '',
         cityId,
+        brandId,
         productId: returnItem.productId,
         productName: returnItem.product?.name ?? '',
         skuCode: returnItem.product?.skuCode ?? null,
@@ -259,6 +277,11 @@ export async function loadApprovedPurchaseReturnLines(
     }
 
     for (const returnItem of purchaseReturn.purchaseReturnItems ?? []) {
+      const brandId = returnItem.product?.brandId ?? null;
+      if (!passesBrandFilter(brandId, filters)) {
+        continue;
+      }
+
       const invoiceItem = purchaseReturn.purchaseInvoice?.items?.find((item) =>
         matchesInvoiceItem(item, returnItem),
       );
@@ -275,6 +298,7 @@ export async function loadApprovedPurchaseReturnLines(
         returnDate: purchaseReturn.returnDate,
         partyId: partyId ?? '',
         cityId,
+        brandId,
         productId: returnItem.productId,
         productName: returnItem.product?.name ?? '',
         skuCode: returnItem.product?.skuCode ?? null,

@@ -285,6 +285,7 @@ export class ReportStockService {
       scope?: InventoryScope;
       warehouseId?: string;
       productId?: string;
+      brandId?: string;
       search?: string;
       page?: number;
       limit?: number;
@@ -315,6 +316,9 @@ export class ReportStockService {
 
     if (options.productId) {
       qb.andWhere('batch.productId = :productId', { productId: options.productId });
+    }
+    if (options.brandId) {
+      qb.andWhere('product.brandId = :brandId', { brandId: options.brandId });
     }
     if (options.search?.trim()) {
       qb.andWhere('product.name ILIKE :search', {
@@ -348,12 +352,22 @@ export class ReportStockService {
       .addGroupBy('batch.uomId')
       .addGroupBy('uom.name');
 
-    const countRow = await tenantDb
-      .createQueryBuilder()
-      .select('COUNT(*)', 'total')
-      .from(`(${grouped.getQuery()})`, 'valuation')
-      .setParameters(grouped.getParameters())
-      .getRawOne<{ total: string }>();
+    const [countRow, aggregateRow] = await Promise.all([
+      tenantDb
+        .createQueryBuilder()
+        .select('COUNT(*)', 'total')
+        .from(`(${grouped.getQuery()})`, 'valuation')
+        .setParameters(grouped.getParameters())
+        .getRawOne<{ total: string }>(),
+      qb
+        .clone()
+        .select('COALESCE(SUM(batch.quantity), 0)', 'totalQuantity')
+        .addSelect(
+          'COALESCE(SUM(batch.quantity * batch.purchaseUnitPrice), 0)',
+          'totalStockValue',
+        )
+        .getRawOne<{ totalQuantity: string; totalStockValue: string }>(),
+    ]);
 
     const rows = await grouped
       .orderBy('warehouse.name', 'ASC')
@@ -386,28 +400,32 @@ export class ReportStockService {
       stockValue: roundAmount(Number(row.stockValue)),
     }));
 
-    const totals = data.reduce(
-      (sum, row) => {
-        sum.quantity = roundAmount(sum.quantity + row.quantity);
-        sum.stockValue = roundAmount(sum.stockValue + row.stockValue);
-        return sum;
-      },
-      { quantity: 0, stockValue: 0 },
+    const totalProducts = Number(countRow?.total ?? 0);
+    const totalQuantity = roundAmount(Number(aggregateRow?.totalQuantity ?? 0));
+    const totalStockValue = roundAmount(
+      Number(aggregateRow?.totalStockValue ?? 0),
     );
+    const totals = {
+      totalProducts,
+      totalQuantity,
+      totalStockValue,
+      quantity: totalQuantity,
+      stockValue: totalStockValue,
+    };
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
       businessId: scopedBusinessId,
       action: 'STOCK_VALUATION_REPORT_VIEWED',
       description: 'Stock valuation report viewed',
-      metadata: { count: data.length, totalStockValue: totals.stockValue },
+      metadata: { count: data.length, totalStockValue },
     });
 
     return {
       data,
       totals,
       meta: {
-        total: Number(countRow?.total ?? 0),
+        total: totalProducts,
         page,
         limit,
         scope,

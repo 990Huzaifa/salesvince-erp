@@ -22,7 +22,13 @@ import {
 } from './report-pdf.types';
 import { DocumentTemplateRendererService } from '../document-template-renderer.service';
 
-type SummaryQuery = { startDate?: string; endDate?: string; partyId?: string; cityId?: string };
+type SummaryQuery = {
+  startDate?: string;
+  endDate?: string;
+  partyId?: string;
+  cityId?: string;
+  brandId?: string;
+};
 type LedgerQuery = { startDate?: string; endDate?: string; customerId?: string; vendorId?: string };
 type FinancialReportQuery = { startDate?: string; endDate?: string; customerId?: string };
 type ReportDocumentInput = Omit<ReportPdfDocument, 'business' | 'logoDataUri' | 'preparedBy'>;
@@ -259,10 +265,13 @@ export class ReportPdfService {
     const partyLabel = sales ? 'Party' : 'Vendor';
     const partyColumns: ReportPdfColumn[] = [{ key: 'partyCode', label: `${partyLabel} Code`, width: '14%' }, { key: 'partyName', label: `${partyLabel} Name`, width: '24%' }, { key: 'cityName', label: 'City', width: '15%' }, { key: 'invoiceCount', label: 'Invoices', width: '9%', align: 'center' }, { key: 'totalAmount', label: 'Amount', width: '14%', align: 'right', format: 'amount' }, { key: 'totalTaxAmount', label: 'Tax', width: '12%', align: 'right', format: 'amount' }, { key: 'totalDiscountAmount', label: 'Discount', width: '12%', align: 'right', format: 'amount' }];
     const cityColumns: ReportPdfColumn[] = [{ key: 'cityName', label: 'City', width: '28%' }, { key: 'invoiceCount', label: 'Invoices', width: '12%', align: 'center' }, { key: 'totalAmount', label: 'Amount', width: '20%', align: 'right', format: 'amount' }, { key: 'totalTaxAmount', label: 'Tax', width: '20%', align: 'right', format: 'amount' }, { key: 'totalDiscountAmount', label: 'Discount', width: '20%', align: 'right', format: 'amount' }];
+    const brandColumns: ReportPdfColumn[] = [{ key: 'brandName', label: 'Brand', width: '28%' }, { key: 'invoiceCount', label: 'Invoices', width: '12%', align: 'center' }, { key: 'totalAmount', label: 'Amount', width: '20%', align: 'right', format: 'amount' }, { key: 'totalTaxAmount', label: 'Tax', width: '20%', align: 'right', format: 'amount' }, { key: 'totalDiscountAmount', label: 'Discount', width: '20%', align: 'right', format: 'amount' }];
     const partyRows = data.partyWise || [];
+    const brandRows = data.brandWise || [];
     const filteredParty = query.partyId ? partyRows.find((row) => row.partyId === query.partyId) : undefined;
     const filteredCity = query.cityId ? (data.cityWise || []).find((row) => row.cityId === query.cityId) : undefined;
-    return this.render(db, businessId, actorUserId, { layout: 'summary', title: sales ? 'Sales Summary' : 'Purchase Summary', filters: [{ label: 'Date Filter', value: dateFilterLabel(query.startDate, query.endDate) }, { label: 'Period', value: formatReportDateRange(data.period.startDate, data.period.endDate) }, { label: sales ? 'Customer' : 'Vendor', value: filteredParty?.partyName }, { label: 'City', value: filteredCity?.cityName }, { label: 'Scope', value: data.filters.scope || 'ALL' }], summary: [{ label: 'Invoices', value: data.totals.invoiceCount }, { label: 'Total Amount', value: money(data.totals.totalAmount) }, { label: 'Tax Amount', value: money(data.totals.totalTaxAmount) }, { label: 'Discount Amount', value: money(data.totals.totalDiscountAmount) }], sections: [{ title: `${partyLabel} Wise Summary`, columns: partyColumns, rows: asRows(partyRows), emptyMessage: `No ${partyLabel.toLowerCase()} wise summary found.` }, { title: 'City Wise Summary', columns: cityColumns, rows: asRows(data.cityWise || []), emptyMessage: 'No city wise summary found.' }], footerRight: `${partyLabel} Count: ${data.meta.partyCount} | City Count: ${data.meta.cityCount}` }, `${sales ? 'Sales' : 'Purchase'}-Summary`, tenantId, clientIp);
+    const filteredBrand = query.brandId ? brandRows.find((row) => row.brandId === query.brandId) : undefined;
+    return this.render(db, businessId, actorUserId, { layout: 'summary', title: sales ? 'Sales Summary' : 'Purchase Summary', filters: [{ label: 'Date Filter', value: dateFilterLabel(query.startDate, query.endDate) }, { label: 'Period', value: formatReportDateRange(data.period.startDate, data.period.endDate) }, { label: sales ? 'Customer' : 'Vendor', value: filteredParty?.partyName }, { label: 'City', value: filteredCity?.cityName }, { label: 'Brand', value: filteredBrand?.brandName }, { label: 'Scope', value: data.filters.scope || 'ALL' }], summary: [{ label: 'Invoices', value: data.totals.invoiceCount }, { label: 'Total Amount', value: money(data.totals.totalAmount) }, { label: 'Tax Amount', value: money(data.totals.totalTaxAmount) }, { label: 'Discount Amount', value: money(data.totals.totalDiscountAmount) }], sections: [{ title: `${partyLabel} Wise Summary`, columns: partyColumns, rows: asRows(partyRows), emptyMessage: `No ${partyLabel.toLowerCase()} wise summary found.` }, { title: 'City Wise Summary', columns: cityColumns, rows: asRows(data.cityWise || []), emptyMessage: 'No city wise summary found.' }, { title: 'Brand Wise Summary', columns: brandColumns, rows: asRows(brandRows), emptyMessage: 'No brand wise summary found.' }], footerRight: `${partyLabel} Count: ${data.meta.partyCount} | City Count: ${data.meta.cityCount} | Brand Count: ${data.meta.brandCount}` }, `${sales ? 'Sales' : 'Purchase'}-Summary`, tenantId, clientIp);
   }
 
   private async render(db: DataSource, businessId: string, actorUserId: string, input: ReportDocumentInput, filename: string, tenantId?: string, clientIp?: string, documentType = DocumentTemplateDocumentType.REPORT) {

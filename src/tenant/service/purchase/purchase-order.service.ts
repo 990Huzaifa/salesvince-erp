@@ -1306,6 +1306,7 @@ export class PurchaseOrderService {
       limit: number;
       search?: string;
       vendorId?: string;
+      cityId?: string;
       warehouseId?: string;
       orderStatus?: OrderStatus;
       startDate?: string;
@@ -1336,6 +1337,10 @@ export class PurchaseOrderService {
 
     if (options.vendorId) {
       qb.andWhere('po.vendorId = :vendorId', { vendorId: options.vendorId });
+    }
+
+    if (options.cityId) {
+      qb.andWhere('vendor.cityId = :cityId', { cityId: options.cityId });
     }
 
     if (options.warehouseId) {

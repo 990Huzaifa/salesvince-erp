@@ -296,6 +296,7 @@ export class TenantUtilityService {
     tenantDb: DataSource,
     businessId: string,
     warehouseId?: string,
+    brandId?: string,
   ) {
     const balanceQb = tenantDb
       .getRepository(StockBalance)
@@ -312,6 +313,9 @@ export class TenantUtilityService {
 
     if (warehouseId) {
       balanceQb.andWhere('balance.warehouseId = :warehouseId', { warehouseId });
+    }
+    if (brandId) {
+      balanceQb.andWhere('product.brandId = :brandId', { brandId });
     }
 
     const stockBalances = await balanceQb

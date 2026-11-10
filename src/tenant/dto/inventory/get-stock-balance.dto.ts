@@ -9,6 +9,10 @@ export class GetStockBalanceDto extends InventoryScopeDto {
   partyId?: string;
 
   @IsOptional()
+  @IsUUID()
+  brandId?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
