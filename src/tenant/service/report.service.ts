@@ -45,7 +45,7 @@ type PaginationOptions = {
 
 type ReportListOptions = PaginationOptions & {
   recordActivity?: boolean;
-  cityId?: string;
+  cityId?: string | number;
 };
 
 type ProfitReportOptions = {
@@ -921,7 +921,10 @@ export class ReportService {
     options?: ReportListOptions,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
-    const cityId = options?.cityId?.trim() || undefined;
+    const cityId =
+      options?.cityId != null && String(options.cityId).trim() !== ''
+        ? String(options.cityId).trim()
+        : undefined;
     const parties = await tenantDb.getRepository(Party).find({
       where: {
         businessId: scopedBusinessId,
