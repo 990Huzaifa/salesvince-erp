@@ -10,10 +10,6 @@ import {
   AccountTransactionReferenceType,
   Transaction,
 } from 'src/tenant-db/entities/transaction.entity';
-import {
-  computeBalanceMovement,
-  getAccountBalanceNature,
-} from 'src/tenant-db/helpers/transaction-balance.helper';
 import { Employee } from 'src/tenant-db/entities/hr/employee.entity';
 import {
   SaleInvoice,
@@ -49,6 +45,7 @@ type PaginationOptions = {
 
 type ReportListOptions = PaginationOptions & {
   recordActivity?: boolean;
+  cityId?: string;
 };
 
 type ProfitReportOptions = {
@@ -201,35 +198,30 @@ export class ReportService {
       return new Map();
     }
 
-    const accountById = new Map(
-      accounts.map((account) => [account.id, account]),
-    );
-    const openingTransactions = await tenantDb.getRepository(Transaction).find({
-      where: {
-        businessId,
-        chartOfAccountId: In(accountIds),
+    // First OPENING_BALANCE ledger row per account → its currentBalance is opening.
+    const rows = await tenantDb
+      .getRepository(Transaction)
+      .createQueryBuilder('tx')
+      .distinctOn(['tx.chartOfAccountId'])
+      .select('tx.chartOfAccountId', 'chartOfAccountId')
+      .addSelect('tx.currentBalance', 'currentBalance')
+      .where('tx.businessId = :businessId', { businessId })
+      .andWhere('tx.chartOfAccountId IN (:...accountIds)', { accountIds })
+      .andWhere('tx.referenceType = :referenceType', {
         referenceType: AccountTransactionReferenceType.OPENING_BALANCE,
-      },
-      select: ['chartOfAccountId', 'debitAmount', 'creditAmount'],
-    });
+      })
+      .orderBy('tx.chartOfAccountId', 'ASC')
+      .addOrderBy('tx.transactionDate', 'ASC')
+      .addOrderBy('tx.createdAt', 'ASC')
+      .addOrderBy('tx.id', 'ASC')
+      .getRawMany<BalanceRow>();
 
-    const balances = new Map<string, number>();
-    for (const tx of openingTransactions) {
-      const account = accountById.get(tx.chartOfAccountId);
-      if (!account) {
-        continue;
-      }
-      const nature = getAccountBalanceNature(account);
-      const movement = computeBalanceMovement(
-        nature,
-        Number(tx.debitAmount ?? 0),
-        Number(tx.creditAmount ?? 0),
-      );
-      const previous = balances.get(tx.chartOfAccountId) ?? 0;
-      balances.set(tx.chartOfAccountId, this.roundAmount(previous + movement));
-    }
-
-    return balances;
+    return new Map(
+      rows.map((row) => [
+        row.chartOfAccountId,
+        this.roundAmount(Number(row.currentBalance ?? 0)),
+      ]),
+    );
   }
 
   private mapPartyBalance(
@@ -929,11 +921,13 @@ export class ReportService {
     options?: ReportListOptions,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
+    const cityId = options?.cityId?.trim() || undefined;
     const parties = await tenantDb.getRepository(Party).find({
       where: {
         businessId: scopedBusinessId,
         type: In([PartyType.CUSTOMER, PartyType.BOTH]),
         deletedAt: IsNull(),
+        ...(cityId ? { cityId } : {}),
       },
       relations: { receivableAccount: true },
       order: { name: 'ASC' },
@@ -943,17 +937,18 @@ export class ReportService {
       .map((party) => party.receivableAccount)
       .filter((account): account is ChartOfAccount => Boolean(account));
     const accountIds = accounts.map((account) => account.id);
-    const latestBalances = await this.getLatestBalanceMap(
-      tenantDb,
-      scopedBusinessId,
-      accountIds,
-    );
+    const [latestBalances, openingBalances] = await Promise.all([
+      this.getLatestBalanceMap(tenantDb, scopedBusinessId, accountIds),
+      this.getOpeningBalanceMap(tenantDb, scopedBusinessId, accounts),
+    ]);
 
     const allData = parties.map((party) =>
       this.mapPartyBalance(
         party,
         party.receivableAccount,
-        Number(party.receivableOpeningBalance ?? 0),
+        party.receivableAccountId
+          ? openingBalances.get(party.receivableAccountId) ?? 0
+          : 0,
         party.receivableAccountId
           ? latestBalances.get(party.receivableAccountId) ?? 0
           : 0,
@@ -1080,18 +1075,21 @@ export class ReportService {
       .map((party) => party.payableAccount)
       .filter((account): account is ChartOfAccount => Boolean(account));
     const accountIds = accounts.map((account) => account.id);
-    const latestBalances = await this.getLatestBalanceMap(
-      tenantDb,
-      scopedBusinessId,
-      accountIds,
-    );
+    const [latestBalances, openingBalances] = await Promise.all([
+      this.getLatestBalanceMap(tenantDb, scopedBusinessId, accountIds),
+      this.getOpeningBalanceMap(tenantDb, scopedBusinessId, accounts),
+    ]);
 
     const allData = parties.map((party) =>
       this.mapPartyBalance(
         party,
         party.payableAccount,
-        Number(party.payableOpeningBalance ?? 0),
-        party.payableAccountId ? latestBalances.get(party.payableAccountId) ?? 0 : 0,
+        party.payableAccountId
+          ? openingBalances.get(party.payableAccountId) ?? 0
+          : 0,
+        party.payableAccountId
+          ? latestBalances.get(party.payableAccountId) ?? 0
+          : 0,
         'VENDOR',
       ),
     );

@@ -54,6 +54,7 @@ import { ReportSaleOverviewQueryDto } from '../dto/report/report-sale-overview.q
 import { ReportPrebookingQueryDto } from '../dto/report/report-prebooking.query.dto';
 import { ReportCustomerLowPaymentQueryDto } from '../dto/report/report-customer-low-payment.query.dto';
 import { ReportPaginationQueryDto } from '../dto/report/report-pagination.query.dto';
+import { ReportCustomerBalanceQueryDto } from '../dto/report/report-customer-balance.query.dto';
 import { ReportInvoiceSummaryQueryDto } from '../dto/report/report-invoice-summary.query.dto';
 import { RequirePermissions } from 'src/auth/require-permission.decorator';
 import { getClientIp, sendPdf } from 'src/common/pdf';
@@ -116,9 +117,21 @@ export class ReportController {
 
   @Get('customer-balances/pdf')
   @RequirePermissions('VIEW_CUSTOMER_BALANCE_REPORT')
-  async downloadCustomerBalancesPdf(@TenantConnection() tenantDb: DataSource, @Req() req: Request, @Res() res: Response) {
+  async downloadCustomerBalancesPdf(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query() query: ReportCustomerBalanceQueryDto,
+  ) {
     const user = req.user as TenantRequestUser;
-    const result = await this.reportPdfService.generateCustomerBalancesPdf(tenantDb, user.businessId, user.userId, user.tenantId, getClientIp(req));
+    const result = await this.reportPdfService.generateCustomerBalancesPdf(
+      tenantDb,
+      user.businessId,
+      user.userId,
+      user.tenantId,
+      getClientIp(req),
+      query.cityId,
+    );
     sendPdf(res, result);
   }
 
@@ -127,14 +140,18 @@ export class ReportController {
   getCustomerBalances(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
-    @Query() query: ReportPaginationQueryDto,
+    @Query() query: ReportCustomerBalanceQueryDto,
   ) {
     const user = req.user as TenantRequestUser;
     return this.reportService.getCustomerBalances(
       tenantDb,
       user.businessId,
       user.userId,
-      { page: query.page ?? 1, limit: query.limit ?? 20 },
+      {
+        page: query.page ?? 1,
+        limit: query.limit ?? 20,
+        cityId: query.cityId,
+      },
     );
   }
 

@@ -49,8 +49,17 @@ export class ReportPdfService {
     private readonly documentTemplateRendererService: DocumentTemplateRendererService,
   ) {}
 
-  async generateCustomerBalancesPdf(db: DataSource, businessId: string, actorUserId: string, tenantId?: string, clientIp?: string) {
-    const data = await this.reportService.getCustomerBalances(db, businessId, actorUserId);
+  async generateCustomerBalancesPdf(
+    db: DataSource,
+    businessId: string,
+    actorUserId: string,
+    tenantId?: string,
+    clientIp?: string,
+    cityId?: string,
+  ) {
+    const data = await this.reportService.getCustomerBalances(db, businessId, actorUserId, {
+      cityId,
+    });
     const rows = data.data.map((row, index) => ({ serial: index + 1, ...row }));
     const columns: ReportPdfColumn[] = [
       { key: 'serial', label: 'S No.', width: '8%', align: 'center' },
@@ -61,7 +70,10 @@ export class ReportPdfService {
     ];
     return this.render(db, businessId, actorUserId, {
       layout: 'balance', title: 'Customer Balance Report',
-      filters: [{ label: 'Report', value: 'Customer Balance' }],
+      filters: [
+        { label: 'Report', value: 'Customer Balance' },
+        ...(cityId ? [{ label: 'City', value: cityId }] : []),
+      ],
       summary: [{ label: 'Total Customers', value: data.meta.total }, { label: 'Current Receivable', value: money(data.totals.currentBalance) }],
       sections: [{ columns, rows: asRows(rows), emptyMessage: 'No customer balances found' }], minimumRows: 12,
     }, 'Customer-Balance-Report', tenantId, clientIp);
