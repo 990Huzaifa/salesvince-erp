@@ -55,7 +55,7 @@ export class ReportPdfService {
     actorUserId: string,
     tenantId?: string,
     clientIp?: string,
-    cityId?: string,
+    cityId?: number,
   ) {
     const data = await this.reportService.getCustomerBalances(db, businessId, actorUserId, {
       cityId,
