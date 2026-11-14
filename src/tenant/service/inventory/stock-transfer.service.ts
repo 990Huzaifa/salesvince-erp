@@ -15,6 +15,8 @@ import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import {
   Product,
   ProductFlavour,
+  ProductPricing,
+  ProductPricingType,
   Uom,
 } from 'src/tenant-db/entities/product.entity';
 import {
@@ -453,6 +455,92 @@ export class StockTransferService {
         lines: group.lines,
       });
     }
+  }
+
+  /**
+   * Recovery-only stock post: IN on destination warehouse only.
+   * Does not consume / OUT from source warehouse (no minus).
+   */
+  private async postStockTransferToOnly(
+    manager: EntityManager,
+    transfer: StockTransfer,
+  ): Promise<void> {
+    const items = transfer.items ?? [];
+    if (!items.length) {
+      throw new BadRequestException(
+        'Stock transfer must have at least one item to approve',
+      );
+    }
+
+    const transferDate = new Date(transfer.transferDate);
+    const prefix = `TRF-RCV-${transfer.transferNumber}`;
+
+    const lines: Array<{
+      productId: string;
+      uomId: string;
+      quantity: number;
+      purchaseUnitPrice: number;
+      saleUnitPrice: number;
+      expiryDate: Date | null;
+    }> = [];
+
+    for (const item of items) {
+      const prices = await this.resolveLinePricesForToOnly(
+        manager,
+        item.productId,
+        item.uomId,
+      );
+      lines.push({
+        productId: item.productId,
+        uomId: item.uomId,
+        quantity: item.quantity,
+        purchaseUnitPrice: prices.purchaseUnitPrice,
+        saleUnitPrice: prices.saleUnitPrice,
+        expiryDate: null,
+      });
+    }
+
+    await this.stockService.receiveStockIn(manager, {
+      businessId: transfer.businessId,
+      warehouseId: transfer.toWarehouseId,
+      vendorId: null,
+      referenceType: ReferenceType.TRANSFER,
+      batchDate: transferDate,
+      batchNumberPrefix: prefix,
+      lines,
+    });
+  }
+
+  private async resolveLinePricesForToOnly(
+    manager: EntityManager,
+    productId: string,
+    uomId: string,
+  ): Promise<{ purchaseUnitPrice: number; saleUnitPrice: number }> {
+    const pricing = await manager.getRepository(ProductPricing).findOne({
+      where: { productId, uomId },
+      order: { createdAt: 'DESC' },
+    });
+
+    if (!pricing) {
+      return { purchaseUnitPrice: 0, saleUnitPrice: 0 };
+    }
+
+    const purchaseUnitPrice = Number(pricing.purchaseUnitPrice) || 0;
+    const pricingType = pricing.pricingType ?? ProductPricingType.BY_AMOUNT;
+
+    if (pricingType === ProductPricingType.BY_MARGIN) {
+      const salePercentage = Number(pricing.salePercentage ?? 0);
+      return {
+        purchaseUnitPrice,
+        saleUnitPrice: purchaseUnitPrice * (1 + salePercentage / 100),
+      };
+    }
+
+    return {
+      purchaseUnitPrice,
+      saleUnitPrice:
+        purchaseUnitPrice + Number(pricing.saleUnitMarginAmount ?? 0),
+    };
   }
 
   async create(
@@ -949,15 +1037,22 @@ export class StockTransferService {
     tenantDb: DataSource,
     businessId: string,
     warehouseCode: string,
+    options?: { includeDeleted?: boolean },
   ): Promise<Warehouse | null> {
-    return tenantDb.getRepository(Warehouse).findOne({
-      where: {
-        businessId,
-        code: warehouseCode,
-        deletedAt: IsNull(),
-      },
-      select: ['id', 'code', 'name'],
-    });
+    const qb = tenantDb
+      .getRepository(Warehouse)
+      .createQueryBuilder('w')
+      .select(['w.id', 'w.code', 'w.name'])
+      .where('w.businessId = :businessId', { businessId })
+      .andWhere('w.code = :warehouseCode', { warehouseCode });
+
+    if (options?.includeDeleted) {
+      qb.withDeleted();
+    } else {
+      qb.andWhere('w.deletedAt IS NULL');
+    }
+
+    return qb.getOne();
   }
 
   private async findProductBySkuCode(
@@ -1163,6 +1258,7 @@ export class StockTransferService {
     tenantDb: DataSource,
     businessId: string,
     item: StockTransferJsonItemDto,
+    options?: { allowDeletedFromWarehouse?: boolean },
   ): Promise<CreateStockTransferDto> {
     const fromCode = item.fromWarehouseCode.trim();
     const toCode = item.toWarehouseCode.trim();
@@ -1171,6 +1267,7 @@ export class StockTransferService {
       tenantDb,
       businessId,
       fromCode,
+      { includeDeleted: options?.allowDeletedFromWarehouse === true },
     );
     if (!fromWarehouse) {
       throw new NotFoundException(
@@ -1334,6 +1431,217 @@ export class StockTransferService {
         skipped,
         failed,
         mode: JsonImportMode.CREATE_ONLY,
+      },
+    });
+
+    return {
+      entity: JsonExportEntity.STOCK_TRANSFERS,
+      total: dto.items.length,
+      created,
+      updated: 0,
+      skipped,
+      failed,
+      results,
+    };
+  }
+
+  /**
+   * Recovery coverup: create transfer as APPROVED and post stock IN on
+   * destination warehouse only (no OUT / minus on source).
+   */
+  async createApprovedToOnly(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    dto: CreateStockTransferDto,
+    actorUserId: string,
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+
+    if (dto.fromWarehouseId === dto.toWarehouseId) {
+      throw new BadRequestException(
+        'Source and destination warehouses must be different',
+      );
+    }
+
+    const created = await tenantDb.transaction(async (manager) => {
+      const fromWarehouse = await manager.getRepository(Warehouse).findOne({
+        where: { id: dto.fromWarehouseId, businessId: scopedBusinessId },
+        withDeleted: true,
+      });
+      if (!fromWarehouse) {
+        throw new NotFoundException(
+          `Source warehouse ${dto.fromWarehouseId} not found`,
+        );
+      }
+
+      await this.assertWarehouseForBusiness(
+        manager,
+        scopedBusinessId,
+        dto.toWarehouseId,
+        'Destination',
+      );
+
+      const resolvedItems = await this.resolveItems(
+        manager,
+        scopedBusinessId,
+        dto.fromWarehouseId,
+        dto.items,
+        false,
+      );
+
+      const transferNumber =
+        dto.transferNumber?.trim() ||
+        (await this.generateTransferNumber(manager));
+
+      const existing = await manager.getRepository(StockTransfer).findOne({
+        where: { transferNumber, deletedAt: IsNull() },
+      });
+      if (existing) {
+        throw new BadRequestException(
+          `Transfer number ${transferNumber} already exists`,
+        );
+      }
+
+      const transfer = manager.getRepository(StockTransfer).create({
+        businessId: scopedBusinessId,
+        transferNumber,
+        transferDate: new Date(dto.transferDate),
+        fromWarehouseId: dto.fromWarehouseId,
+        toWarehouseId: dto.toWarehouseId,
+        notes: dto.notes?.trim() || null,
+        createdBy: actorUserId,
+        status: StockTransferStatus.PENDING,
+      });
+
+      const saved = await manager.getRepository(StockTransfer).save(transfer);
+
+      const itemEntities = resolvedItems.map((line) =>
+        manager.getRepository(StockTransferItem).create({
+          stockTransferId: saved.id,
+          productId: line.productId,
+          productFlavourId: line.productFlavourId,
+          uomId: line.uomId,
+          quantity: line.quantity,
+        }),
+      );
+      await manager.getRepository(StockTransferItem).save(itemEntities);
+
+      const withItems = await this.findTransferForBusiness(
+        manager,
+        scopedBusinessId,
+        saved.id,
+      );
+
+      await this.postStockTransferToOnly(manager, withItems);
+      withItems.status = StockTransferStatus.APPROVED;
+      await manager.getRepository(StockTransfer).save(withItems);
+
+      return this.findTransferForBusiness(
+        manager,
+        scopedBusinessId,
+        saved.id,
+      );
+    });
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'STOCK_TRANSFER_IMPORTED_TO_ONLY',
+      description: `Stock transfer ${created.transferNumber} imported APPROVED — TO warehouse IN only (no FROM minus)`,
+      metadata: {
+        stockTransferId: created.id,
+        fromWarehouseId: created.fromWarehouseId,
+        toWarehouseId: created.toWarehouseId,
+        mode: 'to_only',
+      },
+    });
+
+    return { data: this.mapTransfer(created) };
+  }
+
+  /**
+   * Recovery JSON import: same envelope as export, creates APPROVED transfers
+   * and posts stock only to destination warehouse (no source OUT).
+   */
+  async importStockTransfersJsonToOnly(
+    tenantDb: DataSource,
+    file: Express.Multer.File,
+    user: { userId: string; businessId: string },
+  ): Promise<JsonImportResult> {
+    const scopedBusinessId = this.assertBusinessId(user.businessId);
+    const dto = this.parseStockTransferJsonImportFile(file);
+
+    const results: JsonImportResultRow[] = [];
+    let created = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const [index, item] of dto.items.entries()) {
+      const key = item.transferNumber?.trim() || `row-${index + 1}`;
+      try {
+        const transferNumber = item.transferNumber?.trim();
+        if (transferNumber) {
+          const existing = await tenantDb.getRepository(StockTransfer).findOne({
+            where: { transferNumber, deletedAt: IsNull() },
+            select: ['id', 'transferNumber'],
+          });
+          if (existing) {
+            skipped += 1;
+            results.push({
+              index: index + 1,
+              key,
+              status: 'skipped',
+              message: `Transfer number ${transferNumber} already exists`,
+              id: existing.id,
+            });
+            continue;
+          }
+        }
+
+        const createDto = await this.buildCreateDtoFromJsonItem(
+          tenantDb,
+          scopedBusinessId,
+          item,
+          { allowDeletedFromWarehouse: true },
+        );
+        const saved = await this.createApprovedToOnly(
+          tenantDb,
+          scopedBusinessId,
+          createDto,
+          user.userId,
+        );
+
+        created += 1;
+        results.push({
+          index: index + 1,
+          key,
+          status: 'created',
+          id: saved.data.id,
+          message: `Created as APPROVED (TO-only IN) (${saved.data.transferNumber})`,
+        });
+      } catch (error) {
+        failed += 1;
+        results.push({
+          index: index + 1,
+          key,
+          status: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: scopedBusinessId,
+      action: 'STOCK_TRANSFER_JSON_IMPORTED_TO_ONLY',
+      description: `Stock transfer JSON TO-only import completed (${created} created, ${skipped} skipped, ${failed} failed)`,
+      metadata: {
+        businessId: scopedBusinessId,
+        total: dto.items.length,
+        created,
+        skipped,
+        failed,
+        mode: 'to_only_approved',
       },
     });
 

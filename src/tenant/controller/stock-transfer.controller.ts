@@ -143,6 +143,30 @@ export class StockTransferController {
     );
   }
 
+  /**
+   * Recovery coverup: import + APPROVED, stock IN on TO warehouse only (no FROM minus).
+   */
+  @Post('import-json-to-only')
+  @RequirePermissions('CREATE_TRANSFER_STOCK')
+  @UseInterceptors(FileInterceptor('file', jsonImportUploadOptions))
+  importStockTransfersJsonToOnly(
+    @TenantConnection() tenantDb: DataSource,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException(
+        'JSON file is required. Use multipart form-data field "file".',
+      );
+    }
+    const user = req.user as TenantRequestUser;
+    return this.stockTransferService.importStockTransfersJsonToOnly(
+      tenantDb,
+      file,
+      { userId: user.userId, businessId: user.businessId },
+    );
+  }
+
   @Get()
   @RequirePermissions('LIST_TRANSFER_STOCK')
   list(
