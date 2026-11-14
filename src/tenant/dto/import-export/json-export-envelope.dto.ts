@@ -10,6 +10,7 @@ export enum JsonExportEntity {
   SALE_ORDERS = 'saleOrders',
   PURCHASE_RETURNS = 'purchaseReturns',
   SALE_RETURNS = 'saleReturns',
+  STOCK_TRANSFERS = 'stockTransfers',
 }
 
 export enum JsonImportMode {

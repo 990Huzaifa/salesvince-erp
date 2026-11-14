@@ -1,4 +1,5 @@
 ﻿import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -10,8 +11,11 @@
   Query,
   Req,
   Res,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request, Response } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
@@ -28,6 +32,11 @@ import { StockTransferService } from '../service/inventory/stock-transfer.servic
 import { WarehouseSlipPdfService } from '../service/warehouse-slip-pdf.service';
 import { CreateStockTransferDto } from '../dto/stock-transfer/create-stock-transfer.dto';
 import { UpdateStockTransferDto } from '../dto/stock-transfer/update-stock-transfer.dto';
+import {
+  StockTransferJsonExportBodyDto,
+  StockTransferJsonExportQueryDto,
+} from '../dto/stock-transfer/stock-transfer-json-export-import.dto';
+import { jsonImportUploadOptions } from '../config/json-import-upload.config';
 
 @Controller('tenant/stock-transfers')
 @UseGuards(
@@ -72,6 +81,65 @@ export class StockTransferController {
       user.businessId,
       { ...dto, status: StockTransferStatus.APPROVED },
       user.userId,
+    );
+  }
+
+  @Get('export-json')
+  @RequirePermissions('LIST_TRANSFER_STOCK')
+  exportStockTransfersJson(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: StockTransferJsonExportQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.stockTransferService.exportStockTransfersJson(
+      tenantDb,
+      user.businessId,
+      user.userId,
+      {
+        ids: query.ids,
+        warehouseCode: query.warehouseCode,
+      },
+    );
+  }
+
+  @Post('export-json')
+  @RequirePermissions('LIST_TRANSFER_STOCK')
+  exportStockTransfersJsonPost(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Body() body: StockTransferJsonExportBodyDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.stockTransferService.exportStockTransfersJson(
+      tenantDb,
+      user.businessId,
+      user.userId,
+      {
+        ids: body.ids,
+        warehouseCode: body.warehouseCode,
+      },
+    );
+  }
+
+  @Post('import-json')
+  @RequirePermissions('CREATE_TRANSFER_STOCK')
+  @UseInterceptors(FileInterceptor('file', jsonImportUploadOptions))
+  importStockTransfersJson(
+    @TenantConnection() tenantDb: DataSource,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
+  ) {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException(
+        'JSON file is required. Use multipart form-data field "file".',
+      );
+    }
+    const user = req.user as TenantRequestUser;
+    return this.stockTransferService.importStockTransfersJson(
+      tenantDb,
+      file,
+      { userId: user.userId, businessId: user.businessId },
     );
   }
 
@@ -206,4 +274,3 @@ export class StockTransferController {
     );
   }
 }
-

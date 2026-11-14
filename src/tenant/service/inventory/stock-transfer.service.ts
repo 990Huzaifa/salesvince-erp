@@ -3,6 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { plainToInstance } from 'class-transformer';
+import { validateSync } from 'class-validator';
 import { Brackets, DataSource, EntityManager, In, IsNull } from 'typeorm';
 import {
   StockTransfer,
@@ -23,6 +25,17 @@ import {
 import { CreateStockTransferDto } from '../../dto/stock-transfer/create-stock-transfer.dto';
 import { UpdateStockTransferDto } from '../../dto/stock-transfer/update-stock-transfer.dto';
 import { CreateStockTransferItemDto } from '../../dto/stock-transfer/create-stock-transfer-item.dto';
+import {
+  StockTransferJsonImportDto,
+  StockTransferJsonItemDto,
+} from '../../dto/stock-transfer/stock-transfer-json-export-import.dto';
+import {
+  JsonExportEntity,
+  JsonImportMode,
+  JsonImportResult,
+  JsonImportResultRow,
+  SALESVINCE_EXPORT_FORMAT,
+} from '../../dto/import-export/json-export-envelope.dto';
 import { StockService } from '../stock.service';
 import { ActivityLogService } from '../activity-log.service';
 import {
@@ -886,6 +899,452 @@ export class StockTransferService {
     return {
       message: 'Stock transfer rejected',
       data: { id: rejected.id, transferNumber: rejected.transferNumber },
+    };
+  }
+
+  private toJsonNumber(value: unknown): number {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  private formatDateForJson(value: Date | string): string {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return String(value);
+    }
+    return date.toISOString().slice(0, 10);
+  }
+
+  private mapTransferToJsonItem(transfer: StockTransfer): StockTransferJsonItemDto {
+    return {
+      transferNumber: transfer.transferNumber,
+      transferDate: this.formatDateForJson(transfer.transferDate),
+      fromWarehouseCode: transfer.fromWarehouse?.code ?? '',
+      toWarehouseCode: transfer.toWarehouse?.code ?? '',
+      notes: transfer.notes ?? null,
+      items: (transfer.items ?? []).map((item) => ({
+        skuCode: item.product?.skuCode ?? '',
+        uomName: item.uom?.name ?? '',
+        productFlavourName: item.productFlavour?.flavour?.name ?? null,
+        quantity: this.toJsonNumber(item.quantity),
+      })),
+    };
+  }
+
+  private parseIdList(ids?: string | string[]): string[] {
+    if (!ids) {
+      return [];
+    }
+    const raw = Array.isArray(ids) ? ids : ids.split(',');
+    return [
+      ...new Set(
+        raw
+          .map((id) => id?.trim())
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+  }
+
+  private async findWarehouseByCode(
+    tenantDb: DataSource,
+    businessId: string,
+    warehouseCode: string,
+  ): Promise<Warehouse | null> {
+    return tenantDb.getRepository(Warehouse).findOne({
+      where: {
+        businessId,
+        code: warehouseCode,
+        deletedAt: IsNull(),
+      },
+      select: ['id', 'code', 'name'],
+    });
+  }
+
+  private async findProductBySkuCode(
+    tenantDb: DataSource,
+    businessId: string,
+    skuCode: string,
+  ): Promise<Product | null> {
+    return tenantDb.getRepository(Product).findOne({
+      where: { businessId, skuCode, isDelete: false },
+      select: ['id', 'skuCode', 'name'],
+    });
+  }
+
+  private async findUomByNameForBusiness(
+    tenantDb: DataSource,
+    businessId: string,
+    uomName: string,
+  ): Promise<Uom | null> {
+    return tenantDb.getRepository(Uom).findOne({
+      where: { businessId, name: uomName },
+      select: ['id', 'name'],
+    });
+  }
+
+  private async findProductFlavourByName(
+    tenantDb: DataSource,
+    productId: string,
+    flavourName: string,
+  ): Promise<ProductFlavour | null> {
+    return tenantDb
+      .getRepository(ProductFlavour)
+      .createQueryBuilder('pf')
+      .innerJoinAndSelect('pf.flavour', 'flavour')
+      .where('pf.productId = :productId', { productId })
+      .andWhere('flavour.name = :flavourName', { flavourName })
+      .getOne();
+  }
+
+  async exportStockTransfersJson(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    actorUserId: string,
+    options?: {
+      ids?: string | string[];
+      warehouseCode?: string;
+    },
+  ) {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+    const ids = this.parseIdList(options?.ids);
+    const warehouseCode = options?.warehouseCode?.trim() || undefined;
+    let warehouseId: string | undefined;
+
+    if (warehouseCode) {
+      const warehouse = await this.findWarehouseByCode(
+        tenantDb,
+        scopedBusinessId,
+        warehouseCode,
+      );
+      if (!warehouse) {
+        throw new NotFoundException(
+          `Warehouse with code "${warehouseCode}" not found`,
+        );
+      }
+      warehouseId = warehouse.id;
+    }
+
+    const qb = tenantDb
+      .getRepository(StockTransfer)
+      .createQueryBuilder('st')
+      .leftJoinAndSelect('st.fromWarehouse', 'fromWarehouse')
+      .leftJoinAndSelect('st.toWarehouse', 'toWarehouse')
+      .leftJoinAndSelect('st.items', 'items')
+      .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.uom', 'uom')
+      .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
+      .where('st.businessId = :businessId', { businessId: scopedBusinessId })
+      .andWhere('st.deletedAt IS NULL');
+
+    if (ids.length) {
+      qb.andWhere('st.id IN (:...ids)', { ids });
+    }
+
+    if (warehouseId) {
+      qb.andWhere(
+        new Brackets((where) => {
+          where
+            .where('st.fromWarehouseId = :warehouseId', { warehouseId })
+            .orWhere('st.toWarehouseId = :warehouseId', { warehouseId });
+        }),
+      );
+    }
+
+    const transfers = await qb
+      .orderBy('st.transferNumber', 'ASC')
+      .addOrderBy('items.createdAt', 'ASC')
+      .getMany();
+
+    const items = transfers.map((row) => this.mapTransferToJsonItem(row));
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'STOCK_TRANSFER_JSON_EXPORTED',
+      description: 'Stock transfers exported as JSON',
+      metadata: {
+        businessId: scopedBusinessId,
+        count: items.length,
+        warehouseCode: warehouseCode ?? null,
+        ids: ids.length ? ids : null,
+      },
+    });
+
+    return {
+      format: SALESVINCE_EXPORT_FORMAT,
+      version: 1,
+      entity: JsonExportEntity.STOCK_TRANSFERS,
+      exportedAt: new Date().toISOString(),
+      items,
+    };
+  }
+
+  private sanitizeJsonEmptyStrings(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sanitizeJsonEmptyStrings(item));
+    }
+    if (value && typeof value === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [key, nested] of Object.entries(
+        value as Record<string, unknown>,
+      )) {
+        out[key] =
+          nested === '' ? null : this.sanitizeJsonEmptyStrings(nested);
+      }
+      return out;
+    }
+    return value;
+  }
+
+  private formatJsonValidationErrors(
+    errors: ReturnType<typeof validateSync>,
+  ): string {
+    const walk = (list: typeof errors, prefix = ''): string[] => {
+      const messages: string[] = [];
+      for (const error of list) {
+        const path = prefix ? `${prefix}.${error.property}` : error.property;
+        messages.push(
+          ...Object.values(error.constraints ?? {}).map(
+            (msg) => `${path}: ${msg}`,
+          ),
+        );
+        if (error.children?.length) {
+          messages.push(...walk(error.children, path));
+        }
+      }
+      return messages;
+    };
+    return walk(errors).join('; ');
+  }
+
+  private parseStockTransferJsonImportFile(
+    file: Express.Multer.File,
+  ): StockTransferJsonImportDto {
+    if (!file?.buffer?.length) {
+      throw new BadRequestException(
+        'JSON file is required. Use multipart form-data field "file".',
+      );
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(file.buffer.toString('utf8'));
+    } catch {
+      throw new BadRequestException('Invalid JSON file');
+    }
+
+    const dto = plainToInstance(
+      StockTransferJsonImportDto,
+      this.sanitizeJsonEmptyStrings(parsed),
+      { enableImplicitConversion: true },
+    );
+    const errors = validateSync(dto, {
+      whitelist: true,
+      forbidNonWhitelisted: false,
+    });
+    if (errors.length) {
+      throw new BadRequestException(
+        this.formatJsonValidationErrors(errors) ||
+          'Invalid stock transfer JSON import payload',
+      );
+    }
+
+    if (dto.entity && dto.entity !== JsonExportEntity.STOCK_TRANSFERS) {
+      throw new BadRequestException(
+        'entity must be "stockTransfers" for stock transfer JSON import',
+      );
+    }
+
+    return dto;
+  }
+
+  private async buildCreateDtoFromJsonItem(
+    tenantDb: DataSource,
+    businessId: string,
+    item: StockTransferJsonItemDto,
+  ): Promise<CreateStockTransferDto> {
+    const fromCode = item.fromWarehouseCode.trim();
+    const toCode = item.toWarehouseCode.trim();
+
+    const fromWarehouse = await this.findWarehouseByCode(
+      tenantDb,
+      businessId,
+      fromCode,
+    );
+    if (!fromWarehouse) {
+      throw new NotFoundException(
+        `Source warehouse code ${fromCode} not found`,
+      );
+    }
+
+    const toWarehouse = await this.findWarehouseByCode(
+      tenantDb,
+      businessId,
+      toCode,
+    );
+    if (!toWarehouse) {
+      throw new NotFoundException(
+        `Destination warehouse code ${toCode} not found`,
+      );
+    }
+
+    if (fromWarehouse.id === toWarehouse.id) {
+      throw new BadRequestException(
+        'Source and destination warehouses must be different',
+      );
+    }
+
+    const lineItems: CreateStockTransferItemDto[] = [];
+    for (const [lineIndex, line] of item.items.entries()) {
+      const skuCode = line.skuCode.trim();
+      const uomName = line.uomName.trim();
+      const product = await this.findProductBySkuCode(
+        tenantDb,
+        businessId,
+        skuCode,
+      );
+      if (!product) {
+        throw new NotFoundException(
+          `Line ${lineIndex + 1}: product SKU ${skuCode} not found`,
+        );
+      }
+
+      const uom = await this.findUomByNameForBusiness(
+        tenantDb,
+        businessId,
+        uomName,
+      );
+      if (!uom) {
+        throw new NotFoundException(
+          `Line ${lineIndex + 1}: UOM ${uomName} not found`,
+        );
+      }
+
+      let productFlavourId: string | undefined;
+      const flavourName = line.productFlavourName?.trim();
+      if (flavourName) {
+        const flavour = await this.findProductFlavourByName(
+          tenantDb,
+          product.id,
+          flavourName,
+        );
+        if (!flavour) {
+          throw new NotFoundException(
+            `Line ${lineIndex + 1}: flavour ${flavourName} not found for product ${skuCode}`,
+          );
+        }
+        productFlavourId = flavour.id;
+      }
+
+      lineItems.push({
+        productId: product.id,
+        uomId: uom.id,
+        productFlavourId,
+        quantity: line.quantity,
+      });
+    }
+
+    return {
+      fromWarehouseId: fromWarehouse.id,
+      toWarehouseId: toWarehouse.id,
+      transferNumber: item.transferNumber?.trim() || undefined,
+      transferDate: item.transferDate,
+      notes: item.notes ?? undefined,
+      status: StockTransferStatus.PENDING,
+      items: lineItems,
+    };
+  }
+
+  async importStockTransfersJson(
+    tenantDb: DataSource,
+    file: Express.Multer.File,
+    user: { userId: string; businessId: string },
+  ): Promise<JsonImportResult> {
+    const scopedBusinessId = this.assertBusinessId(user.businessId);
+    const dto = this.parseStockTransferJsonImportFile(file);
+
+    const results: JsonImportResultRow[] = [];
+    let created = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const [index, item] of dto.items.entries()) {
+      const key = item.transferNumber?.trim() || `row-${index + 1}`;
+      try {
+        const transferNumber = item.transferNumber?.trim();
+        if (transferNumber) {
+          const existing = await tenantDb.getRepository(StockTransfer).findOne({
+            where: { transferNumber, deletedAt: IsNull() },
+            select: ['id', 'transferNumber'],
+          });
+          if (existing) {
+            skipped += 1;
+            results.push({
+              index: index + 1,
+              key,
+              status: 'skipped',
+              message: `Transfer number ${transferNumber} already exists`,
+              id: existing.id,
+            });
+            continue;
+          }
+        }
+
+        const createDto = await this.buildCreateDtoFromJsonItem(
+          tenantDb,
+          scopedBusinessId,
+          item,
+        );
+        const saved = await this.create(
+          tenantDb,
+          scopedBusinessId,
+          createDto,
+          user.userId,
+        );
+
+        created += 1;
+        results.push({
+          index: index + 1,
+          key,
+          status: 'created',
+          id: saved.data.id,
+          message: `Created as PENDING (${saved.data.transferNumber})`,
+        });
+      } catch (error) {
+        failed += 1;
+        results.push({
+          index: index + 1,
+          key,
+          status: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: user.userId,
+      businessId: scopedBusinessId,
+      action: 'STOCK_TRANSFER_JSON_IMPORTED',
+      description: `Stock transfer JSON import completed (${created} created, ${skipped} skipped, ${failed} failed)`,
+      metadata: {
+        businessId: scopedBusinessId,
+        total: dto.items.length,
+        created,
+        skipped,
+        failed,
+        mode: JsonImportMode.CREATE_ONLY,
+      },
+    });
+
+    return {
+      entity: JsonExportEntity.STOCK_TRANSFERS,
+      total: dto.items.length,
+      created,
+      updated: 0,
+      skipped,
+      failed,
+      results,
     };
   }
 }
