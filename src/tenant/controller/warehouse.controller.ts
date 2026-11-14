@@ -21,8 +21,10 @@ import { TenantJwtGuard } from 'src/common/guards/tenant-jwt.guard';
 import { TenantConnection } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
 import { WarehouseService } from '../service/warehouse.service';
+import { WarehousePurgeService } from '../service/warehouse-purge.service';
 import { CreateWarehouseDto } from '../dto/warehouse/create-warehouse.dto';
 import { UpdateWarehouseDto } from '../dto/warehouse/update-warehouse.dto';
+import { PurgeWarehouseDto } from '../dto/warehouse/purge-warehouse.dto';
 
 @Controller('tenant/warehouses')
 @UseGuards(
@@ -30,12 +32,34 @@ import { UpdateWarehouseDto } from '../dto/warehouse/update-warehouse.dto';
   TenantJwtGuard,
   TenantConnectionGuard,
   TenantBusinessAccessGuard,
-  TenantPermissionGuard,
 )
 export class WarehouseController {
-  constructor(private readonly warehouseService: WarehouseService) {}
+  constructor(
+    private readonly warehouseService: WarehouseService,
+    private readonly warehousePurgeService: WarehousePurgeService,
+  ) {}
+
+  /**
+   * Destructive: removes all warehouse-linked operational data, then soft-deletes the warehouse.
+   * No TenantPermissionGuard — JWT + tenant + business access only.
+   */
+  @Post('purge')
+  purge(
+    @TenantConnection() tenantDb: DataSource,
+    @Body() dto: PurgeWarehouseDto,
+    @Req() req: Request,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.warehousePurgeService.purgeByCode(
+      tenantDb,
+      user.businessId,
+      dto.warehouseCode,
+      user.userId,
+    );
+  }
 
   @Post('create')
+  @UseGuards(TenantPermissionGuard)
   @RequirePermissions('CREATE_WAREHOUSE')
   create(
     @TenantConnection() tenantDb: DataSource,
@@ -52,6 +76,7 @@ export class WarehouseController {
   }
 
   @Get()
+  @UseGuards(TenantPermissionGuard)
   @RequirePermissions('LIST_WAREHOUSE')
   list(
     @TenantConnection() tenantDb: DataSource,
@@ -80,6 +105,7 @@ export class WarehouseController {
   }
 
   @Get(':id')
+  @UseGuards(TenantPermissionGuard)
   @RequirePermissions('VIEW_WAREHOUSE')
   view(
     @TenantConnection() tenantDb: DataSource,
@@ -96,6 +122,7 @@ export class WarehouseController {
   }
 
   @Put('update/:id')
+  @UseGuards(TenantPermissionGuard)
   @RequirePermissions('UPDATE_WAREHOUSE')
   edit(
     @TenantConnection() tenantDb: DataSource,

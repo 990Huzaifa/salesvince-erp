@@ -66,6 +66,7 @@ import { SaleQuotationController } from './controller/sale/sale-quotation.contro
 import { SaleQuotationService } from './service/sale/sale-quotation.service';
 import { WarehouseController } from './controller/warehouse.controller';
 import { WarehouseService } from './service/warehouse.service';
+import { WarehousePurgeService } from './service/warehouse-purge.service';
 import { PurchaseOrderController } from './controller/Purchase/purchase-order.controller';
 import { PurchaseOrderService } from './service/purchase/purchase-order.service';
 import { GrnController } from './controller/Purchase/grn.controller';
@@ -335,6 +336,7 @@ import { DocumentTemplateRendererService } from './service/document-template-ren
     SaleInvoiceService,
     SaleReturnService,
     WarehouseService,
+    WarehousePurgeService,
     PurchaseOrderService,
     GrnService,
     StockService,
