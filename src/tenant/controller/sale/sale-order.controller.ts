@@ -195,12 +195,14 @@ export class SaleOrderController {
   exportSaleOrdersJson(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
+    @Query('warehouseCode') warehouseCode?: string,
   ) {
     const user = req.user as TenantRequestUser;
     return this.saleOrderService.exportSaleOrdersJson(
       tenantDb,
       user.businessId,
       user.userId,
+      warehouseCode,
     );
   }
 

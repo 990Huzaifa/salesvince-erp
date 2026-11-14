@@ -194,12 +194,14 @@ export class PurchaseOrderController {
   exportPurchaseOrdersJson(
     @TenantConnection() tenantDb: DataSource,
     @Req() req: Request,
+    @Query('warehouseCode') warehouseCode?: string,
   ) {
     const user = req.user as TenantRequestUser;
     return this.purchaseOrderService.exportPurchaseOrdersJson(
       tenantDb,
       user.businessId,
       user.userId,
+      warehouseCode,
     );
   }
 

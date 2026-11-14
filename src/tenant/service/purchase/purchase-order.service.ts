@@ -2883,9 +2883,25 @@ export class PurchaseOrderService {
     tenantDb: DataSource,
     businessId: string | undefined,
     actorUserId: string,
+    warehouseCode?: string,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
-    const orders = await tenantDb
+    const code = warehouseCode?.trim() || undefined;
+    let warehouseId: string | undefined;
+
+    if (code) {
+      const warehouse = await this.findWarehouseByCode(
+        tenantDb,
+        scopedBusinessId,
+        code,
+      );
+      if (!warehouse) {
+        throw new NotFoundException(`Warehouse with code "${code}" not found`);
+      }
+      warehouseId = warehouse.id;
+    }
+
+    const qb = tenantDb
       .getRepository(PurchaseOrder)
       .createQueryBuilder('po')
       .leftJoinAndSelect('po.vendor', 'vendor')
@@ -2896,7 +2912,13 @@ export class PurchaseOrderService {
       .leftJoinAndSelect('items.productFlavour', 'productFlavour')
       .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .where('po.businessId = :businessId', { businessId: scopedBusinessId })
-      .andWhere('po.orderStatus = :status', { status: OrderStatus.APPROVED })
+      .andWhere('po.orderStatus = :status', { status: OrderStatus.APPROVED });
+
+    if (warehouseId) {
+      qb.andWhere('po.warehouseId = :warehouseId', { warehouseId });
+    }
+
+    const orders = await qb
       .orderBy('po.orderNumber', 'ASC')
       .addOrderBy('items.createdAt', 'ASC')
       .getMany();
@@ -2912,6 +2934,7 @@ export class PurchaseOrderService {
         businessId: scopedBusinessId,
         count: items.length,
         orderStatus: OrderStatus.APPROVED,
+        warehouseCode: code ?? null,
       },
     });
 

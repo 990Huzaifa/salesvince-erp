@@ -3193,9 +3193,25 @@ export class SaleOrderService {
     tenantDb: DataSource,
     businessId: string | undefined,
     actorUserId: string,
+    warehouseCode?: string,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
-    const orders = await tenantDb
+    const code = warehouseCode?.trim() || undefined;
+    let warehouseId: string | undefined;
+
+    if (code) {
+      const warehouse = await this.findWarehouseByCode(
+        tenantDb,
+        scopedBusinessId,
+        code,
+      );
+      if (!warehouse) {
+        throw new NotFoundException(`Warehouse with code "${code}" not found`);
+      }
+      warehouseId = warehouse.id;
+    }
+
+    const qb = tenantDb
       .getRepository(SaleOrder)
       .createQueryBuilder('so')
       .leftJoinAndSelect('so.customer', 'customer')
@@ -3206,7 +3222,20 @@ export class SaleOrderService {
       .leftJoinAndSelect('items.productFlavour', 'productFlavour')
       .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .where('so.businessId = :businessId', { businessId: scopedBusinessId })
-      .andWhere('so.orderStatus = :status', { status: OrderStatus.APPROVED })
+      .andWhere('so.orderStatus = :status', { status: OrderStatus.APPROVED });
+
+    if (warehouseId) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM sale_order_items soi
+          WHERE soi."saleOrderId" = so.id
+            AND soi."warehouseId" = :warehouseId
+        )`,
+        { warehouseId },
+      );
+    }
+
+    const orders = await qb
       .orderBy('so.orderNumber', 'ASC')
       .addOrderBy('items.createdAt', 'ASC')
       .getMany();
@@ -3222,6 +3251,7 @@ export class SaleOrderService {
         businessId: scopedBusinessId,
         count: items.length,
         orderStatus: OrderStatus.APPROVED,
+        warehouseCode: code ?? null,
       },
     });
 
