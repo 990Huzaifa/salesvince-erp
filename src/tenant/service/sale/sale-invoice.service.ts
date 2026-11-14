@@ -462,6 +462,7 @@ export class SaleInvoiceService {
       search?: string;
       customerId?: string;
       cityId?: string;
+      warehouseId?: string;
       deliveryNoteId?: string;
       saleOrderId?: string;
       startDate?: string;
@@ -501,6 +502,17 @@ export class SaleInvoiceService {
       qb.andWhere('customer.cityId = :cityId', {
         cityId: options.cityId,
       });
+    }
+    if (options.warehouseId) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM sale_invoice_items sii
+          WHERE sii."saleInvoiceId" = invoice.id
+            AND sii."warehouseId" = :warehouseId
+            AND sii."deletedAt" IS NULL
+        )`,
+        { warehouseId: options.warehouseId },
+      );
     }
     if (options.deliveryNoteId) {
       qb.andWhere('invoice.deliveryNoteId = :deliveryNoteId', {

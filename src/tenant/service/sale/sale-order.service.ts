@@ -1404,6 +1404,7 @@ export class SaleOrderService {
       search?: string;
       customerId?: string;
       cityId?: string;
+      warehouseId?: string;
       orderStatus?: OrderStatus;
       startDate?: string;
       endDate?: string;
@@ -1441,6 +1442,17 @@ export class SaleOrderService {
       qb.andWhere('customer.cityId = :cityId', {
         cityId: options.cityId,
       });
+    }
+
+    if (options.warehouseId) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM sale_order_items soi
+          WHERE soi."saleOrderId" = so.id
+            AND soi."warehouseId" = :warehouseId
+        )`,
+        { warehouseId: options.warehouseId },
+      );
     }
 
     if (options.orderStatus) {

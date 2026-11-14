@@ -417,6 +417,7 @@ export class PurchaseInvoiceService {
       search?: string;
       vendorId?: string;
       cityId?: string;
+      warehouseId?: string;
       grnId?: string;
       purchaseOrderId?: string;
       startDate?: string;
@@ -455,6 +456,11 @@ export class PurchaseInvoiceService {
     if (options.cityId) {
       qb.andWhere('vendor.cityId = :cityId', {
         cityId: options.cityId,
+      });
+    }
+    if (options.warehouseId) {
+      qb.andWhere('grn.warehouseId = :warehouseId', {
+        warehouseId: options.warehouseId,
       });
     }
     if (options.grnId) {
