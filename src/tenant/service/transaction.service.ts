@@ -549,8 +549,9 @@ export class TransactionService {
   }
 
   /**
-   * Posts an OPENING_BALANCE ledger entry for an existing COA that has
-   * no transactions yet. Debit vs credit is derived from account nature.
+   * Upserts an OPENING_BALANCE ledger entry for a postable COA.
+   * Debit vs credit is derived from account nature.
+   * If an opening entry already exists, updates amount + date and recalculates ledger.
    */
   async createOpeningBalanceForAccount(
     tenantDb: DataSource,
@@ -587,50 +588,81 @@ export class TransactionService {
       );
     }
 
-    const existingCount = await tenantDb.getRepository(Transaction).count({
-      where: {
-        businessId: scopedBusinessId,
-        chartOfAccountId: account.id,
-      },
-    });
-
-    if (existingCount > 0) {
-      throw new BadRequestException(
-        'Opening balance can only be applied to an account with no existing transactions',
-      );
-    }
-
     const nature = getAccountBalanceNature(account);
     const transactionDate = input.transactionDate
       ? new Date(input.transactionDate)
-      : undefined;
+      : new Date();
+    const abs = this.roundAmount(Math.abs(amount));
+    const isPositive = amount > 0;
+    const debitCredit =
+      nature === 'DEBIT'
+        ? isPositive
+          ? { debitAmount: abs, creditAmount: undefined as number | undefined }
+          : { debitAmount: undefined as number | undefined, creditAmount: abs }
+        : isPositive
+          ? { debitAmount: undefined as number | undefined, creditAmount: abs }
+          : { debitAmount: abs, creditAmount: undefined as number | undefined };
 
-    const saved = await tenantDb.transaction(async (manager) =>
-      this.postBusinessAccountOpeningBalance(manager, {
+    const existingOpening = await tenantDb.getRepository(Transaction).findOne({
+      where: {
+        businessId: scopedBusinessId,
+        chartOfAccountId: account.id,
+        referenceType: AccountTransactionReferenceType.OPENING_BALANCE,
+      },
+      order: { createdAt: 'DESC', id: 'DESC' },
+    });
+
+    const action = existingOpening ? 'updated' : 'created';
+
+    const saved = await tenantDb.transaction(async (manager) => {
+      if (existingOpening) {
+        const referenceId = existingOpening.referenceId || account.id;
+        return this.updateDirectLedgerEntryByReference(manager, {
+          businessId: scopedBusinessId,
+          chartOfAccountId: account.id,
+          referenceType: AccountTransactionReferenceType.OPENING_BALANCE,
+          referenceId,
+          transactionDate,
+          description: \Opening balance - \,
+          ...debitCredit,
+        });
+      }
+
+      const created = await this.postBusinessAccountOpeningBalance(manager, {
         businessId: scopedBusinessId,
         account,
         openingBalance: amount,
         transactionDate,
-      }),
-    );
-
-    if (!saved) {
-      throw new BadRequestException('Failed to create opening balance transaction');
-    }
+      });
+      if (!created) {
+        throw new BadRequestException(
+          'Failed to create opening balance transaction',
+        );
+      }
+      return created;
+    });
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
       businessId: scopedBusinessId,
-      action: 'COA_OPENING_BALANCE_CREATED',
-      description: `Opening balance posted for ${account.code} - ${account.name}`,
+      action:
+        action === 'updated'
+          ? 'COA_OPENING_BALANCE_UPDATED'
+          : 'COA_OPENING_BALANCE_CREATED',
+      description:
+        action === 'updated'
+          ? \Opening balance updated for \ - \
+          : \Opening balance posted for \ - \,
       metadata: {
         chartOfAccountId: account.id,
         code: account.code,
         amount,
         nature,
+        action,
         transactionId: saved.id,
         debitAmount: saved.debitAmount,
         creditAmount: saved.creditAmount,
+        transactionDate: saved.transactionDate,
       },
     });
 
@@ -649,6 +681,7 @@ export class TransactionService {
         description: saved.description,
         amount: Math.abs(amount),
         nature,
+        action,
         side: saved.debitAmount != null ? 'DEBIT' : 'CREDIT',
         debitAmount: saved.debitAmount,
         creditAmount: saved.creditAmount,

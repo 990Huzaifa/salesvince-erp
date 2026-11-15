@@ -52,8 +52,9 @@ export class TransactionController {
     }
 
     /**
-     * Post opening balance for a COA that has no ledger rows yet.
+     * Upsert opening balance for a postable COA.
      * Debit/credit is decided from account nature (assets/expenses → debit, etc.).
+     * If an OPENING_BALANCE entry already exists, updates amount + date and recalculates ledger.
      */
     @Post('opening-balance')
     @RequirePermissions('UPDATE_CHART_OF_ACCOUNT')
