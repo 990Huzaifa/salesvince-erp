@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsObject,
@@ -47,6 +48,11 @@ export class UpdateBusinessSettingsDto {
   @Type(() => Number)
   @IsInt()
   defaultCityId?: number | null;
+
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  showPurchaseUnitPriceInPos?: boolean;
 
   @IsOptional()
   @ValidateIf((_, v) => v !== null)

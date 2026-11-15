@@ -64,6 +64,10 @@ export class BusinessSettings {
   @Column({ type: 'int', nullable: true })
   defaultCityId: number | null;
 
+  /** When true, POS UI shows purchase unit price on products/lines. */
+  @Column({ type: 'boolean', default: false })
+  showPurchaseUnitPriceInPos: boolean;
+
   /** Forward-compatible bag for new defaults without schema churn. */
   @Column({ type: 'jsonb', nullable: true })
   extras: Record<string, unknown> | null;

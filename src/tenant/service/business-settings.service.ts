@@ -51,6 +51,7 @@ export class BusinessSettingsService {
           defaultCountryId: null,
           defaultStateId: null,
           defaultCityId: null,
+          showPurchaseUnitPriceInPos: false,
           extras: null,
         }),
       );
@@ -174,6 +175,10 @@ export class BusinessSettingsService {
     }
     if (dto.defaultCityId !== undefined) {
       row.defaultCityId = dto.defaultCityId;
+    }
+
+    if (dto.showPurchaseUnitPriceInPos !== undefined) {
+      row.showPurchaseUnitPriceInPos = dto.showPurchaseUnitPriceInPos;
     }
 
     if (dto.extras !== undefined) {
