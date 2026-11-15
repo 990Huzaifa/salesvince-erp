@@ -14,6 +14,7 @@ import {
 import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
 import { ChartOfAccount } from 'src/tenant-db/entities/chart-of-account.entity';
 import { Loan } from 'src/tenant-db/entities/loan.entity';
+import { User } from 'src/tenant-db/entities/user.entity';
 import {
   PaymentMethod,
   VoucherStatus,
@@ -1353,6 +1354,13 @@ export class VoucherOperationsService {
     return approved;
   }
 
+  private supportsSuperAdminCancelPaid(config: VoucherConfig<VoucherEntity>): boolean {
+    return (
+      config.activityKey === 'SALE_VOUCHER' ||
+      config.activityKey === 'PURCHASE_VOUCHER'
+    );
+  }
+
   async cancel<T extends VoucherEntity>(
     tenantDb: DataSource,
     businessId: string,
@@ -1360,6 +1368,14 @@ export class VoucherOperationsService {
     id: string,
     userId: string,
   ) {
+    const actor = await tenantDb.getRepository(User).findOne({
+      where: { id: userId },
+      select: ['id', 'isSuperAdmin'],
+    });
+    const isSuperAdmin = Boolean(actor?.isSuperAdmin);
+    const allowPaidCancel =
+      isSuperAdmin && this.supportsSuperAdminCancelPaid(config);
+
     const cancelled = await tenantDb.transaction(async (manager) => {
       const voucher = await this.findVoucherOrThrow(
         manager.connection,
@@ -1368,27 +1384,44 @@ export class VoucherOperationsService {
         { id },
       );
 
-      if (voucher.status === VoucherStatus.PAID) {
-        throw new BadRequestException('Paid vouchers cannot be cancelled');
-      }
       if (voucher.status === VoucherStatus.CANCELLED) {
         throw new BadRequestException('Cancelled vouchers cannot be cancelled');
       }
-      
+
+      let ledgerReversed = false;
+      if (voucher.status === VoucherStatus.PAID) {
+        if (!allowPaidCancel) {
+          throw new BadRequestException('Paid vouchers cannot be cancelled');
+        }
+
+        await this.transactionService.deleteLedgerEntriesByReference(manager, {
+          businessId,
+          referenceType: this.resolveJournalReferenceType(config, voucher),
+          referenceId: voucher.id,
+        });
+        ledgerReversed = true;
+      }
+
       voucher.status = VoucherStatus.CANCELLED;
       const saved = await this.getRepo(manager, config.entity).save(voucher);
-      return saved;
+      return { saved, ledgerReversed };
     });
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: userId,
       businessId,
       action: `${config.activityKey}_CANCELLED`,
-      description: `${config.activityKey} ${cancelled.voucherNumber} cancelled`,
-      metadata: { voucherId: cancelled.id },
+      description: cancelled.ledgerReversed
+        ? `${config.activityKey} ${cancelled.saved.voucherNumber} cancelled (paid — ledger reversed by super admin)`
+        : `${config.activityKey} ${cancelled.saved.voucherNumber} cancelled`,
+      metadata: {
+        voucherId: cancelled.saved.id,
+        ledgerReversed: cancelled.ledgerReversed,
+        cancelledBySuperAdmin: cancelled.ledgerReversed,
+      },
     });
 
-    return cancelled;
+    return cancelled.saved;
   }
 
   async delete<T extends VoucherEntity>(

@@ -28,12 +28,20 @@ import {
   TenantConnection,
 } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
-import { SaleReturnStatus } from 'src/tenant-db/entities/sale-return.entity';
+import {
+  SaleReturnMode,
+  SaleReturnStatus,
+} from 'src/tenant-db/entities/sale-return.entity';
 import { SaleReturnService } from '../../service/sale/sale-return.service';
 import { CreateSaleReturnDto } from '../../dto/sale-return/create-sale-return.dto';
 import { UpdateSaleReturnDto } from '../../dto/sale-return/update-sale-return.dto';
 import { BulkApproveSaleReturnsDto } from '../../dto/sale-return/bulk-approve-sale-returns.dto';
 import { jsonImportUploadOptions } from '../../config/json-import-upload.config';
+import {
+  SALE_RETURN_CREATE_PERMISSIONS,
+  assertSaleReturnCreateModePermission,
+} from '../../helpers/return-create-permission.helper';
+import { loadUserPermissionKeys } from '../../helpers/load-user-permission-keys.helper';
 
 @Controller('tenant/sale-returns')
 @UseGuards(
@@ -46,14 +54,31 @@ import { jsonImportUploadOptions } from '../../config/json-import-upload.config'
 export class SaleReturnController {
   constructor(private readonly saleReturnService: SaleReturnService) {}
 
+  private async assertCreateMode(
+    tenantDb: DataSource,
+    user: TenantRequestUser,
+    returnMode: SaleReturnMode,
+  ) {
+    const { isSuperAdmin, permissionKeys } = await loadUserPermissionKeys(
+      tenantDb,
+      user,
+    );
+    assertSaleReturnCreateModePermission(
+      returnMode,
+      permissionKeys,
+      isSuperAdmin,
+    );
+  }
+
   @Post('create')
-  @RequirePermissions('CREATE_SALE_RETURN')
-  create(
+  @RequirePermissions(...SALE_RETURN_CREATE_PERMISSIONS)
+  async create(
     @TenantConnection() tenantDb: DataSource,
     @Body() dto: CreateSaleReturnDto,
     @Req() req: Request,
   ) {
     const user = req.user as TenantRequestUser;
+    await this.assertCreateMode(tenantDb, user, dto.returnMode);
     return this.saleReturnService.create(
       tenantDb,
       user.businessId,
@@ -64,12 +89,13 @@ export class SaleReturnController {
 
   @Post('create-and-approve')
   @RequirePermissions('APPROVE_SALE_RETURN')
-  createAndApprove(
+  async createAndApprove(
     @TenantConnection() tenantDb: DataSource,
     @Body() dto: CreateSaleReturnDto,
     @Req() req: Request,
   ) {
     const user = req.user as TenantRequestUser;
+    await this.assertCreateMode(tenantDb, user, dto.returnMode);
     return this.saleReturnService.createAndApprove(
       tenantDb,
       user.businessId,
@@ -93,9 +119,12 @@ export class SaleReturnController {
   }
 
   @Post('import-json')
-  @RequirePermissions('CREATE_SALE_RETURN')
+  @RequirePermissions(
+    'CREATE_SALE_RETURN',
+    'CREATE_SALE_RETURN_BY_INVOICE',
+  )
   @UseInterceptors(FileInterceptor('file', jsonImportUploadOptions))
-  importSaleReturnsJson(
+  async importSaleReturnsJson(
     @TenantConnection() tenantDb: DataSource,
     @UploadedFile() file: Express.Multer.File,
     @Body('mode') mode: string | undefined,
@@ -108,6 +137,7 @@ export class SaleReturnController {
       );
     }
     const user = req.user as TenantRequestUser;
+    await this.assertCreateMode(tenantDb, user, SaleReturnMode.INVOICE);
     return this.saleReturnService.importSaleReturnsJson(
       tenantDb,
       file,
@@ -126,6 +156,7 @@ export class SaleReturnController {
     @Query('limit') limit: number = 10,
     @Query('search') search?: string,
     @Query('saleInvoiceId') saleInvoiceId?: string,
+    @Query('customerId') customerId?: string,
     @Query('status') status?: SaleReturnStatus,
   ) {
     const user = req.user as TenantRequestUser;
@@ -137,6 +168,7 @@ export class SaleReturnController {
         limit: Number(limit),
         search,
         saleInvoiceId,
+        customerId,
         status,
       },
       user.userId,

@@ -3,11 +3,17 @@ import { SaleInvoice } from "./sale-invoice.entity";
 import { Product, ProductFlavour, Uom } from "./product.entity";
 import { Business } from "./business.entity";
 import { Warehouse } from "./warehouse.entity";
+import { Party } from "./party.entity";
 
 export enum SaleReturnStatus {
     PENDING = 'PENDING',
     APPROVED = 'APPROVED',
     REJECTED = 'REJECTED',
+}
+
+export enum SaleReturnMode {
+    INVOICE = 'INVOICE',
+    CUSTOMER = 'CUSTOMER',
 }
 
 @Entity('sale_returns')
@@ -22,12 +28,29 @@ export class SaleReturn {
     @JoinColumn({ name: 'businessId' })
     business: Business;
 
-    @Column()
-    saleInvoiceId: string;
+    @Column({
+        type: 'enum',
+        enum: SaleReturnMode,
+        default: SaleReturnMode.INVOICE,
+    })
+    returnMode: SaleReturnMode;
 
-    @ManyToOne(() => SaleInvoice, (saleInvoice) => saleInvoice.saleReturns, { onDelete: 'CASCADE' })
+    @Column({ nullable: true })
+    saleInvoiceId: string | null;
+
+    @ManyToOne(() => SaleInvoice, (saleInvoice) => saleInvoice.saleReturns, {
+        onDelete: 'CASCADE',
+        nullable: true,
+    })
     @JoinColumn({ name: 'saleInvoiceId' })
-    saleInvoice: SaleInvoice;
+    saleInvoice: SaleInvoice | null;
+
+    @Column()
+    customerId: string;
+
+    @ManyToOne(() => Party, { onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'customerId' })
+    customer: Party;
 
     @Column({ unique: true })
     returnNumber: string;
@@ -95,6 +118,12 @@ export class SaleReturnItem {
 
     @Column()
     quantity: number;
+
+    @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
+    saleUnitPrice: number;
+
+    @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
+    purchaseUnitPrice: number;
 
     @CreateDateColumn()
     createdAt: Date;

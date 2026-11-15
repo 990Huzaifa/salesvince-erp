@@ -28,12 +28,20 @@ import {
   TenantConnection,
 } from 'src/common/tenant/tenant-connection.decorator';
 import type { TenantRequestUser } from 'src/auth/tenant-jwt.strategy';
-import { PurchaseReturnStatus } from 'src/tenant-db/entities/purchase-return.entity';
+import {
+  PurchaseReturnMode,
+  PurchaseReturnStatus,
+} from 'src/tenant-db/entities/purchase-return.entity';
 import { PurchaseReturnService } from '../../service/purchase/purchase-return.service';
 import { CreatePurchaseReturnDto } from '../../dto/purchase-return/create-purchase-return.dto';
 import { UpdatePurchaseReturnDto } from '../../dto/purchase-return/update-purchase-return.dto';
 import { BulkApprovePurchaseReturnsDto } from '../../dto/purchase-return/bulk-approve-purchase-returns.dto';
 import { jsonImportUploadOptions } from '../../config/json-import-upload.config';
+import {
+  PURCHASE_RETURN_CREATE_PERMISSIONS,
+  assertPurchaseReturnCreateModePermission,
+} from '../../helpers/return-create-permission.helper';
+import { loadUserPermissionKeys } from '../../helpers/load-user-permission-keys.helper';
 
 @Controller('tenant/purchase-returns')
 @UseGuards(
@@ -46,14 +54,31 @@ import { jsonImportUploadOptions } from '../../config/json-import-upload.config'
 export class PurchaseReturnController {
   constructor(private readonly purchaseReturnService: PurchaseReturnService) {}
 
+  private async assertCreateMode(
+    tenantDb: DataSource,
+    user: TenantRequestUser,
+    returnMode: PurchaseReturnMode,
+  ) {
+    const { isSuperAdmin, permissionKeys } = await loadUserPermissionKeys(
+      tenantDb,
+      user,
+    );
+    assertPurchaseReturnCreateModePermission(
+      returnMode,
+      permissionKeys,
+      isSuperAdmin,
+    );
+  }
+
   @Post('create')
-  @RequirePermissions('CREATE_PURCHASE_RETURN')
-  create(
+  @RequirePermissions(...PURCHASE_RETURN_CREATE_PERMISSIONS)
+  async create(
     @TenantConnection() tenantDb: DataSource,
     @Body() dto: CreatePurchaseReturnDto,
     @Req() req: Request,
   ) {
     const user = req.user as TenantRequestUser;
+    await this.assertCreateMode(tenantDb, user, dto.returnMode);
     return this.purchaseReturnService.create(
       tenantDb,
       user.businessId,
@@ -64,12 +89,13 @@ export class PurchaseReturnController {
 
   @Post('create-and-approve')
   @RequirePermissions('APPROVE_PURCHASE_RETURN')
-  createAndApprove(
+  async createAndApprove(
     @TenantConnection() tenantDb: DataSource,
     @Body() dto: CreatePurchaseReturnDto,
     @Req() req: Request,
   ) {
     const user = req.user as TenantRequestUser;
+    await this.assertCreateMode(tenantDb, user, dto.returnMode);
     return this.purchaseReturnService.createAndApprove(
       tenantDb,
       user.businessId,
@@ -93,9 +119,12 @@ export class PurchaseReturnController {
   }
 
   @Post('import-json')
-  @RequirePermissions('CREATE_PURCHASE_RETURN')
+  @RequirePermissions(
+    'CREATE_PURCHASE_RETURN',
+    'CREATE_PURCHASE_RETURN_BY_INVOICE',
+  )
   @UseInterceptors(FileInterceptor('file', jsonImportUploadOptions))
-  importPurchaseReturnsJson(
+  async importPurchaseReturnsJson(
     @TenantConnection() tenantDb: DataSource,
     @UploadedFile() file: Express.Multer.File,
     @Body('mode') mode: string | undefined,
@@ -108,6 +137,7 @@ export class PurchaseReturnController {
       );
     }
     const user = req.user as TenantRequestUser;
+    await this.assertCreateMode(tenantDb, user, PurchaseReturnMode.INVOICE);
     return this.purchaseReturnService.importPurchaseReturnsJson(
       tenantDb,
       file,
@@ -126,6 +156,7 @@ export class PurchaseReturnController {
     @Query('limit') limit: number = 10,
     @Query('search') search?: string,
     @Query('purchaseInvoiceId') purchaseInvoiceId?: string,
+    @Query('vendorId') vendorId?: string,
     @Query('status') status?: PurchaseReturnStatus,
   ) {
     const user = req.user as TenantRequestUser;
@@ -137,6 +168,7 @@ export class PurchaseReturnController {
         limit: Number(limit),
         search,
         purchaseInvoiceId,
+        vendorId,
         status,
       },
       user.userId,

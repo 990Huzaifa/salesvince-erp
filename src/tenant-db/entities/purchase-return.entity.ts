@@ -2,6 +2,8 @@ import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, Pri
 import { PurchaseInvoice } from "./purchase-invoice.entity";
 import { Product, ProductFlavour, Uom } from "./product.entity";
 import { Business } from "./business.entity";
+import { Party } from "./party.entity";
+import { Warehouse } from "./warehouse.entity";
 
 export enum PurchaseReturnStatus {
     PENDING = 'PENDING',
@@ -9,6 +11,12 @@ export enum PurchaseReturnStatus {
     REJECTED = 'REJECTED',
 
 }
+
+export enum PurchaseReturnMode {
+    INVOICE = 'INVOICE',
+    SUPPLIER = 'SUPPLIER',
+}
+
 @Entity('purchase_returns')
 export class PurchaseReturn {
     @PrimaryGeneratedColumn('uuid')
@@ -21,11 +29,35 @@ export class PurchaseReturn {
     @JoinColumn({ name: 'businessId' })
     business: Business;
 
-    @Column()
-    purchaseInvoiceId: string;
+    @Column({
+        type: 'enum',
+        enum: PurchaseReturnMode,
+        default: PurchaseReturnMode.INVOICE,
+    })
+    returnMode: PurchaseReturnMode;
 
-    @ManyToOne(() => PurchaseInvoice, (purchaseInvoice) => purchaseInvoice.purchaseReturns)
-    purchaseInvoice: PurchaseInvoice;
+    @Column({ nullable: true })
+    purchaseInvoiceId: string | null;
+
+    @ManyToOne(() => PurchaseInvoice, (purchaseInvoice) => purchaseInvoice.purchaseReturns, {
+        nullable: true,
+    })
+    @JoinColumn({ name: 'purchaseInvoiceId' })
+    purchaseInvoice: PurchaseInvoice | null;
+
+    @Column()
+    vendorId: string;
+
+    @ManyToOne(() => Party, { onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'vendorId' })
+    vendor: Party;
+
+    @Column({ nullable: true })
+    warehouseId: string | null;
+
+    @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT', nullable: true })
+    @JoinColumn({ name: 'warehouseId' })
+    warehouse: Warehouse | null;
 
     @Column({ unique: true })
     returnNumber: string;
@@ -87,9 +119,15 @@ export class PurchaseReturnItem {
     @Column()
     quantity: number;
 
+    @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
+    purchaseUnitPrice: number;
+
+    @Column({ type: 'decimal', precision: 18, scale: 2, default: 0 })
+    saleUnitPrice: number;
+
     @CreateDateColumn()
     createdAt: Date;
 
     @UpdateDateColumn()
     updatedAt: Date;
-}   
+}

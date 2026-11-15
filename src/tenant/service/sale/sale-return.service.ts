@@ -10,6 +10,7 @@ import { Brackets, DataSource, EntityManager, In, IsNull } from 'typeorm';
 import {
   SaleReturn,
   SaleReturnItem,
+  SaleReturnMode,
   SaleReturnStatus,
 } from 'src/tenant-db/entities/sale-return.entity';
 import {
@@ -17,7 +18,14 @@ import {
   SaleInvoiceItem,
 } from 'src/tenant-db/entities/sale-invoice.entity';
 import { SaleOrderItem } from 'src/tenant-db/entities/sale-order.entity';
-import { Party } from 'src/tenant-db/entities/party.entity';
+import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
+import {
+  Product,
+  ProductFlavour,
+  ProductPricing,
+  Uom,
+} from 'src/tenant-db/entities/product.entity';
+import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import { ReferenceType } from 'src/tenant-db/entities/stock.entity';
 import { AccountTransactionReferenceType } from 'src/tenant-db/entities/transaction.entity';
 import { CreateSaleReturnDto } from '../../dto/sale-return/create-sale-return.dto';
@@ -85,6 +93,7 @@ export class SaleReturnService {
 
   private returnRelations() {
     return {
+      customer: true,
       saleInvoice: {
         items: true,
         customer: true,
@@ -212,6 +221,11 @@ export class SaleReturnService {
     const resolved: ResolvedReturnLine[] = [];
 
     for (const line of dto.items) {
+      if (!line.saleInvoiceItemId) {
+        throw new BadRequestException(
+          'saleInvoiceItemId is required for invoice-mode sale return items',
+        );
+      }
       const invoiceItem = itemsById.get(line.saleInvoiceItemId);
       if (!invoiceItem) {
         throw new BadRequestException(
@@ -231,6 +245,14 @@ export class SaleReturnService {
         invoice.saleOrder?.items,
         invoiceItem,
       );
+      const lineAmount = this.lineAmountForQuantity(
+        invoiceItem,
+        line.quantity,
+      );
+      const saleUnitPrice =
+        line.quantity > 0
+          ? this.roundAmount(lineAmount / line.quantity)
+          : 0;
 
       resolved.push({
         warehouseId: invoiceItem.warehouseId,
@@ -238,9 +260,9 @@ export class SaleReturnService {
         uomId: invoiceItem.uomId,
         productFlavourId: invoiceItem.productFlavourId ?? null,
         quantity: line.quantity,
-        lineAmount: this.lineAmountForQuantity(invoiceItem, line.quantity),
+        lineAmount,
         purchaseUnitPrice: Number(orderItem?.purchaseUnitPrice ?? 0),
-        saleUnitPrice: Number(orderItem?.saleUnitPrice ?? 0),
+        saleUnitPrice,
       });
     }
 
@@ -286,6 +308,7 @@ export class SaleReturnService {
     const saleReturn = await tenantDb
       .getRepository(SaleReturn)
       .createQueryBuilder('saleReturn')
+      .leftJoinAndSelect('saleReturn.customer', 'returnCustomer')
       .leftJoinAndSelect('saleReturn.saleInvoice', 'saleInvoice')
       .leftJoinAndSelect('saleInvoice.items', 'invoiceItems')
       .leftJoinAndSelect('saleInvoice.deliveryNote', 'deliveryNote')
@@ -311,6 +334,7 @@ export class SaleReturnService {
 
   private mapSaleReturn(saleReturn: SaleReturn) {
     const invoice = saleReturn.saleInvoice;
+    const customer = saleReturn.customer ?? invoice?.customer ?? null;
     const items = (saleReturn.saleReturnItems ?? []).map((item) => ({
       id: item.id,
       warehouseId: item.warehouseId,
@@ -345,11 +369,17 @@ export class SaleReturnService {
       uomId: item.uomId,
       uom: item.uom ? { id: item.uom.id, name: item.uom.name } : null,
       quantity: item.quantity,
+      saleUnitPrice: Number(item.saleUnitPrice ?? 0),
+      purchaseUnitPrice: Number(item.purchaseUnitPrice ?? 0),
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     }));
 
     const totalReturnAmount = items.reduce((sum, item) => {
+      const storedSale = Number(item.saleUnitPrice ?? 0);
+      if (storedSale > 0) {
+        return sum + this.roundAmount(storedSale * Number(item.quantity));
+      }
       const invoiceItem = invoice?.items?.find(
         (row) =>
           row.productId === item.productId &&
@@ -365,7 +395,16 @@ export class SaleReturnService {
     return {
       id: saleReturn.id,
       businessId: saleReturn.businessId,
+      returnMode: saleReturn.returnMode ?? SaleReturnMode.INVOICE,
       saleInvoiceId: saleReturn.saleInvoiceId,
+      customerId: saleReturn.customerId ?? invoice?.customerId ?? null,
+      customer: customer
+        ? {
+            id: customer.id,
+            code: customer.code,
+            name: customer.name,
+          }
+        : null,
       saleInvoice: invoice
         ? {
             id: invoice.id,
@@ -463,15 +502,13 @@ export class SaleReturnService {
     manager: EntityManager,
     businessId: string,
     saleReturn: SaleReturn,
-    invoice: SaleInvoice,
     lines: ResolvedReturnLine[],
+    customer: Party,
   ): Promise<SaleReturn> {
     this.assertPendingStatus(
       saleReturn,
       'Only pending sale returns can be approved',
     );
-
-    const customer = invoice.customer as Party;
 
     if (!customer?.receivableAccountId) {
       throw new BadRequestException(
@@ -491,7 +528,7 @@ export class SaleReturnService {
     await this.receiveStockForReturnLines(
       manager,
       businessId,
-      invoice.customerId,
+      customer.id,
       saleReturn,
       lines,
     );
@@ -557,14 +594,117 @@ export class SaleReturnService {
     });
   }
 
+  private async findCustomerForReturn(
+    tenantDb: DataSource | EntityManager,
+    businessId: string,
+    customerId: string,
+  ): Promise<Party> {
+    const customer = await tenantDb.getRepository(Party).findOne({
+      where: { id: customerId, businessId },
+    });
+    if (!customer) {
+      throw new NotFoundException('Customer not found');
+    }
+    if (
+      customer.type !== PartyType.CUSTOMER &&
+      customer.type !== PartyType.BOTH
+    ) {
+      throw new BadRequestException('Selected party is not a customer');
+    }
+    return customer;
+  }
+
+  private async resolveCustomerModeLines(
+    manager: EntityManager,
+    businessId: string,
+    dto: CreateSaleReturnDto,
+  ): Promise<ResolvedReturnLine[]> {
+    const resolved: ResolvedReturnLine[] = [];
+
+    for (const line of dto.items) {
+      if (!line.productId || !line.uomId || !line.warehouseId) {
+        throw new BadRequestException(
+          'Customer-mode return items require productId, uomId, and warehouseId',
+        );
+      }
+      if (line.unitPrice == null || Number(line.unitPrice) <= 0) {
+        throw new BadRequestException(
+          'Customer-mode return items require a unitPrice greater than zero',
+        );
+      }
+
+      const warehouse = await manager.getRepository(Warehouse).findOne({
+        where: { id: line.warehouseId, businessId },
+      });
+      if (!warehouse) {
+        throw new NotFoundException(`Warehouse ${line.warehouseId} not found`);
+      }
+
+      const product = await manager.getRepository(Product).findOne({
+        where: { id: line.productId, businessId, isDelete: false },
+      });
+      if (!product) {
+        throw new NotFoundException(`Product ${line.productId} not found`);
+      }
+
+      const uom = await manager.getRepository(Uom).findOne({
+        where: { id: line.uomId, businessId },
+      });
+      if (!uom) {
+        throw new NotFoundException(`UOM ${line.uomId} not found`);
+      }
+
+      if (line.productFlavourId) {
+        const flavour = await manager.getRepository(ProductFlavour).findOne({
+          where: {
+            id: line.productFlavourId,
+            productId: line.productId,
+          },
+        });
+        if (!flavour) {
+          throw new BadRequestException(
+            `Flavour ${line.productFlavourId} does not belong to product ${line.productId}`,
+          );
+        }
+      }
+
+      const pricing = await manager.getRepository(ProductPricing).findOne({
+        where: { productId: line.productId, uomId: line.uomId },
+      });
+      if (!pricing) {
+        throw new BadRequestException(
+          `Product ${line.productId} has no pricing for UOM ${line.uomId}`,
+        );
+      }
+
+      const saleUnitPrice = this.roundAmount(Number(line.unitPrice));
+      const purchaseUnitPrice = this.roundAmount(
+        Number(pricing.purchaseUnitPrice ?? 0),
+      );
+
+      resolved.push({
+        warehouseId: line.warehouseId,
+        productId: line.productId,
+        uomId: line.uomId,
+        productFlavourId: line.productFlavourId ?? null,
+        quantity: line.quantity,
+        lineAmount: this.roundAmount(saleUnitPrice * line.quantity),
+        purchaseUnitPrice,
+        saleUnitPrice,
+      });
+    }
+
+    return resolved;
+  }
+
   private async persistNewSaleReturn(
     manager: EntityManager,
     scopedBusinessId: string,
-    invoice: SaleInvoice,
     dto: CreateSaleReturnDto,
   ): Promise<{
     saleReturn: SaleReturn;
     resolvedLines: ResolvedReturnLine[];
+    customer: Party;
   }> {
     const returnRepo = manager.getRepository(SaleReturn);
     const returnNumber =
@@ -581,20 +721,58 @@ export class SaleReturnService {
       }
     }
 
-    const alreadyReturned = await this.getReturnedQuantityByInvoiceItem(
-      manager,
-      invoice.id,
-    );
-    const resolvedLines = this.resolveCreateLines(
-      invoice,
-      dto,
-      alreadyReturned,
-    );
+    const returnMode = dto.returnMode ?? SaleReturnMode.INVOICE;
+    let resolvedLines: ResolvedReturnLine[];
+    let customer: Party;
+    let saleInvoiceId: string | null = null;
+
+    if (returnMode === SaleReturnMode.INVOICE) {
+      if (!dto.saleInvoiceId) {
+        throw new BadRequestException(
+          'saleInvoiceId is required for invoice-mode sale returns',
+        );
+      }
+      const invoice = await this.findSaleInvoiceForReturn(
+        manager,
+        scopedBusinessId,
+        dto.saleInvoiceId,
+      );
+      customer = invoice.customer as Party;
+      if (!customer?.id) {
+        throw new BadRequestException(
+          'Sale invoice customer is required to create a return',
+        );
+      }
+      const alreadyReturned = await this.getReturnedQuantityByInvoiceItem(
+        manager,
+        invoice.id,
+      );
+      resolvedLines = this.resolveCreateLines(invoice, dto, alreadyReturned);
+      saleInvoiceId = invoice.id;
+    } else {
+      if (!dto.customerId) {
+        throw new BadRequestException(
+          'customerId is required for customer-mode sale returns',
+        );
+      }
+      customer = await this.findCustomerForReturn(
+        manager,
+        scopedBusinessId,
+        dto.customerId,
+      );
+      resolvedLines = await this.resolveCustomerModeLines(
+        manager,
+        scopedBusinessId,
+        dto,
+      );
+    }
 
     const saleReturn = await returnRepo.save(
       returnRepo.create({
         businessId: scopedBusinessId,
-        saleInvoiceId: invoice.id,
+        returnMode,
+        saleInvoiceId,
+        customerId: customer.id,
         returnNumber,
         returnDate: new Date(dto.returnDate),
         returnReason: dto.returnReason.trim(),
@@ -611,22 +789,22 @@ export class SaleReturnService {
           productFlavourId: line.productFlavourId,
           uomId: line.uomId,
           quantity: line.quantity,
+          saleUnitPrice: line.saleUnitPrice,
+          purchaseUnitPrice: line.purchaseUnitPrice,
         }),
       ),
     );
 
-    return { saleReturn, resolvedLines };
+    return { saleReturn, resolvedLines, customer };
   }
 
   private async reverseReturnSideEffects(
     manager: EntityManager,
     businessId: string,
     saleReturn: SaleReturn,
-    invoice: SaleInvoice,
     lines: ResolvedReturnLine[],
+    customer: Party,
   ): Promise<void> {
-    const customer = invoice.customer as Party;
-
     if (!customer?.receivableAccountId) {
       throw new BadRequestException(
         'Customer receivable account is required to reverse a sale return',
@@ -700,12 +878,11 @@ export class SaleReturnService {
     saleReturn: SaleReturn,
   ): Promise<void> {
     if (saleReturn.status === SaleReturnStatus.APPROVED) {
-      const invoice = await this.findSaleInvoiceForReturn(
+      const resolvedLines = await this.resolvedLinesFromReturn(
         manager,
         businessId,
-        saleReturn.saleInvoiceId,
+        saleReturn,
       );
-      const resolvedLines = this.resolvedLinesFromReturn(saleReturn, invoice);
       const stockLines = resolvedLines.filter((line) => line.quantity > 0);
       if (stockLines.length) {
         await this.consumeStockForReturnReversal(
@@ -738,11 +915,47 @@ export class SaleReturnService {
     await manager.getRepository(SaleReturn).delete(saleReturn.id);
   }
 
-  private resolvedLinesFromReturn(
+  private async resolvedLinesFromReturn(
+    manager: DataSource | EntityManager,
+    businessId: string,
     saleReturn: SaleReturn,
-    invoice: SaleInvoice,
-  ): ResolvedReturnLine[] {
-    return (saleReturn.saleReturnItems ?? []).map((item) => {
+  ): Promise<ResolvedReturnLine[]> {
+    const items = saleReturn.saleReturnItems ?? [];
+    const hasStoredPrices = items.some(
+      (item) =>
+        Number(item.saleUnitPrice ?? 0) > 0 ||
+        Number(item.purchaseUnitPrice ?? 0) > 0,
+    );
+
+    if (
+      saleReturn.returnMode === SaleReturnMode.CUSTOMER ||
+      !saleReturn.saleInvoiceId ||
+      hasStoredPrices
+    ) {
+      return items.map((item) => {
+        const saleUnitPrice = Number(item.saleUnitPrice ?? 0);
+        const purchaseUnitPrice = Number(item.purchaseUnitPrice ?? 0);
+        const quantity = Number(item.quantity);
+        return {
+          warehouseId: item.warehouseId,
+          productId: item.productId,
+          uomId: item.uomId,
+          productFlavourId: item.productFlavourId ?? null,
+          quantity,
+          lineAmount: this.roundAmount(saleUnitPrice * quantity),
+          purchaseUnitPrice,
+          saleUnitPrice,
+        };
+      });
+    }
+
+    const invoice = await this.findSaleInvoiceForReturn(
+      manager,
+      businessId,
+      saleReturn.saleInvoiceId,
+    );
+
+    return items.map((item) => {
       const invoiceItem = invoice.items?.find(
         (row) =>
           row.productId === item.productId &&
@@ -760,17 +973,55 @@ export class SaleReturnService {
         invoiceItem,
       );
 
+      const saleUnitPrice = Number(
+        item.saleUnitPrice ?? orderItem?.saleUnitPrice ?? 0,
+      );
+      const purchaseUnitPrice = Number(
+        item.purchaseUnitPrice ?? orderItem?.purchaseUnitPrice ?? 0,
+      );
+
       return {
         warehouseId: item.warehouseId,
         productId: item.productId,
         uomId: item.uomId,
         productFlavourId: item.productFlavourId ?? null,
         quantity: Number(item.quantity),
-        lineAmount: this.lineAmountForQuantity(invoiceItem, Number(item.quantity)),
-        purchaseUnitPrice: Number(orderItem?.purchaseUnitPrice ?? 0),
-        saleUnitPrice: Number(orderItem?.saleUnitPrice ?? 0),
+        lineAmount:
+          saleUnitPrice > 0
+            ? this.roundAmount(saleUnitPrice * Number(item.quantity))
+            : this.lineAmountForQuantity(invoiceItem, Number(item.quantity)),
+        purchaseUnitPrice,
+        saleUnitPrice,
       };
     });
+  }
+
+  private async resolveCustomerForSaleReturn(
+    tenantDb: DataSource | EntityManager,
+    businessId: string,
+    saleReturn: SaleReturn,
+  ): Promise<Party> {
+    if (saleReturn.customer) {
+      return saleReturn.customer;
+    }
+    if (saleReturn.customerId) {
+      return this.findCustomerForReturn(
+        tenantDb,
+        businessId,
+        saleReturn.customerId,
+      );
+    }
+    if (saleReturn.saleInvoiceId) {
+      const invoice = await this.findSaleInvoiceForReturn(
+        tenantDb,
+        businessId,
+        saleReturn.saleInvoiceId,
+      );
+      return invoice.customer as Party;
+    }
+    throw new BadRequestException(
+      'Sale return customer is required for this action',
+    );
   }
 
   async create(
@@ -780,17 +1031,11 @@ export class SaleReturnService {
     actorUserId: string,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
-    const invoice = await this.findSaleInvoiceForReturn(
-      tenantDb,
-      scopedBusinessId,
-      dto.saleInvoiceId,
-    );
 
     const created = await tenantDb.transaction(async (manager) => {
       const { saleReturn } = await this.persistNewSaleReturn(
         manager,
         scopedBusinessId,
-        invoice,
         dto,
       );
 
@@ -807,7 +1052,9 @@ export class SaleReturnService {
       description: `Sale return ${created.returnNumber} created`,
       metadata: {
         saleReturnId: created.id,
-        saleInvoiceId: invoice.id,
+        returnMode: created.returnMode,
+        saleInvoiceId: created.saleInvoiceId,
+        customerId: created.customerId,
         status: created.status,
       },
     });
@@ -822,26 +1069,17 @@ export class SaleReturnService {
     actorUserId: string,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
-    const invoice = await this.findSaleInvoiceForReturn(
-      tenantDb,
-      scopedBusinessId,
-      dto.saleInvoiceId,
-    );
 
     const created = await tenantDb.transaction(async (manager) => {
-      const { saleReturn, resolvedLines } = await this.persistNewSaleReturn(
-        manager,
-        scopedBusinessId,
-        invoice,
-        dto,
-      );
+      const { saleReturn, resolvedLines, customer } =
+        await this.persistNewSaleReturn(manager, scopedBusinessId, dto);
 
       return this.executeSaleReturnApproval(
         manager,
         scopedBusinessId,
         saleReturn,
-        invoice,
         resolvedLines,
+        customer,
       );
     });
 
@@ -852,7 +1090,9 @@ export class SaleReturnService {
       description: `Sale return ${created.returnNumber} created and approved`,
       metadata: {
         saleReturnId: created.id,
-        saleInvoiceId: invoice.id,
+        returnMode: created.returnMode,
+        saleInvoiceId: created.saleInvoiceId,
+        customerId: created.customerId,
         status: created.status,
       },
     });
@@ -878,20 +1118,24 @@ export class SaleReturnService {
       'Only pending sale returns can be approved',
     );
 
-    const invoice = await this.findSaleInvoiceForReturn(
+    const customer = await this.resolveCustomerForSaleReturn(
       tenantDb,
       scopedBusinessId,
-      saleReturn.saleInvoiceId,
+      saleReturn,
     );
-    const resolvedLines = this.resolvedLinesFromReturn(saleReturn, invoice);
+    const resolvedLines = await this.resolvedLinesFromReturn(
+      tenantDb,
+      scopedBusinessId,
+      saleReturn,
+    );
 
     const approved = await tenantDb.transaction(async (manager) =>
       this.executeSaleReturnApproval(
         manager,
         scopedBusinessId,
         saleReturn,
-        invoice,
         resolvedLines,
+        customer,
       ),
     );
 
@@ -902,7 +1146,8 @@ export class SaleReturnService {
       description: `Sale return ${approved.returnNumber} approved — stock received, customer receivable reduced`,
       metadata: {
         saleReturnId: approved.id,
-        saleInvoiceId: invoice.id,
+        saleInvoiceId: approved.saleInvoiceId,
+        customerId: approved.customerId,
       },
     });
 
@@ -1031,6 +1276,7 @@ export class SaleReturnService {
       limit: number;
       search?: string;
       saleInvoiceId?: string;
+      customerId?: string;
       status?: SaleReturnStatus;
     },
     actorUserId: string,
@@ -1043,9 +1289,10 @@ export class SaleReturnService {
     const qb = tenantDb
       .getRepository(SaleReturn)
       .createQueryBuilder('saleReturn')
+      .leftJoinAndSelect('saleReturn.customer', 'returnCustomer')
       .leftJoinAndSelect('saleReturn.saleInvoice', 'saleInvoice')
       .leftJoinAndSelect('saleInvoice.items', 'invoiceItems')
-      .leftJoinAndSelect('saleInvoice.customer', 'customer')
+      .leftJoinAndSelect('saleInvoice.customer', 'invoiceCustomer')
       .leftJoinAndSelect('saleReturn.saleReturnItems', 'items')
       .leftJoinAndSelect('items.product', 'product')
       .leftJoinAndSelect('items.warehouse', 'warehouse')
@@ -1056,6 +1303,11 @@ export class SaleReturnService {
     if (options.saleInvoiceId) {
       qb.andWhere('saleReturn.saleInvoiceId = :saleInvoiceId', {
         saleInvoiceId: options.saleInvoiceId,
+      });
+    }
+    if (options.customerId) {
+      qb.andWhere('saleReturn.customerId = :customerId', {
+        customerId: options.customerId,
       });
     }
     if (options.status) {
@@ -1072,8 +1324,10 @@ export class SaleReturnService {
             .where('saleReturn.returnNumber ILIKE :search', { search })
             .orWhere('saleReturn.returnReason ILIKE :search', { search })
             .orWhere('saleInvoice.invoiceNumber ILIKE :search', { search })
-            .orWhere('customer.name ILIKE :search', { search })
-            .orWhere('customer.code ILIKE :search', { search });
+            .orWhere('returnCustomer.name ILIKE :search', { search })
+            .orWhere('returnCustomer.code ILIKE :search', { search })
+            .orWhere('invoiceCustomer.name ILIKE :search', { search })
+            .orWhere('invoiceCustomer.code ILIKE :search', { search });
         }),
       );
     }
@@ -1209,20 +1463,24 @@ export class SaleReturnService {
     );
 
     if (saleReturn.status === SaleReturnStatus.APPROVED) {
-      const invoice = await this.findSaleInvoiceForReturn(
+      const customer = await this.resolveCustomerForSaleReturn(
         tenantDb,
         scopedBusinessId,
-        saleReturn.saleInvoiceId,
+        saleReturn,
       );
-      const resolvedLines = this.resolvedLinesFromReturn(saleReturn, invoice);
+      const resolvedLines = await this.resolvedLinesFromReturn(
+        tenantDb,
+        scopedBusinessId,
+        saleReturn,
+      );
 
       await tenantDb.transaction(async (manager) => {
         await this.reverseReturnSideEffects(
           manager,
           scopedBusinessId,
           saleReturn,
-          invoice,
           resolvedLines,
+          customer,
         );
 
         await manager
@@ -1523,6 +1781,7 @@ export class SaleReturnService {
     );
 
     return {
+      returnMode: SaleReturnMode.INVOICE,
       saleInvoiceId: invoice.id,
       returnNumber: item.returnNumber.trim(),
       returnDate: item.returnDate,

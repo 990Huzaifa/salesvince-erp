@@ -10,6 +10,7 @@ import { Brackets, DataSource, EntityManager, In, IsNull } from 'typeorm';
 import {
   PurchaseReturn,
   PurchaseReturnItem,
+  PurchaseReturnMode,
   PurchaseReturnStatus,
 } from 'src/tenant-db/entities/purchase-return.entity';
 import {
@@ -17,7 +18,14 @@ import {
   PurchaseInvoiceItem,
 } from 'src/tenant-db/entities/purchase-invoice.entity';
 import { Grn } from 'src/tenant-db/entities/grn.entity';
-import { Party } from 'src/tenant-db/entities/party.entity';
+import { Party, PartyType } from 'src/tenant-db/entities/party.entity';
+import {
+  Product,
+  ProductFlavour,
+  ProductPricing,
+  Uom,
+} from 'src/tenant-db/entities/product.entity';
+import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
 import { ReferenceType } from 'src/tenant-db/entities/stock.entity';
 import { AccountTransactionReferenceType } from 'src/tenant-db/entities/transaction.entity';
 import { CreatePurchaseReturnDto } from '../../dto/purchase-return/create-purchase-return.dto';
@@ -80,6 +88,8 @@ export class PurchaseReturnService {
 
   private returnRelations() {
     return {
+      vendor: true,
+      warehouse: true,
       purchaseInvoice: {
         items: true,
         grn: { warehouse: true, items: true },
@@ -202,6 +212,11 @@ export class PurchaseReturnService {
     const resolved: ResolvedReturnLine[] = [];
 
     for (const line of dto.items) {
+      if (!line.purchaseInvoiceItemId) {
+        throw new BadRequestException(
+          'purchaseInvoiceItemId is required for invoice-mode purchase return items',
+        );
+      }
       const invoiceItem = itemsById.get(line.purchaseInvoiceItemId);
       if (!invoiceItem) {
         throw new BadRequestException(
@@ -220,14 +235,22 @@ export class PurchaseReturnService {
       const grnItem = grnItemByProductUom.get(
         `${invoiceItem.productId}:${invoiceItem.uomId}:${invoiceItem.productFlavourId ?? ''}`,
       );
+      const lineAmount = this.lineAmountForQuantity(
+        invoiceItem,
+        line.quantity,
+      );
+      const purchaseUnitPrice =
+        line.quantity > 0
+          ? this.roundAmount(lineAmount / line.quantity)
+          : Number(invoiceItem.purchaseUnitPrice);
 
       resolved.push({
         productId: invoiceItem.productId,
         uomId: invoiceItem.uomId,
         productFlavourId: invoiceItem.productFlavourId ?? null,
         quantity: line.quantity,
-        lineAmount: this.lineAmountForQuantity(invoiceItem, line.quantity),
-        purchaseUnitPrice: Number(invoiceItem.purchaseUnitPrice),
+        lineAmount,
+        purchaseUnitPrice,
         saleUnitPrice: Number(grnItem?.saleUnitPrice ?? 0),
       });
     }
@@ -278,6 +301,8 @@ export class PurchaseReturnService {
     const purchaseReturn = await tenantDb
       .getRepository(PurchaseReturn)
       .createQueryBuilder('purchaseReturn')
+      .leftJoinAndSelect('purchaseReturn.vendor', 'returnVendor')
+      .leftJoinAndSelect('purchaseReturn.warehouse', 'returnWarehouse')
       .leftJoinAndSelect('purchaseReturn.purchaseInvoice', 'purchaseInvoice')
       .leftJoinAndSelect('purchaseInvoice.items', 'invoiceItems')
       .leftJoinAndSelect('purchaseInvoice.grn', 'grn')
@@ -303,6 +328,9 @@ export class PurchaseReturnService {
 
   private mapPurchaseReturn(purchaseReturn: PurchaseReturn) {
     const invoice = purchaseReturn.purchaseInvoice;
+    const vendor = purchaseReturn.vendor ?? invoice?.vendor ?? null;
+    const warehouse =
+      purchaseReturn.warehouse ?? invoice?.grn?.warehouse ?? null;
     const items = (purchaseReturn.purchaseReturnItems ?? []).map((item) => ({
       id: item.id,
       productId: item.productId,
@@ -329,11 +357,17 @@ export class PurchaseReturnService {
       uomId: item.uomId,
       uom: item.uom ? { id: item.uom.id, name: item.uom.name } : null,
       quantity: item.quantity,
+      purchaseUnitPrice: Number(item.purchaseUnitPrice ?? 0),
+      saleUnitPrice: Number(item.saleUnitPrice ?? 0),
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     }));
 
     const totalReturnAmount = items.reduce((sum, item) => {
+      const storedPurchase = Number(item.purchaseUnitPrice ?? 0);
+      if (storedPurchase > 0) {
+        return sum + this.roundAmount(storedPurchase * Number(item.quantity));
+      }
       const invoiceItem = invoice?.items?.find(
         (row) =>
           row.productId === item.productId &&
@@ -349,7 +383,25 @@ export class PurchaseReturnService {
     return {
       id: purchaseReturn.id,
       businessId: purchaseReturn.businessId,
+      returnMode: purchaseReturn.returnMode ?? PurchaseReturnMode.INVOICE,
       purchaseInvoiceId: purchaseReturn.purchaseInvoiceId,
+      vendorId: purchaseReturn.vendorId ?? invoice?.vendorId ?? null,
+      vendor: vendor
+        ? {
+            id: vendor.id,
+            code: vendor.code,
+            name: vendor.name,
+          }
+        : null,
+      warehouseId:
+        purchaseReturn.warehouseId ?? invoice?.grn?.warehouseId ?? null,
+      warehouse: warehouse
+        ? {
+            id: warehouse.id,
+            code: warehouse.code,
+            name: warehouse.name,
+          }
+        : null,
       purchaseInvoice: invoice
         ? {
             id: invoice.id,
@@ -404,16 +456,14 @@ export class PurchaseReturnService {
     manager: EntityManager,
     businessId: string,
     purchaseReturn: PurchaseReturn,
-    invoice: PurchaseInvoice,
     lines: ResolvedReturnLine[],
+    vendor: Party,
+    warehouseId: string,
   ): Promise<PurchaseReturn> {
     this.assertPendingStatus(
       purchaseReturn,
       'Only pending purchase returns can be approved',
     );
-
-    const grn = invoice.grn as Grn;
-    const vendor = invoice.vendor as Party;
 
     if (!vendor?.payableAccountId) {
       throw new BadRequestException(
@@ -432,7 +482,7 @@ export class PurchaseReturnService {
 
     await this.stockService.consumeStockOut(manager, {
       businessId,
-      warehouseId: grn.warehouseId,
+      warehouseId,
       referenceType: ReferenceType.PURCHASE_RETURN,
       lines: lines.map((line) => ({
         productId: line.productId,
@@ -475,14 +525,107 @@ export class PurchaseReturnService {
     });
   }
 
+  private async findVendorForReturn(
+    tenantDb: DataSource | EntityManager,
+    businessId: string,
+    vendorId: string,
+  ): Promise<Party> {
+    const vendor = await tenantDb.getRepository(Party).findOne({
+      where: { id: vendorId, businessId },
+    });
+    if (!vendor) {
+      throw new NotFoundException('Vendor not found');
+    }
+    if (vendor.type !== PartyType.VENDOR && vendor.type !== PartyType.BOTH) {
+      throw new BadRequestException('Selected party is not a vendor');
+    }
+    return vendor;
+  }
+
+  private async resolveSupplierModeLines(
+    manager: EntityManager,
+    businessId: string,
+    dto: CreatePurchaseReturnDto,
+  ): Promise<ResolvedReturnLine[]> {
+    const resolved: ResolvedReturnLine[] = [];
+
+    for (const line of dto.items) {
+      if (!line.productId || !line.uomId) {
+        throw new BadRequestException(
+          'Supplier-mode return items require productId and uomId',
+        );
+      }
+      if (line.unitPrice == null || Number(line.unitPrice) <= 0) {
+        throw new BadRequestException(
+          'Supplier-mode return items require a unitPrice greater than zero',
+        );
+      }
+
+      const product = await manager.getRepository(Product).findOne({
+        where: { id: line.productId, businessId, isDelete: false },
+      });
+      if (!product) {
+        throw new NotFoundException(`Product ${line.productId} not found`);
+      }
+
+      const uom = await manager.getRepository(Uom).findOne({
+        where: { id: line.uomId, businessId },
+      });
+      if (!uom) {
+        throw new NotFoundException(`UOM ${line.uomId} not found`);
+      }
+
+      if (line.productFlavourId) {
+        const flavour = await manager.getRepository(ProductFlavour).findOne({
+          where: {
+            id: line.productFlavourId,
+            productId: line.productId,
+          },
+        });
+        if (!flavour) {
+          throw new BadRequestException(
+            `Flavour ${line.productFlavourId} does not belong to product ${line.productId}`,
+          );
+        }
+      }
+
+      const pricing = await manager.getRepository(ProductPricing).findOne({
+        where: { productId: line.productId, uomId: line.uomId },
+      });
+      if (!pricing) {
+        throw new BadRequestException(
+          `Product ${line.productId} has no pricing for UOM ${line.uomId}`,
+        );
+      }
+
+      const purchaseUnitPrice = this.roundAmount(Number(line.unitPrice));
+      const saleUnitPrice = this.roundAmount(
+        purchaseUnitPrice + Number(pricing.saleUnitMarginAmount ?? 0),
+      );
+
+      resolved.push({
+        productId: line.productId,
+        uomId: line.uomId,
+        productFlavourId: line.productFlavourId ?? null,
+        quantity: line.quantity,
+        lineAmount: this.roundAmount(purchaseUnitPrice * line.quantity),
+        purchaseUnitPrice,
+        saleUnitPrice,
+      });
+    }
+
+    return resolved;
+  }
+
   private async persistNewPurchaseReturn(
     manager: EntityManager,
     scopedBusinessId: string,
-    invoice: PurchaseInvoice,
     dto: CreatePurchaseReturnDto,
   ): Promise<{
     purchaseReturn: PurchaseReturn;
     resolvedLines: ResolvedReturnLine[];
+    vendor: Party;
+    warehouseId: string;
   }> {
     const returnRepo = manager.getRepository(PurchaseReturn);
     const returnNumber =
@@ -499,20 +642,75 @@ export class PurchaseReturnService {
       }
     }
 
-    const alreadyReturned = await this.getReturnedQuantityByInvoiceItem(
-      manager,
-      invoice.id,
-    );
-    const resolvedLines = this.resolveCreateLines(
-      invoice,
-      dto,
-      alreadyReturned,
-    );
+    const returnMode = dto.returnMode ?? PurchaseReturnMode.INVOICE;
+    let resolvedLines: ResolvedReturnLine[];
+    let vendor: Party;
+    let purchaseInvoiceId: string | null = null;
+    let warehouseId: string | null = null;
+
+    if (returnMode === PurchaseReturnMode.INVOICE) {
+      if (!dto.purchaseInvoiceId) {
+        throw new BadRequestException(
+          'purchaseInvoiceId is required for invoice-mode purchase returns',
+        );
+      }
+      const invoice = await this.findPurchaseInvoiceForReturn(
+        manager,
+        scopedBusinessId,
+        dto.purchaseInvoiceId,
+      );
+      vendor = invoice.vendor as Party;
+      if (!vendor?.id) {
+        throw new BadRequestException(
+          'Purchase invoice vendor is required to create a return',
+        );
+      }
+      const grn = invoice.grn as Grn;
+      warehouseId = grn.warehouseId;
+      const alreadyReturned = await this.getReturnedQuantityByInvoiceItem(
+        manager,
+        invoice.id,
+      );
+      resolvedLines = this.resolveCreateLines(invoice, dto, alreadyReturned);
+      purchaseInvoiceId = invoice.id;
+    } else {
+      if (!dto.vendorId) {
+        throw new BadRequestException(
+          'vendorId is required for supplier-mode purchase returns',
+        );
+      }
+      if (!dto.warehouseId) {
+        throw new BadRequestException(
+          'warehouseId is required for supplier-mode purchase returns',
+        );
+      }
+      vendor = await this.findVendorForReturn(
+        manager,
+        scopedBusinessId,
+        dto.vendorId,
+      );
+      const warehouse = await manager.getRepository(Warehouse).findOne({
+        where: { id: dto.warehouseId, businessId: scopedBusinessId },
+      });
+      if (!warehouse) {
+        throw new NotFoundException(`Warehouse ${dto.warehouseId} not found`);
+      }
+      warehouseId = warehouse.id;
+      resolvedLines = await this.resolveSupplierModeLines(
+        manager,
+        scopedBusinessId,
+        dto,
+      );
+    }
 
     const purchaseReturn = await returnRepo.save(
       returnRepo.create({
         businessId: scopedBusinessId,
-        purchaseInvoiceId: invoice.id,
+        returnMode,
+        purchaseInvoiceId,
+        vendorId: vendor.id,
+        warehouseId:
+          returnMode === PurchaseReturnMode.SUPPLIER ? warehouseId : null,
         returnNumber,
         returnDate: new Date(dto.returnDate),
         returnReason: dto.returnReason.trim(),
@@ -528,23 +726,28 @@ export class PurchaseReturnService {
           productFlavourId: line.productFlavourId,
           uomId: line.uomId,
           quantity: line.quantity,
+          purchaseUnitPrice: line.purchaseUnitPrice,
+          saleUnitPrice: line.saleUnitPrice,
         }),
       ),
     );
 
-    return { purchaseReturn, resolvedLines };
+    return {
+      purchaseReturn,
+      resolvedLines,
+      vendor,
+      warehouseId: warehouseId as string,
+    };
   }
 
   private async reverseReturnSideEffects(
     manager: EntityManager,
     businessId: string,
     purchaseReturn: PurchaseReturn,
-    invoice: PurchaseInvoice,
     lines: ResolvedReturnLine[],
+    vendor: Party,
+    warehouseId: string,
   ): Promise<void> {
-    const grn = invoice.grn as Grn;
-    const vendor = invoice.vendor as Party;
-
     if (!vendor?.payableAccountId) {
       throw new BadRequestException(
         'Vendor payable account is required to reverse a purchase return',
@@ -558,8 +761,8 @@ export class PurchaseReturnService {
     if (totalAmount > 0) {
       await this.stockService.receiveStockIn(manager, {
         businessId,
-        warehouseId: grn.warehouseId,
-        vendorId: invoice.vendorId,
+        warehouseId,
+        vendorId: vendor.id,
         referenceType: ReferenceType.PURCHASE_RETURN,
         batchDate: purchaseReturn.returnDate,
         batchNumberPrefix: purchaseReturn.returnNumber,
@@ -621,22 +824,27 @@ export class PurchaseReturnService {
     purchaseReturn: PurchaseReturn,
   ): Promise<void> {
     if (purchaseReturn.status === PurchaseReturnStatus.APPROVED) {
-      const invoice = await this.findPurchaseInvoiceForReturn(
+      const vendor = await this.resolveVendorForPurchaseReturn(
         manager,
         businessId,
-        purchaseReturn.purchaseInvoiceId,
-      );
-      const resolvedLines = this.resolvedLinesFromReturn(
         purchaseReturn,
-        invoice,
       );
-      const grn = invoice.grn as Grn;
+      const warehouseId = await this.resolveWarehouseIdForPurchaseReturn(
+        manager,
+        businessId,
+        purchaseReturn,
+      );
+      const resolvedLines = await this.resolvedLinesFromReturn(
+        manager,
+        businessId,
+        purchaseReturn,
+      );
 
       if (resolvedLines.length) {
         await this.stockService.receiveStockIn(manager, {
           businessId,
-          warehouseId: grn.warehouseId,
-          vendorId: invoice.vendorId,
+          warehouseId,
+          vendorId: vendor.id,
           referenceType: ReferenceType.PURCHASE_RETURN,
           batchDate: purchaseReturn.returnDate,
           batchNumberPrefix: `${purchaseReturn.returnNumber}-REV`,
@@ -663,11 +871,46 @@ export class PurchaseReturnService {
     }
   }
 
-  private resolvedLinesFromReturn(
+  private async resolvedLinesFromReturn(
+    manager: DataSource | EntityManager,
+    businessId: string,
     purchaseReturn: PurchaseReturn,
-    invoice: PurchaseInvoice,
-  ): ResolvedReturnLine[] {
-    return (purchaseReturn.purchaseReturnItems ?? []).map((item) => {
+  ): Promise<ResolvedReturnLine[]> {
+    const items = purchaseReturn.purchaseReturnItems ?? [];
+    const hasStoredPrices = items.some(
+      (item) =>
+        Number(item.purchaseUnitPrice ?? 0) > 0 ||
+        Number(item.saleUnitPrice ?? 0) > 0,
+    );
+
+    if (
+      purchaseReturn.returnMode === PurchaseReturnMode.SUPPLIER ||
+      !purchaseReturn.purchaseInvoiceId ||
+      hasStoredPrices
+    ) {
+      return items.map((item) => {
+        const purchaseUnitPrice = Number(item.purchaseUnitPrice ?? 0);
+        const saleUnitPrice = Number(item.saleUnitPrice ?? 0);
+        const quantity = Number(item.quantity);
+        return {
+          productId: item.productId,
+          uomId: item.uomId,
+          productFlavourId: item.productFlavourId ?? null,
+          quantity,
+          lineAmount: this.roundAmount(purchaseUnitPrice * quantity),
+          purchaseUnitPrice,
+          saleUnitPrice,
+        };
+      });
+    }
+
+    const invoice = await this.findPurchaseInvoiceForReturn(
+      manager,
+      businessId,
+      purchaseReturn.purchaseInvoiceId,
+    );
+
+    return items.map((item) => {
       const invoiceItem = invoice.items?.find(
         (row) =>
           row.productId === item.productId &&
@@ -687,16 +930,75 @@ export class PurchaseReturnService {
           (row.productFlavourId ?? null) === (item.productFlavourId ?? null),
       );
 
+      const purchaseUnitPrice = Number(
+        item.purchaseUnitPrice ?? invoiceItem.purchaseUnitPrice,
+      );
+      const saleUnitPrice = Number(
+        item.saleUnitPrice ?? grnItem?.saleUnitPrice ?? 0,
+      );
+
       return {
         productId: item.productId,
         uomId: item.uomId,
         productFlavourId: item.productFlavourId ?? null,
         quantity: Number(item.quantity),
-        lineAmount: this.lineAmountForQuantity(invoiceItem, Number(item.quantity)),
-        purchaseUnitPrice: Number(invoiceItem.purchaseUnitPrice),
-        saleUnitPrice: Number(grnItem?.saleUnitPrice ?? 0),
+        lineAmount:
+          purchaseUnitPrice > 0
+            ? this.roundAmount(purchaseUnitPrice * Number(item.quantity))
+            : this.lineAmountForQuantity(invoiceItem, Number(item.quantity)),
+        purchaseUnitPrice,
+        saleUnitPrice,
       };
     });
+  }
+
+  private async resolveVendorForPurchaseReturn(
+    tenantDb: DataSource | EntityManager,
+    businessId: string,
+    purchaseReturn: PurchaseReturn,
+  ): Promise<Party> {
+    if (purchaseReturn.vendor) {
+      return purchaseReturn.vendor;
+    }
+    if (purchaseReturn.vendorId) {
+      return this.findVendorForReturn(
+        tenantDb,
+        businessId,
+        purchaseReturn.vendorId,
+      );
+    }
+    if (purchaseReturn.purchaseInvoiceId) {
+      const invoice = await this.findPurchaseInvoiceForReturn(
+        tenantDb,
+        businessId,
+        purchaseReturn.purchaseInvoiceId,
+      );
+      return invoice.vendor as Party;
+    }
+    throw new BadRequestException(
+      'Purchase return vendor is required for this action',
+    );
+  }
+
+  private async resolveWarehouseIdForPurchaseReturn(
+    tenantDb: DataSource | EntityManager,
+    businessId: string,
+    purchaseReturn: PurchaseReturn,
+  ): Promise<string> {
+    if (purchaseReturn.warehouseId) {
+      return purchaseReturn.warehouseId;
+    }
+    if (purchaseReturn.purchaseInvoiceId) {
+      const invoice = await this.findPurchaseInvoiceForReturn(
+        tenantDb,
+        businessId,
+        purchaseReturn.purchaseInvoiceId,
+      );
+      return (invoice.grn as Grn).warehouseId;
+    }
+    throw new BadRequestException(
+      'Purchase return warehouse is required for this action',
+    );
   }
 
   async create(
@@ -706,17 +1008,11 @@ export class PurchaseReturnService {
     actorUserId: string,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
-    const invoice = await this.findPurchaseInvoiceForReturn(
-      tenantDb,
-      scopedBusinessId,
-      dto.purchaseInvoiceId,
-    );
 
     const created = await tenantDb.transaction(async (manager) => {
       const { purchaseReturn } = await this.persistNewPurchaseReturn(
         manager,
         scopedBusinessId,
-        invoice,
         dto,
       );
 
@@ -733,7 +1029,9 @@ export class PurchaseReturnService {
       description: `Purchase return ${created.returnNumber} created`,
       metadata: {
         purchaseReturnId: created.id,
-        purchaseInvoiceId: invoice.id,
+        returnMode: created.returnMode,
+        purchaseInvoiceId: created.purchaseInvoiceId,
+        vendorId: created.vendorId,
         status: created.status,
       },
     });
@@ -748,27 +1046,18 @@ export class PurchaseReturnService {
     actorUserId: string,
   ) {
     const scopedBusinessId = this.assertBusinessId(businessId);
-    const invoice = await this.findPurchaseInvoiceForReturn(
-      tenantDb,
-      scopedBusinessId,
-      dto.purchaseInvoiceId,
-    );
 
     const created = await tenantDb.transaction(async (manager) => {
-      const { purchaseReturn, resolvedLines } =
-        await this.persistNewPurchaseReturn(
-          manager,
-          scopedBusinessId,
-          invoice,
-          dto,
-        );
+      const { purchaseReturn, resolvedLines, vendor, warehouseId } =
+        await this.persistNewPurchaseReturn(manager, scopedBusinessId, dto);
 
       return this.executePurchaseReturnApproval(
         manager,
         scopedBusinessId,
         purchaseReturn,
-        invoice,
         resolvedLines,
+        vendor,
+        warehouseId,
       );
     });
 
@@ -779,7 +1068,9 @@ export class PurchaseReturnService {
       description: `Purchase return ${created.returnNumber} created and approved`,
       metadata: {
         purchaseReturnId: created.id,
-        purchaseInvoiceId: invoice.id,
+        returnMode: created.returnMode,
+        purchaseInvoiceId: created.purchaseInvoiceId,
+        vendorId: created.vendorId,
         status: created.status,
       },
     });
@@ -805,20 +1096,30 @@ export class PurchaseReturnService {
       'Only pending purchase returns can be approved',
     );
 
-    const invoice = await this.findPurchaseInvoiceForReturn(
+    const vendor = await this.resolveVendorForPurchaseReturn(
       tenantDb,
       scopedBusinessId,
-      purchaseReturn.purchaseInvoiceId,
+      purchaseReturn,
     );
-    const resolvedLines = this.resolvedLinesFromReturn(purchaseReturn, invoice);
+    const warehouseId = await this.resolveWarehouseIdForPurchaseReturn(
+      tenantDb,
+      scopedBusinessId,
+      purchaseReturn,
+    );
+    const resolvedLines = await this.resolvedLinesFromReturn(
+      tenantDb,
+      scopedBusinessId,
+      purchaseReturn,
+    );
 
     const approved = await tenantDb.transaction(async (manager) =>
       this.executePurchaseReturnApproval(
         manager,
         scopedBusinessId,
         purchaseReturn,
-        invoice,
         resolvedLines,
+        vendor,
+        warehouseId,
       ),
     );
 
@@ -829,7 +1130,8 @@ export class PurchaseReturnService {
       description: `Purchase return ${approved.returnNumber} approved — stock issued, vendor payable reduced`,
       metadata: {
         purchaseReturnId: approved.id,
-        purchaseInvoiceId: invoice.id,
+        purchaseInvoiceId: approved.purchaseInvoiceId,
+        vendorId: approved.vendorId,
       },
     });
 
@@ -962,6 +1264,7 @@ export class PurchaseReturnService {
       limit: number;
       search?: string;
       purchaseInvoiceId?: string;
+      vendorId?: string;
       status?: PurchaseReturnStatus;
     },
     actorUserId: string,
@@ -974,9 +1277,11 @@ export class PurchaseReturnService {
     const qb = tenantDb
       .getRepository(PurchaseReturn)
       .createQueryBuilder('purchaseReturn')
+      .leftJoinAndSelect('purchaseReturn.vendor', 'returnVendor')
+      .leftJoinAndSelect('purchaseReturn.warehouse', 'returnWarehouse')
       .leftJoinAndSelect('purchaseReturn.purchaseInvoice', 'purchaseInvoice')
       .leftJoinAndSelect('purchaseInvoice.items', 'invoiceItems')
-      .leftJoinAndSelect('purchaseInvoice.vendor', 'vendor')
+      .leftJoinAndSelect('purchaseInvoice.vendor', 'invoiceVendor')
       .leftJoinAndSelect('purchaseInvoice.grn', 'grn')
       .leftJoinAndSelect('grn.items', 'grnItems')
       .leftJoinAndSelect('purchaseReturn.purchaseReturnItems', 'items')
@@ -988,6 +1293,11 @@ export class PurchaseReturnService {
     if (options.purchaseInvoiceId) {
       qb.andWhere('purchaseReturn.purchaseInvoiceId = :purchaseInvoiceId', {
         purchaseInvoiceId: options.purchaseInvoiceId,
+      });
+    }
+    if (options.vendorId) {
+      qb.andWhere('purchaseReturn.vendorId = :vendorId', {
+        vendorId: options.vendorId,
       });
     }
     if (options.status) {
@@ -1004,8 +1314,10 @@ export class PurchaseReturnService {
             .where('purchaseReturn.returnNumber ILIKE :search', { search })
             .orWhere('purchaseReturn.returnReason ILIKE :search', { search })
             .orWhere('purchaseInvoice.invoiceNumber ILIKE :search', { search })
-            .orWhere('vendor.name ILIKE :search', { search })
-            .orWhere('vendor.code ILIKE :search', { search });
+            .orWhere('returnVendor.name ILIKE :search', { search })
+            .orWhere('returnVendor.code ILIKE :search', { search })
+            .orWhere('invoiceVendor.name ILIKE :search', { search })
+            .orWhere('invoiceVendor.code ILIKE :search', { search });
         }),
       );
     }
@@ -1141,14 +1453,20 @@ export class PurchaseReturnService {
     );
 
     if (purchaseReturn.status === PurchaseReturnStatus.APPROVED) {
-      const invoice = await this.findPurchaseInvoiceForReturn(
+      const vendor = await this.resolveVendorForPurchaseReturn(
         tenantDb,
         scopedBusinessId,
-        purchaseReturn.purchaseInvoiceId,
-      );
-      const resolvedLines = this.resolvedLinesFromReturn(
         purchaseReturn,
-        invoice,
+      );
+      const warehouseId = await this.resolveWarehouseIdForPurchaseReturn(
+        tenantDb,
+        scopedBusinessId,
+        purchaseReturn,
+      );
+      const resolvedLines = await this.resolvedLinesFromReturn(
+        tenantDb,
+        scopedBusinessId,
+        purchaseReturn,
       );
 
       await tenantDb.transaction(async (manager) => {
@@ -1156,8 +1474,9 @@ export class PurchaseReturnService {
           manager,
           scopedBusinessId,
           purchaseReturn,
-          invoice,
           resolvedLines,
+          vendor,
+          warehouseId,
         );
 
         await manager
@@ -1460,6 +1779,7 @@ export class PurchaseReturnService {
     );
 
     return {
+      returnMode: PurchaseReturnMode.INVOICE,
       purchaseInvoiceId: invoice.id,
       returnNumber: item.returnNumber.trim(),
       returnDate: item.returnDate,
