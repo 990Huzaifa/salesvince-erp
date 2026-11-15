@@ -623,7 +623,7 @@ export class TransactionService {
           referenceType: AccountTransactionReferenceType.OPENING_BALANCE,
           referenceId,
           transactionDate,
-          description: \Opening balance - \,
+          description: `Opening balance - ${account.name}`,
           ...debitCredit,
         });
       }
@@ -651,8 +651,8 @@ export class TransactionService {
           : 'COA_OPENING_BALANCE_CREATED',
       description:
         action === 'updated'
-          ? \Opening balance updated for \ - \
-          : \Opening balance posted for \ - \,
+          ? `Opening balance updated for ${account.code} - ${account.name}`
+          : `Opening balance posted for ${account.code} - ${account.name}`,
       metadata: {
         chartOfAccountId: account.id,
         code: account.code,
