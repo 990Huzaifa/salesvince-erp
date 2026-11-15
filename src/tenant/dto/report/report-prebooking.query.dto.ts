@@ -26,6 +26,10 @@ export class ReportPrebookingQueryDto extends ReportDateRangeQueryDto {
   warehouseId?: string;
 
   @IsOptional()
+  @IsUUID()
+  brandId?: string;
+
+  @IsOptional()
   @IsString()
   search?: string;
 }

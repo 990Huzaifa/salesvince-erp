@@ -390,6 +390,7 @@ export class ReportController {
         customerId: query.customerId,
         cityId: query.cityId,
         warehouseId: query.warehouseId,
+        brandId: query.brandId,
         search: query.search,
       },
       user.userId,

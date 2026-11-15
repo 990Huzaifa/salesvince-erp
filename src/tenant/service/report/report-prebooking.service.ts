@@ -26,6 +26,7 @@ type PrebookingReportFilters = {
   customerId?: string;
   cityId?: string;
   warehouseId?: string;
+  brandId?: string;
   search?: string;
 };
 
@@ -72,6 +73,7 @@ export class ReportPrebookingService {
       customerId?: string;
       cityId?: string;
       warehouseId?: string;
+      brandId?: string;
       search?: string;
     },
     actorUserId: string,
@@ -90,6 +92,7 @@ export class ReportPrebookingService {
       customerId: options.customerId?.trim() || undefined,
       cityId: options.cityId?.trim() || undefined,
       warehouseId: options.warehouseId?.trim() || undefined,
+      brandId: options.brandId?.trim() || undefined,
       search: options.search?.trim() || undefined,
     };
 
@@ -106,8 +109,8 @@ export class ReportPrebookingService {
       filters,
     );
 
-    // When warehouse/search narrows orders, keep advances for those customers only.
-    if (filters.warehouseId || filters.search) {
+    // When warehouse/brand/search narrows orders, keep advances for those customers only.
+    if (filters.warehouseId || filters.brandId || filters.search) {
       vouchers = vouchers.filter((v) => orderCustomerIds.has(v.partyId));
     }
 
@@ -143,6 +146,7 @@ export class ReportPrebookingService {
         customerId: filters.customerId ?? null,
         cityId: filters.cityId ?? null,
         warehouseId: filters.warehouseId ?? null,
+        brandId: filters.brandId ?? null,
         search: filters.search ?? null,
         orderCount: allocated.length,
       },
@@ -156,6 +160,7 @@ export class ReportPrebookingService {
         customerId: filters.customerId ?? null,
         cityId: filters.cityId ?? null,
         warehouseId: filters.warehouseId ?? null,
+        brandId: filters.brandId ?? null,
         search: filters.search ?? null,
       },
       summary,
@@ -206,6 +211,17 @@ export class ReportPrebookingService {
             AND soi."warehouseId" = :warehouseId
         )`,
         { warehouseId: filters.warehouseId },
+      );
+    }
+    if (filters.brandId) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM sale_order_items soi
+          INNER JOIN products p ON p.id = soi."productId"
+          WHERE soi."saleOrderId" = so.id
+            AND p."brandId" = :brandId
+        )`,
+        { brandId: filters.brandId },
       );
     }
     if (filters.search) {
