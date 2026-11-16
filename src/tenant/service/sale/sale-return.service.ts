@@ -26,6 +26,11 @@ import {
   Uom,
 } from 'src/tenant-db/entities/product.entity';
 import { Warehouse } from 'src/tenant-db/entities/warehouse.entity';
+import {
+  SaleItemType,
+  isProductSaleItem,
+  isServiceSaleItem,
+} from 'src/tenant-db/entities/sale-item-type';
 import { ReferenceType } from 'src/tenant-db/entities/stock.entity';
 import { AccountTransactionReferenceType } from 'src/tenant-db/entities/transaction.entity';
 import { CreateSaleReturnDto } from '../../dto/sale-return/create-sale-return.dto';
@@ -59,9 +64,11 @@ import {
 const RETURN_NUMBER_PREFIX = 'SRT';
 
 type ResolvedReturnLine = {
-  warehouseId: string;
-  productId: string;
-  uomId: string;
+  itemType: SaleItemType;
+  serviceId: string | null;
+  warehouseId: string | null;
+  productId: string | null;
+  uomId: string | null;
   productFlavourId: string | null;
   quantity: number;
   lineAmount: number;
@@ -102,6 +109,7 @@ export class SaleReturnService {
       },
       saleReturnItems: {
         product: true,
+        service: true,
         productFlavour: { flavour: true },
         uom: true,
         warehouse: true,
@@ -109,24 +117,42 @@ export class SaleReturnService {
     } as const;
   }
 
+  /** Matches return lines to invoice lines (itemType + serviceId for services). */
   private itemKey(item: {
-    productId: string;
-    uomId: string;
+    itemType?: SaleItemType | null;
+    serviceId?: string | null;
+    productId?: string | null;
+    uomId?: string | null;
     productFlavourId?: string | null;
   }): string {
-    return `${item.productId}:${item.uomId}:${item.productFlavourId ?? ''}`;
+    if (isServiceSaleItem(item)) {
+      return `${SaleItemType.SERVICE}:${item.serviceId ?? ''}`;
+    }
+    return `${SaleItemType.PRODUCT}:${item.productId ?? ''}:${item.uomId ?? ''}:${item.productFlavourId ?? ''}`;
   }
 
   private findSaleOrderItem(
     orderItems: SaleOrderItem[] | undefined,
     invoiceItem: SaleInvoiceItem,
   ): SaleOrderItem | undefined {
+    if (isServiceSaleItem(invoiceItem)) {
+      return orderItems?.find(
+        (row) =>
+          isServiceSaleItem(row) && row.serviceId === invoiceItem.serviceId,
+      );
+    }
     return orderItems?.find(
       (row) =>
+        isProductSaleItem(row) &&
         row.productId === invoiceItem.productId &&
         row.uomId === invoiceItem.uomId &&
         (row.productFlavourId ?? null) === (invoiceItem.productFlavourId ?? null),
     );
+  }
+
+  /** Stock and COGS only apply to PRODUCT return lines. */
+  private productLinesOnly(lines: ResolvedReturnLine[]): ResolvedReturnLine[] {
+    return lines.filter((line) => isProductSaleItem(line));
   }
 
   private async generateReturnNumber(
@@ -237,7 +263,7 @@ export class SaleReturnService {
       const maxReturnable = Number(invoiceItem.quantity) - priorReturned;
       if (line.quantity > maxReturnable) {
         throw new BadRequestException(
-          `Return quantity exceeds remaining invoice quantity for product ${invoiceItem.productId}`,
+          `Return quantity exceeds remaining invoice quantity for ${isServiceSaleItem(invoiceItem) ? 'service' : 'product'} ${invoiceItem.serviceId ?? invoiceItem.productId}`,
         );
       }
 
@@ -254,14 +280,21 @@ export class SaleReturnService {
           ? this.roundAmount(lineAmount / line.quantity)
           : 0;
 
+      const isService = isServiceSaleItem(invoiceItem);
       resolved.push({
-        warehouseId: invoiceItem.warehouseId,
-        productId: invoiceItem.productId,
-        uomId: invoiceItem.uomId,
-        productFlavourId: invoiceItem.productFlavourId ?? null,
+        itemType: isService ? SaleItemType.SERVICE : SaleItemType.PRODUCT,
+        serviceId: isService ? (invoiceItem.serviceId ?? null) : null,
+        warehouseId: isService ? null : invoiceItem.warehouseId,
+        productId: isService ? null : invoiceItem.productId,
+        uomId: isService ? null : invoiceItem.uomId,
+        productFlavourId: isService
+          ? null
+          : (invoiceItem.productFlavourId ?? null),
         quantity: line.quantity,
         lineAmount,
-        purchaseUnitPrice: Number(orderItem?.purchaseUnitPrice ?? 0),
+        purchaseUnitPrice: isService
+          ? 0
+          : Number(orderItem?.purchaseUnitPrice ?? 0),
         saleUnitPrice,
       });
     }
@@ -317,6 +350,7 @@ export class SaleReturnService {
       .leftJoinAndSelect('saleOrder.items', 'saleOrderItems')
       .leftJoinAndSelect('saleReturn.saleReturnItems', 'items')
       .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.service', 'service')
       .leftJoinAndSelect('items.productFlavour', 'productFlavour')
       .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .leftJoinAndSelect('items.uom', 'uom')
@@ -337,6 +371,15 @@ export class SaleReturnService {
     const customer = saleReturn.customer ?? invoice?.customer ?? null;
     const items = (saleReturn.saleReturnItems ?? []).map((item) => ({
       id: item.id,
+      itemType: item.itemType ?? SaleItemType.PRODUCT,
+      serviceId: item.serviceId ?? null,
+      service: item.service
+        ? {
+            id: item.service.id,
+            code: item.service.code,
+            name: item.service.name,
+          }
+        : null,
       warehouseId: item.warehouseId,
       warehouse: item.warehouse
         ? {
@@ -380,11 +423,9 @@ export class SaleReturnService {
       if (storedSale > 0) {
         return sum + this.roundAmount(storedSale * Number(item.quantity));
       }
+      const itemKey = this.itemKey(item);
       const invoiceItem = invoice?.items?.find(
-        (row) =>
-          row.productId === item.productId &&
-          row.uomId === item.uomId &&
-          (row.productFlavourId ?? null) === (item.productFlavourId ?? null),
+        (row) => this.itemKey(row) === itemKey,
       );
       if (!invoiceItem) {
         return sum;
@@ -445,10 +486,11 @@ export class SaleReturnService {
     lines: ResolvedReturnLine[],
   ): Map<string, ResolvedReturnLine[]> {
     const grouped = new Map<string, ResolvedReturnLine[]>();
-    for (const line of lines) {
-      const rows = grouped.get(line.warehouseId) ?? [];
+    for (const line of this.productLinesOnly(lines)) {
+      const warehouseKey = line.warehouseId as string;
+      const rows = grouped.get(warehouseKey) ?? [];
       rows.push(line);
-      grouped.set(line.warehouseId, rows);
+      grouped.set(warehouseKey, rows);
     }
     return grouped;
   }
@@ -469,8 +511,8 @@ export class SaleReturnService {
         batchDate: saleReturn.returnDate,
         batchNumberPrefix: saleReturn.returnNumber,
         lines: group.map((line) => ({
-          productId: line.productId,
-          uomId: line.uomId,
+          productId: line.productId as string,
+          uomId: line.uomId as string,
           quantity: line.quantity,
           purchaseUnitPrice: line.purchaseUnitPrice,
           saleUnitPrice: line.saleUnitPrice,
@@ -490,8 +532,8 @@ export class SaleReturnService {
         warehouseId,
         referenceType: ReferenceType.SALE_RETURN,
         lines: group.map((line) => ({
-          productId: line.productId,
-          uomId: line.uomId,
+          productId: line.productId as string,
+          uomId: line.uomId as string,
           quantity: line.quantity,
         })),
       });
@@ -540,7 +582,7 @@ export class SaleReturnService {
     ]);
     const description = `Sale return ${saleReturn.returnNumber} - customer receivable reduced`;
     const cogsAmount = this.roundAmount(
-      lines.reduce(
+      this.productLinesOnly(lines).reduce(
         (sum, line) =>
           sum + Number(line.quantity) * Number(line.purchaseUnitPrice ?? 0),
         0,
@@ -683,6 +725,8 @@ export class SaleReturnService {
       );
 
       resolved.push({
+        itemType: SaleItemType.PRODUCT,
+        serviceId: null,
         warehouseId: line.warehouseId,
         productId: line.productId,
         uomId: line.uomId,
@@ -784,6 +828,8 @@ export class SaleReturnService {
       resolvedLines.map((line) =>
         manager.getRepository(SaleReturnItem).create({
           saleReturnId: saleReturn.id,
+          itemType: line.itemType,
+          serviceId: line.serviceId,
           warehouseId: line.warehouseId,
           productId: line.productId,
           productFlavourId: line.productFlavourId,
@@ -825,7 +871,7 @@ export class SaleReturnService {
       ]);
       const description = `Sale return ${saleReturn.returnNumber} reversal`;
       const cogsAmount = this.roundAmount(
-        lines.reduce(
+        this.productLinesOnly(lines).reduce(
           (sum, line) =>
             sum + Number(line.quantity) * Number(line.purchaseUnitPrice ?? 0),
           0,
@@ -937,6 +983,8 @@ export class SaleReturnService {
         const purchaseUnitPrice = Number(item.purchaseUnitPrice ?? 0);
         const quantity = Number(item.quantity);
         return {
+          itemType: item.itemType ?? SaleItemType.PRODUCT,
+          serviceId: item.serviceId ?? null,
           warehouseId: item.warehouseId,
           productId: item.productId,
           uomId: item.uomId,
@@ -956,11 +1004,9 @@ export class SaleReturnService {
     );
 
     return items.map((item) => {
+      const itemKey = this.itemKey(item);
       const invoiceItem = invoice.items?.find(
-        (row) =>
-          row.productId === item.productId &&
-          row.uomId === item.uomId &&
-          (row.productFlavourId ?? null) === (item.productFlavourId ?? null),
+        (row) => this.itemKey(row) === itemKey,
       );
       if (!invoiceItem) {
         throw new BadRequestException(
@@ -981,6 +1027,8 @@ export class SaleReturnService {
       );
 
       return {
+        itemType: item.itemType ?? SaleItemType.PRODUCT,
+        serviceId: item.serviceId ?? null,
         warehouseId: item.warehouseId,
         productId: item.productId,
         uomId: item.uomId,
@@ -1295,6 +1343,7 @@ export class SaleReturnService {
       .leftJoinAndSelect('saleInvoice.customer', 'invoiceCustomer')
       .leftJoinAndSelect('saleReturn.saleReturnItems', 'items')
       .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.service', 'service')
       .leftJoinAndSelect('items.warehouse', 'warehouse')
       .where('saleReturn.businessId = :businessId', {
         businessId: scopedBusinessId,
@@ -1532,7 +1581,10 @@ export class SaleReturnService {
       returnDate: this.formatReturnDateForJson(saleReturn.returnDate),
       returnReason: saleReturn.returnReason,
       saleInvoiceNumber: saleReturn.saleInvoice?.invoiceNumber ?? '',
-      items: (saleReturn.saleReturnItems ?? []).map((item) => ({
+      // JSON import/export is product-only; service lines are not exported.
+      items: (saleReturn.saleReturnItems ?? [])
+        .filter((item) => isProductSaleItem(item))
+        .map((item) => ({
         warehouseCode: item.warehouse?.code ?? '',
         skuCode: item.product?.skuCode ?? '',
         uomName: item.uom?.name ?? '',
@@ -1568,7 +1620,9 @@ export class SaleReturnService {
       .addOrderBy('items.createdAt', 'ASC')
       .getMany();
 
-    const items = returns.map((row) => this.mapSaleReturnToJsonItem(row));
+    const items = returns
+      .map((row) => this.mapSaleReturnToJsonItem(row))
+      .filter((row) => row.items.length > 0);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,

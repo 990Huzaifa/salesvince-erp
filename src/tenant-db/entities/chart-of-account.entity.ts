@@ -22,6 +22,7 @@ export enum ChartOfAccountKind {
   PRODUCT_CATEGORY = 'PRODUCT_CATEGORY',
   PRODUCT_SUB_CATEGORY = 'PRODUCT_SUB_CATEGORY',
   PRODUCT_INVENTORY = 'PRODUCT_INVENTORY',
+  SERVICE = 'SERVICE',
 }
 
 @Entity('chart_of_accounts')
@@ -64,6 +65,9 @@ export class ChartOfAccount {
 
   @Column({ type: 'uuid', nullable: true })
   productId: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  serviceId: string | null;
 
   @Column({
     type: 'enum',

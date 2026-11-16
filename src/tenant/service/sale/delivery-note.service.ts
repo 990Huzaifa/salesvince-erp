@@ -27,6 +27,11 @@ import {
   ListAnalyticsModule,
   ListAnalyticsService,
 } from '../list-analytics.service';
+import {
+  SaleItemType,
+  isProductSaleItem,
+  isServiceSaleItem,
+} from 'src/tenant-db/entities/sale-item-type';
 import { StockService } from '../stock.service';
 import { TransactionService } from '../transaction.service';
 import { SaleInvoiceService } from './sale-invoice.service';
@@ -46,9 +51,11 @@ const DELIVERY_NOTE_NUMBER_PREFIX = 'DN';
 
 type ResolvedDeliveryNoteLine = {
   saleOrderItemId: string;
-  warehouseId: string;
-  productId: string;
-  uomId: string;
+  itemType: SaleItemType;
+  serviceId: string | null;
+  warehouseId: string | null;
+  productId: string | null;
+  uomId: string | null;
   productFlavourId: string | null;
   orderedQuantity: number;
   deliveredQuantity: number;
@@ -117,6 +124,9 @@ export class DeliveryNoteService {
   ): number {
     let total = 0;
     for (const item of items) {
+      if (!isProductSaleItem(item)) {
+        continue;
+      }
       const qty = Number(item.deliveredQuantity ?? 0);
       if (qty <= 0) {
         continue;
@@ -230,6 +240,7 @@ export class DeliveryNoteService {
       items: {
         saleOrderItem: true,
         product: true,
+        service: true,
         productFlavour: { flavour: true },
         uom: true,
         warehouse: true,
@@ -288,6 +299,36 @@ export class DeliveryNoteService {
     return customer;
   }
 
+  /** Product / service identity copied from a sale order line. */
+  private lineIdentityFromSaleOrderItem(orderItem: SaleOrderItem): Pick<
+    ResolvedDeliveryNoteLine,
+    | 'itemType'
+    | 'serviceId'
+    | 'warehouseId'
+    | 'productId'
+    | 'uomId'
+    | 'productFlavourId'
+  > {
+    if (isServiceSaleItem(orderItem)) {
+      return {
+        itemType: SaleItemType.SERVICE,
+        serviceId: orderItem.serviceId ?? null,
+        warehouseId: null,
+        productId: null,
+        uomId: null,
+        productFlavourId: null,
+      };
+    }
+    return {
+      itemType: SaleItemType.PRODUCT,
+      serviceId: null,
+      warehouseId: orderItem.warehouseId,
+      productId: orderItem.productId,
+      uomId: orderItem.uomId,
+      productFlavourId: orderItem.productFlavourId ?? null,
+    };
+  }
+
   /** Line financials mirrored from SO (prorated by delivered vs ordered qty). */
   private buildDnLineFromSaleOrderItem(
     orderItem: SaleOrderItem,
@@ -300,10 +341,7 @@ export class DeliveryNoteService {
 
     return {
       saleOrderItemId: orderItem.id,
-      warehouseId: orderItem.warehouseId,
-      productId: orderItem.productId,
-      uomId: orderItem.uomId,
-      productFlavourId: orderItem.productFlavourId ?? null,
+      ...this.lineIdentityFromSaleOrderItem(orderItem),
       orderedQuantity: orderQty,
       deliveredQuantity: receivedQty,
       saleUnitPrice,
@@ -335,10 +373,7 @@ export class DeliveryNoteService {
 
     return {
       saleOrderItemId: orderItem.id,
-      warehouseId: orderItem.warehouseId,
-      productId: orderItem.productId,
-      uomId: orderItem.uomId,
-      productFlavourId: orderItem.productFlavourId ?? null,
+      ...this.lineIdentityFromSaleOrderItem(orderItem),
       orderedQuantity: orderItem.quantity,
       deliveredQuantity,
       saleUnitPrice,
@@ -428,6 +463,8 @@ export class DeliveryNoteService {
       itemRepo.create({
         deliveryNoteId,
         saleOrderItemId: line.saleOrderItemId,
+        itemType: line.itemType,
+        serviceId: line.serviceId,
         warehouseId: line.warehouseId,
         productId: line.productId,
         productFlavourId: line.productFlavourId,
@@ -518,14 +555,14 @@ export class DeliveryNoteService {
 
       if (input.deliveredQuantity > orderItem.quantity) {
         throw new BadRequestException(
-          `Delivered quantity cannot exceed ordered quantity for product ${orderItem.productId}`,
+          `Delivered quantity cannot exceed ordered quantity for ${isServiceSaleItem(orderItem) ? 'service' : 'product'} ${orderItem.serviceId ?? orderItem.productId}`,
         );
       }
 
       const alreadyDelivered = priorDelivered.get(orderItem.id) ?? 0;
       if (alreadyDelivered + input.deliveredQuantity > orderItem.quantity) {
         throw new BadRequestException(
-          `Total delivered quantity would exceed ordered quantity for product ${orderItem.productId}`,
+          `Total delivered quantity would exceed ordered quantity for ${isServiceSaleItem(orderItem) ? 'service' : 'product'} ${orderItem.serviceId ?? orderItem.productId}`,
         );
       }
 
@@ -707,6 +744,7 @@ export class DeliveryNoteService {
       .leftJoinAndSelect('deliveryNote.items', 'items')
       .leftJoinAndSelect('items.saleOrderItem', 'saleOrderItem')
       .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.service', 'service')
       .leftJoinAndSelect('items.productFlavour', 'productFlavour')
       .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .leftJoinAndSelect('items.uom', 'uom')
@@ -725,6 +763,15 @@ export class DeliveryNoteService {
     const items = (deliveryNote.items ?? []).map((item) => ({
       id: item.id,
       saleOrderItemId: item.saleOrderItemId,
+      itemType: item.itemType ?? SaleItemType.PRODUCT,
+      serviceId: item.serviceId ?? null,
+      service: item.service
+        ? {
+            id: item.service.id,
+            code: item.service.code,
+            name: item.service.name,
+          }
+        : null,
       warehouseId: item.warehouseId,
       warehouse: item.warehouse
         ? {
@@ -831,21 +878,22 @@ export class DeliveryNoteService {
       );
     }
 
-    const stockResults = await this.stockService.consumeReservedStockOut(
-      manager,
-      {
-        businessId,
-        referenceType: ReferenceType.SALE,
-        lines: items
-          .filter((item) => item.deliveredQuantity > 0)
-          .map((item) => ({
-            productId: item.productId,
-            uomId: item.uomId,
-            quantity: item.deliveredQuantity,
-            warehouseId: item.warehouseId,
-          })),
-      },
-    );
+    // Service lines never touch stock; skip the stock call when there are no product lines.
+    const productStockLines = items
+      .filter((item) => isProductSaleItem(item) && item.deliveredQuantity > 0)
+      .map((item) => ({
+        productId: item.productId as string,
+        uomId: item.uomId as string,
+        quantity: item.deliveredQuantity,
+        warehouseId: item.warehouseId as string,
+      }));
+    const stockResults = productStockLines.length
+      ? await this.stockService.consumeReservedStockOut(manager, {
+          businessId,
+          referenceType: ReferenceType.SALE,
+          lines: productStockLines,
+        })
+      : [];
 
     const saleAmount = this.roundAmount(Number(deliveryNote.totalAmount));
     const cogsAmount = this.computeCogsFromBatchAllocations(stockResults);
@@ -896,16 +944,18 @@ export class DeliveryNoteService {
       return;
     }
 
+    // Only product lines moved stock out; service lines have nothing to receive back.
     const items = (deliveryNote.items ?? []).filter(
-      (item) => Number(item.deliveredQuantity) > 0,
+      (item) => isProductSaleItem(item) && Number(item.deliveredQuantity) > 0,
     );
     if (items.length) {
       const customerId = deliveryNote.customerId;
       const grouped = new Map<string, DeliveryNoteItem[]>();
       for (const item of items) {
-        const rows = grouped.get(item.warehouseId) ?? [];
+        const warehouseKey = item.warehouseId as string;
+        const rows = grouped.get(warehouseKey) ?? [];
         rows.push(item);
-        grouped.set(item.warehouseId, rows);
+        grouped.set(warehouseKey, rows);
       }
 
       for (const [warehouseId, group] of grouped.entries()) {
@@ -917,8 +967,8 @@ export class DeliveryNoteService {
           batchDate: deliveryNote.deliveryNoteDate,
           batchNumberPrefix: `${deliveryNote.deliveryNoteNumber}-REV`,
           lines: group.map((item) => ({
-            productId: item.productId,
-            uomId: item.uomId,
+            productId: item.productId as string,
+            uomId: item.uomId as string,
             quantity: Number(item.deliveredQuantity),
             purchaseUnitPrice: Number(item.saleOrderItem?.purchaseUnitPrice ?? 0),
             saleUnitPrice: Number(item.saleUnitPrice ?? 0),
@@ -1085,6 +1135,7 @@ export class DeliveryNoteService {
       .leftJoinAndSelect('deliveryNote.customer', 'customer')
       .leftJoinAndSelect('deliveryNote.items', 'items')
       .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.service', 'service')
       .where('deliveryNote.businessId = :businessId', {
         businessId: scopedBusinessId,
       });
@@ -1337,6 +1388,8 @@ export class DeliveryNoteService {
         });
         resolvedLines = existingItems.map((item) => ({
           saleOrderItemId: item.saleOrderItemId,
+          itemType: item.itemType ?? SaleItemType.PRODUCT,
+          serviceId: item.serviceId ?? null,
           warehouseId: item.warehouseId,
           productId: item.productId,
           uomId: item.uomId,
@@ -1516,7 +1569,8 @@ export class DeliveryNoteService {
         (deliveryNote.items ?? []).reduce((sum, item) => {
           const orderItem = soItemById.get(item.saleOrderItemId);
           const qty = Number(item.deliveredQuantity ?? 0);
-          if (!orderItem || qty <= 0) {
+          // COGS applies to PRODUCT lines only.
+          if (!orderItem || qty <= 0 || !isProductSaleItem(orderItem)) {
             return sum;
           }
           return sum + qty * Number(orderItem.purchaseUnitPrice ?? 0);

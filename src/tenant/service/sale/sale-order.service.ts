@@ -23,6 +23,12 @@ import {
   ProductPricing,
   Uom,
 } from 'src/tenant-db/entities/product.entity';
+import { Service } from 'src/tenant-db/entities/service.entity';
+import {
+  SaleItemType,
+  isProductSaleItem,
+  isServiceSaleItem,
+} from 'src/tenant-db/entities/sale-item-type';
 import { CreateSaleOrderDto } from '../../dto/sale-order/create-sale-order.dto';
 import { CreateSaleOrderItemDto } from '../../dto/sale-order/create-sale-order-item.dto';
 import { UpdateSaleOrderDto } from '../../dto/sale-order/update-sale-order.dto';
@@ -81,9 +87,11 @@ type CustomerBalanceSnapshot = {
 };
 
 type ResolvedSaleOrderLine = {
-  warehouseId: string;
-  productId: string;
-  uomId: string;
+  itemType: SaleItemType;
+  serviceId: string | null;
+  warehouseId: string | null;
+  productId: string | null;
+  uomId: string | null;
   productFlavourId: string | null;
   quantity: number;
   purchaseUnitPrice: number;
@@ -91,6 +99,11 @@ type ResolvedSaleOrderLine = {
   discountPercentage: number;
   discountAmount: number;
   totalAmount: number;
+};
+
+type ValidatedSaleOrderLines = {
+  pricingByKey: Map<string, ProductPricing>;
+  servicesById: Map<string, Service>;
 };
 
 type SaleOrderTotals = {
@@ -336,15 +349,24 @@ export class SaleOrderService {
 
   private resolveLineItem(
     item: CreateSaleOrderItemDto,
-    pricing: ProductPricing,
+    pricing: ProductPricing | null,
+    service: Service | null,
   ): ResolvedSaleOrderLine {
-    const purchaseUnitPrice = Number(
-      item.purchaseUnitPrice ?? pricing.purchaseUnitPrice,
-    );
+    const isService = isServiceSaleItem(item);
+    if (isService ? !service : !pricing) {
+      throw new BadRequestException('Unable to resolve sale order line');
+    }
+
+    // Services have no purchase price; products default from pricing.
+    const purchaseUnitPrice = isService
+      ? 0
+      : Number(item.purchaseUnitPrice ?? pricing!.purchaseUnitPrice);
     const saleUnitPrice = this.roundAmount(
       item.saleUnitPrice != null
         ? Number(item.saleUnitPrice)
-        : this.defaultSaleUnitPriceFromPricing(purchaseUnitPrice, pricing),
+        : isService
+          ? Number(service!.saleUnitPrice)
+          : this.defaultSaleUnitPriceFromPricing(purchaseUnitPrice, pricing!),
     );
 
     // Keep incoming % exact — do not round/ceil/trim before converting to amount.
@@ -355,10 +377,29 @@ export class SaleOrderService {
     );
     const totalAmount = this.roundAmount(lineSubtotal - discountAmount);
 
+    if (isService) {
+      return {
+        itemType: SaleItemType.SERVICE,
+        serviceId: item.serviceId!,
+        warehouseId: null,
+        productId: null,
+        uomId: null,
+        productFlavourId: null,
+        quantity: item.quantity,
+        purchaseUnitPrice: 0,
+        saleUnitPrice,
+        discountPercentage,
+        discountAmount,
+        totalAmount,
+      };
+    }
+
     return {
-      warehouseId: item.warehouseId,
-      productId: item.productId,
-      uomId: item.uomId,
+      itemType: SaleItemType.PRODUCT,
+      serviceId: null,
+      warehouseId: item.warehouseId!,
+      productId: item.productId!,
+      uomId: item.uomId!,
       productFlavourId: item.productFlavourId ?? null,
       quantity: item.quantity,
       purchaseUnitPrice: this.roundAmount(purchaseUnitPrice),
@@ -470,14 +511,75 @@ export class SaleOrderService {
     manager: EntityManager,
     businessId: string,
     items: CreateSaleOrderItemDto[],
-  ): Promise<Map<string, ProductPricing>> {
-    const warehouseIds = [...new Set(items.map((item) => item.warehouseId))];
+    options?: { allowInactiveServices?: boolean },
+  ): Promise<ValidatedSaleOrderLines> {
+    const productItems = items.filter((item) => isProductSaleItem(item));
+    const serviceItems = items.filter((item) => isServiceSaleItem(item));
+
+    for (const item of items) {
+      if (isServiceSaleItem(item)) {
+        if (
+          !item.serviceId ||
+          item.productId ||
+          item.warehouseId ||
+          item.uomId ||
+          item.productFlavourId
+        ) {
+          throw new BadRequestException(
+            'SERVICE items require serviceId and must not include product, warehouse, UOM or flavour',
+          );
+        }
+      } else if (
+        item.serviceId ||
+        !item.productId ||
+        !item.warehouseId ||
+        !item.uomId
+      ) {
+        throw new BadRequestException(
+          'PRODUCT items require productId, warehouseId and uomId and must not include serviceId',
+        );
+      }
+    }
+
+    const servicesById = new Map<string, Service>();
+    const serviceIds = [
+      ...new Set(serviceItems.map((item) => item.serviceId as string)),
+    ];
+    if (serviceIds.length) {
+      const services = await manager.getRepository(Service).find({
+        where: { id: In(serviceIds), businessId, isDelete: false },
+      });
+      if (services.length !== serviceIds.length) {
+        throw new NotFoundException('One or more services were not found');
+      }
+      for (const service of services) {
+        if (!service.isActive && !options?.allowInactiveServices) {
+          throw new BadRequestException(
+            `Service ${service.name} (${service.code}) is inactive`,
+          );
+        }
+        servicesById.set(service.id, service);
+      }
+    }
+
+    const pricingByKey = new Map<string, ProductPricing>();
+    if (!productItems.length) {
+      return { pricingByKey, servicesById };
+    }
+
+    const warehouseIds = [
+      ...new Set(productItems.map((item) => item.warehouseId as string)),
+    ];
     for (const warehouseId of warehouseIds) {
       await this.assertWarehouseForBusiness(manager, businessId, warehouseId);
     }
 
-    const productIds = [...new Set(items.map((item) => item.productId))];
-    const uomIds = [...new Set(items.map((item) => item.uomId))];
+    const productIds = [
+      ...new Set(productItems.map((item) => item.productId as string)),
+    ];
+    const uomIds = [
+      ...new Set(productItems.map((item) => item.uomId as string)),
+    ];
 
     const products = await manager.getRepository(Product).find({
       where: { id: In(productIds), businessId, isDelete: false },
@@ -495,9 +597,7 @@ export class SaleOrderService {
       throw new NotFoundException('One or more UOMs were not found');
     }
 
-    const pricingByKey = new Map<string, ProductPricing>();
-
-    for (const item of items) {
+    for (const item of productItems) {
       const pricing = await manager.getRepository(ProductPricing).findOne({
         where: { productId: item.productId, uomId: item.uomId },
       });
@@ -526,21 +626,31 @@ export class SaleOrderService {
       pricingByKey.set(`${item.productId}:${item.uomId}`, pricing);
     }
 
-    return pricingByKey;
+    return { pricingByKey, servicesById };
   }
 
   private buildResolvedLines(
     items: CreateSaleOrderItemDto[],
-    pricingByKey: Map<string, ProductPricing>,
+    validated: ValidatedSaleOrderLines,
   ): ResolvedSaleOrderLine[] {
     return items.map((item) => {
-      const pricing = pricingByKey.get(`${item.productId}:${item.uomId}`);
+      if (isServiceSaleItem(item)) {
+        const service = validated.servicesById.get(item.serviceId as string);
+        if (!service) {
+          throw new NotFoundException(`Service ${item.serviceId} not found`);
+        }
+        return this.resolveLineItem(item, null, service);
+      }
+
+      const pricing = validated.pricingByKey.get(
+        `${item.productId}:${item.uomId}`,
+      );
       if (!pricing) {
         throw new BadRequestException(
           `Product ${item.productId} has no pricing for UOM ${item.uomId}`,
         );
       }
-      return this.resolveLineItem(item, pricing);
+      return this.resolveLineItem(item, pricing, null);
     });
   }
 
@@ -553,6 +663,8 @@ export class SaleOrderService {
     return lines.map((line) =>
       itemRepo.create({
         saleOrderId,
+        itemType: line.itemType,
+        serviceId: line.serviceId,
         warehouseId: line.warehouseId,
         productId: line.productId,
         productFlavourId: line.productFlavourId,
@@ -573,6 +685,7 @@ export class SaleOrderService {
       createdByUser: true,
       items: {
         product: true,
+        service: true,
         productFlavour: { flavour: true },
         uom: true,
         warehouse: true,
@@ -701,6 +814,15 @@ export class SaleOrderService {
   ) {
     const items = (order.items ?? []).map((item) => ({
       id: item.id,
+      itemType: item.itemType ?? SaleItemType.PRODUCT,
+      serviceId: item.serviceId ?? null,
+      service: item.service
+        ? {
+            id: item.service.id,
+            code: item.service.code,
+            name: item.service.name,
+          }
+        : null,
       warehouseId: item.warehouseId,
       warehouse: item.warehouse
         ? {
@@ -800,6 +922,7 @@ export class SaleOrderService {
       .leftJoinAndSelect('so.createdByUser', 'createdByUser')
       .leftJoinAndSelect('so.items', 'items')
       .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.service', 'service')
       .leftJoinAndSelect('items.productFlavour', 'productFlavour')
       .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .leftJoinAndSelect('items.uom', 'uom')
@@ -827,16 +950,23 @@ export class SaleOrderService {
       );
     }
 
+    // Service lines never touch stock.
+    const productLines = items
+      .filter((item) => isProductSaleItem(item) && item.quantity > 0)
+      .map((item) => ({
+        productId: item.productId as string,
+        uomId: item.uomId as string,
+        quantity: item.quantity,
+        warehouseId: item.warehouseId as string,
+      }));
+
+    if (!productLines.length) {
+      return;
+    }
+
     await this.stockService.reserveStock(manager, {
       businessId,
-      lines: items
-        .filter((item) => item.quantity > 0)
-        .map((item) => ({
-          productId: item.productId,
-          uomId: item.uomId,
-          quantity: item.quantity,
-          warehouseId: item.warehouseId,
-        })),
+      lines: productLines,
     });
   }
 
@@ -862,14 +992,14 @@ export class SaleOrderService {
     );
 
     return tenantDb.transaction(async (manager) => {
-      const pricingByKey = await this.validateLineItems(
+      const validated = await this.validateLineItems(
         manager,
         params.businessId,
         params.dto.items,
       );
       const resolvedLines = this.buildResolvedLines(
         params.dto.items,
-        pricingByKey,
+        validated,
       );
       const totals = this.computeOrderTotals(resolvedLines, {
         deliveryCost: params.dto.deliveryCost,
@@ -923,8 +1053,8 @@ export class SaleOrderService {
     items: UpdateSaleOrderItemDto[],
     existingItems: SaleOrderItem[],
   ): Promise<void> {
-    const pricingByKey = await this.validateLineItems(manager, businessId, items);
-    const resolvedLines = this.buildResolvedLines(items, pricingByKey);
+    const validated = await this.validateLineItems(manager, businessId, items);
+    const resolvedLines = this.buildResolvedLines(items, validated);
 
     const itemRepo = manager.getRepository(SaleOrderItem);
     const existingById = new Map(existingItems.map((row) => [row.id, row]));
@@ -941,6 +1071,8 @@ export class SaleOrderService {
         }
         keptItemIds.add(item.id);
         await itemRepo.update(existing.id, {
+          itemType: line.itemType,
+          serviceId: line.serviceId,
           warehouseId: line.warehouseId,
           productId: line.productId,
           productFlavourId: line.productFlavourId,
@@ -958,6 +1090,8 @@ export class SaleOrderService {
       await itemRepo.save(
         itemRepo.create({
           saleOrderId: orderId,
+          itemType: line.itemType,
+          serviceId: line.serviceId,
           warehouseId: line.warehouseId,
           productId: line.productId,
           productFlavourId: line.productFlavourId,
@@ -1097,12 +1231,12 @@ export class SaleOrderService {
       tenantDb,
       dto.orderNumber,
     );
-    const pricingByKey = await this.validateLineItems(
+    const validated = await this.validateLineItems(
       tenantDb.manager,
       scopedBusinessId,
       dto.items,
     );
-    const resolvedLines = this.buildResolvedLines(dto.items, pricingByKey);
+    const resolvedLines = this.buildResolvedLines(dto.items, validated);
     const totals = this.computeOrderTotals(resolvedLines, {
       deliveryCost: dto.deliveryCost,
       taxPercentage: dto.taxPercentage,
@@ -1205,6 +1339,7 @@ export class SaleOrderService {
         .leftJoinAndSelect('so.createdByUser', 'createdByUser')
         .leftJoinAndSelect('so.items', 'items')
         .leftJoinAndSelect('items.product', 'product')
+        .leftJoinAndSelect('items.service', 'service')
         .leftJoinAndSelect('items.productFlavour', 'productFlavour')
         .leftJoinAndSelect('productFlavour.flavour', 'flavour')
         .leftJoinAndSelect('items.uom', 'uom')
@@ -1425,6 +1560,7 @@ export class SaleOrderService {
       .leftJoinAndSelect('so.createdByUser', 'createdByUser')
       .leftJoinAndSelect('so.items', 'items')
       .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.service', 'service')
       .leftJoinAndSelect('items.productFlavour', 'productFlavour')
       .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .leftJoinAndSelect('items.uom', 'uom')
@@ -1618,8 +1754,13 @@ export class SaleOrderService {
       this_bill: showBalanceDetails ? mappedOrder.totalAmount : '',
       items: mappedOrder.items.map((item) => ({
         ...item,
-        product_id: item.product?.skuCode || item.productId || '',
-        product_name: item.product?.name || '',
+        product_id:
+          item.service?.code ||
+          item.product?.skuCode ||
+          item.productId ||
+          item.serviceId ||
+          '',
+        product_name: item.service?.name || item.product?.name || '',
         measurement_unit: item.uom?.name || '',
         unit_price: item.saleUnitPrice,
         rate: item.saleUnitPrice,
@@ -1811,9 +1952,11 @@ export class SaleOrderService {
       const itemsForTotals: CreateSaleOrderItemDto[] =
         dto.items ??
         existingItems.map((item) => ({
-          warehouseId: item.warehouseId,
-          productId: item.productId,
-          uomId: item.uomId,
+          itemType: item.itemType ?? SaleItemType.PRODUCT,
+          serviceId: item.serviceId ?? undefined,
+          warehouseId: item.warehouseId ?? undefined,
+          productId: item.productId ?? undefined,
+          uomId: item.uomId ?? undefined,
           productFlavourId: item.productFlavourId ?? undefined,
           quantity: item.quantity,
           purchaseUnitPrice: Number(item.purchaseUnitPrice),
@@ -1821,12 +1964,13 @@ export class SaleOrderService {
           discountPercentage: Number(item.discountPercentage),
         }));
 
-      const pricingByKey = await this.validateLineItems(
+      const validated = await this.validateLineItems(
         manager,
         scopedBusinessId,
         itemsForTotals,
+        { allowInactiveServices: dto.items === undefined },
       );
-      const resolvedLines = this.buildResolvedLines(itemsForTotals, pricingByKey);
+      const resolvedLines = this.buildResolvedLines(itemsForTotals, validated);
       const totals = this.computeOrderTotals(resolvedLines, {
         deliveryCost:
           dto.deliveryCost !== undefined
@@ -1922,6 +2066,8 @@ export class SaleOrderService {
       });
 
       const resolvedLines: ResolvedSaleOrderLine[] = syncedItems.map((item) => ({
+        itemType: item.itemType ?? SaleItemType.PRODUCT,
+        serviceId: item.serviceId ?? null,
         warehouseId: item.warehouseId,
         productId: item.productId,
         uomId: item.uomId,
@@ -2102,10 +2248,11 @@ export class SaleOrderService {
         }
 
         const leftoverLines = (order.items ?? [])
+          .filter((item) => isProductSaleItem(item))
           .map((item) => ({
-            warehouseId: item.warehouseId,
-            productId: item.productId,
-            uomId: item.uomId,
+            warehouseId: item.warehouseId as string,
+            productId: item.productId as string,
+            uomId: item.uomId as string,
             quantity:
               Number(item.quantity) -
               (deliveredByItem.get(item.id) ?? 0),
@@ -2780,7 +2927,7 @@ export class SaleOrderService {
       discountPercentage: row.discountPercentage,
     };
 
-    return this.resolveLineItem(itemDto, pricing);
+    return this.resolveLineItem(itemDto, pricing, null);
   }
 
   private async recalculateOrderTotalsAfterItemImport(
@@ -2799,6 +2946,8 @@ export class SaleOrderService {
     });
 
     const resolvedLines: ResolvedSaleOrderLine[] = items.map((item) => ({
+      itemType: item.itemType ?? SaleItemType.PRODUCT,
+      serviceId: item.serviceId ?? null,
       warehouseId: item.warehouseId,
       productId: item.productId,
       uomId: item.uomId,
@@ -3176,7 +3325,10 @@ export class SaleOrderService {
       discountPercentage: this.toJsonNumber(order.discountPercentage),
       discountAmount: this.toJsonNumber(order.discountAmount),
       notes: order.notes ?? null,
-      items: (order.items ?? []).map((item) => ({
+      // JSON import/export is product-only; service lines are not exported.
+      items: (order.items ?? [])
+        .filter((item) => isProductSaleItem(item))
+        .map((item) => ({
         warehouseCode: item.warehouse?.code ?? '',
         skuCode: item.product?.skuCode ?? '',
         uomName: item.uom?.name ?? '',
@@ -3240,7 +3392,9 @@ export class SaleOrderService {
       .addOrderBy('items.createdAt', 'ASC')
       .getMany();
 
-    const items = orders.map((order) => this.mapSaleOrderToJsonItem(order));
+    const items = orders
+      .map((order) => this.mapSaleOrderToJsonItem(order))
+      .filter((order) => order.items.length > 0);
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,

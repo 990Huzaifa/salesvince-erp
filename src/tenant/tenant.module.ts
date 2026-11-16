@@ -48,6 +48,8 @@ import { NotificationService } from './service/notification.service';
 import { TenantJobController } from './controller/tenant-job.controller';
 import { ProductBrandController } from './controller/product-brand.controller';
 import { ProductBrandService } from './service/product-brand.service';
+import { ServiceController } from './controller/service.controller';
+import { ServiceMasterService } from './service/service-master.service';
 import { ProductSubCategoryController } from './controller/product-sub-category.controller';
 import { ProductSubCategoryService } from './service/product-sub-category.service';
 import { ProductCategoryController } from './controller/product-category.controller';
@@ -241,6 +243,7 @@ import { DocumentTemplateRendererService } from './service/document-template-ren
     LoanPaymentVoucherController,
     UomController,
     ProductBrandController,
+    ServiceController,
     ProductCategoryController,
     ProductSubCategoryController,
     ProductController,
@@ -321,6 +324,7 @@ import { DocumentTemplateRendererService } from './service/document-template-ren
     PusherService,
     UomService,
     ProductBrandService,
+    ServiceMasterService,
     ProductCategoryService,
     ProductSubCategoryService,
     ProductService,

@@ -1,6 +1,8 @@
 /** Default chart parent / system account codes used when creating linked accounts. */
 export const COA_PARENT_CODES = {
   INVENTORY: '1-1-4',
+  /** Non-postable group — each service gets a postable child account. */
+  SERVICES: '1-1-5',
   CASH: '1-1-1',
   BANK: '1-1-2',
   CUSTOMER_RECEIVABLES: '1-1-3-1',

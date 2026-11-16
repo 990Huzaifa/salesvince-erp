@@ -12,6 +12,7 @@ import {
 import { SaleInvoice } from 'src/tenant-db/entities/sale-invoice.entity';
 import { SaleReturn } from 'src/tenant-db/entities/sale-return.entity';
 import { SaleReturnVoucher } from 'src/tenant-db/entities/sale-return-voucher.entity';
+import { isProductSaleItem } from 'src/tenant-db/entities/sale-item-type';
 import { ActivityLogService } from '../activity-log.service';
 import { StockService } from '../stock.service';
 import { DeliveryNoteService } from './delivery-note.service';
@@ -137,6 +138,7 @@ export class SaleOrderReverseService {
         order.id,
       );
 
+      // Skip the stock call when only service lines are undelivered.
       if (undeliveredLines.length) {
         await this.stockService.releaseReservedStock(manager, {
           businessId: scopedBusinessId,
@@ -217,11 +219,13 @@ export class SaleOrderReverseService {
       }
     }
 
+    // Service lines never reserved stock, so there is nothing to release.
     return (order.items ?? [])
+      .filter((item: SaleOrderItem) => isProductSaleItem(item))
       .map((item: SaleOrderItem) => ({
-        warehouseId: item.warehouseId,
-        productId: item.productId,
-        uomId: item.uomId,
+        warehouseId: item.warehouseId as string,
+        productId: item.productId as string,
+        uomId: item.uomId as string,
         quantity:
           Number(item.quantity) - (deliveredByItem.get(item.id) ?? 0),
       }))

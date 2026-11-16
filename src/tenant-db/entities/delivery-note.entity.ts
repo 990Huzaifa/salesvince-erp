@@ -5,6 +5,8 @@ import { Business } from "./business.entity";
 import { Product, ProductFlavour, Uom } from "./product.entity";
 import { SaleInvoice } from "./sale-invoice.entity";
 import { Warehouse } from "./warehouse.entity";
+import { Service } from "./service.entity";
+import { SALE_ITEM_TYPE_ENUM_NAME, SaleItemType } from "./sale-item-type";
 
 export enum DeliveryNoteStatus {
     PENDING = 'PENDING',
@@ -95,12 +97,27 @@ export class DeliveryNoteItem {
     @JoinColumn({ name: 'saleOrderItemId' })
     saleOrderItem: SaleOrderItem;
 
-    @Column()
-    productId: string;
+    @Column({
+        type: 'enum',
+        enum: SaleItemType,
+        enumName: SALE_ITEM_TYPE_ENUM_NAME,
+        default: SaleItemType.PRODUCT,
+    })
+    itemType: SaleItemType;
 
-    @ManyToOne(() => Product, (product) => product.deliveryNoteItems, { onDelete: 'CASCADE' })
+    @Column({ type: 'uuid', nullable: true })
+    serviceId: string | null;
+
+    @ManyToOne(() => Service, { nullable: true, onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'serviceId' })
+    service: Service | null;
+
+    @Column({ type: 'uuid', nullable: true })
+    productId: string | null;
+
+    @ManyToOne(() => Product, (product) => product.deliveryNoteItems, { nullable: true, onDelete: 'CASCADE' })
     @JoinColumn({ name: 'productId' })
-    product: Product;
+    product: Product | null;
 
     @Column({nullable: true})
     productFlavourId: string;
@@ -109,19 +126,19 @@ export class DeliveryNoteItem {
     @JoinColumn({ name: 'productFlavourId' })
     productFlavour: ProductFlavour;
 
-    @Column()
-    uomId: string;
+    @Column({ type: 'uuid', nullable: true })
+    uomId: string | null;
 
-    @ManyToOne(() => Uom, (uom) => uom.deliveryNoteItems, { onDelete: 'CASCADE' })
+    @ManyToOne(() => Uom, (uom) => uom.deliveryNoteItems, { nullable: true, onDelete: 'CASCADE' })
     @JoinColumn({ name: 'uomId' })
-    uom: Uom;
+    uom: Uom | null;
 
-    @Column()
-    warehouseId: string;
+    @Column({ type: 'uuid', nullable: true })
+    warehouseId: string | null;
 
-    @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT' })
+    @ManyToOne(() => Warehouse, { nullable: true, onDelete: 'RESTRICT' })
     @JoinColumn({ name: 'warehouseId' })
-    warehouse: Warehouse;
+    warehouse: Warehouse | null;
 
     @Column()
     orderedQuantity: number;

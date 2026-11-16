@@ -4,6 +4,8 @@ import { Product, ProductFlavour, Uom } from "./product.entity";
 import { Business } from "./business.entity";
 import { Warehouse } from "./warehouse.entity";
 import { Party } from "./party.entity";
+import { Service } from "./service.entity";
+import { SALE_ITEM_TYPE_ENUM_NAME, SaleItemType } from "./sale-item-type";
 
 export enum SaleReturnStatus {
     PENDING = 'PENDING',
@@ -91,11 +93,26 @@ export class SaleReturnItem {
     @ManyToOne(() => SaleReturn, (saleReturn) => saleReturn.saleReturnItems)
     saleReturn: SaleReturn;
 
-    @Column()
-    productId: string;
+    @Column({
+        type: 'enum',
+        enum: SaleItemType,
+        enumName: SALE_ITEM_TYPE_ENUM_NAME,
+        default: SaleItemType.PRODUCT,
+    })
+    itemType: SaleItemType;
 
-    @ManyToOne(() => Product, (product) => product.saleReturnItems)
-    product: Product;
+    @Column({ type: 'uuid', nullable: true })
+    serviceId: string | null;
+
+    @ManyToOne(() => Service, { nullable: true, onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'serviceId' })
+    service: Service | null;
+
+    @Column({ type: 'uuid', nullable: true })
+    productId: string | null;
+
+    @ManyToOne(() => Product, (product) => product.saleReturnItems, { nullable: true })
+    product: Product | null;
 
     @Column({nullable: true})
     productFlavourId: string;
@@ -103,18 +120,18 @@ export class SaleReturnItem {
     @ManyToOne(() => ProductFlavour, (productFlavour) => productFlavour.saleReturnItems)
     productFlavour: ProductFlavour;
 
-    @Column()
-    uomId: string;
+    @Column({ type: 'uuid', nullable: true })
+    uomId: string | null;
 
-    @ManyToOne(() => Uom, (uom) => uom.saleReturnItems)
-    uom: Uom;
+    @ManyToOne(() => Uom, (uom) => uom.saleReturnItems, { nullable: true })
+    uom: Uom | null;
 
-    @Column()
-    warehouseId: string;
+    @Column({ type: 'uuid', nullable: true })
+    warehouseId: string | null;
 
-    @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT' })
+    @ManyToOne(() => Warehouse, { nullable: true, onDelete: 'RESTRICT' })
     @JoinColumn({ name: 'warehouseId' })
-    warehouse: Warehouse;
+    warehouse: Warehouse | null;
 
     @Column()
     quantity: number;

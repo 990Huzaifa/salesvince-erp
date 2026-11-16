@@ -18,6 +18,10 @@ import {
   AccountTransactionReferenceType,
   Transaction,
 } from 'src/tenant-db/entities/transaction.entity';
+import {
+  SaleItemType,
+  isServiceSaleItem,
+} from 'src/tenant-db/entities/sale-item-type';
 import { ActivityLogService } from '../activity-log.service';
 import {
   ListAnalyticsModule,
@@ -93,6 +97,7 @@ export class SaleInvoiceService {
       customer: true,
       items: {
         product: true,
+        service: true,
         uom: true,
         productFlavour: { flavour: true },
         warehouse: true,
@@ -219,6 +224,21 @@ export class SaleInvoiceService {
     };
   }
 
+  /** Matches DN lines to invoice lines: itemType + serviceId for services, product keys otherwise. */
+  private invoiceLineKey(line: {
+    itemType?: SaleItemType | null;
+    serviceId?: string | null;
+    productId?: string | null;
+    uomId?: string | null;
+    productFlavourId?: string | null;
+    warehouseId?: string | null;
+  }): string {
+    if (isServiceSaleItem(line)) {
+      return `${SaleItemType.SERVICE}:${line.serviceId ?? ''}`;
+    }
+    return `${SaleItemType.PRODUCT}:${line.productId ?? ''}:${line.uomId ?? ''}:${line.productFlavourId ?? ''}:${line.warehouseId ?? ''}`;
+  }
+
   private mapSaleInvoice(
     invoice: SaleInvoice,
     options?: {
@@ -229,6 +249,15 @@ export class SaleInvoiceService {
     const customer = this.mapCustomer(invoice, options);
     const items = (invoice.items ?? []).map((item) => ({
       id: item.id,
+      itemType: item.itemType ?? SaleItemType.PRODUCT,
+      serviceId: item.serviceId ?? null,
+      service: item.service
+        ? {
+            id: item.service.id,
+            code: item.service.code,
+            name: item.service.name,
+          }
+        : null,
       warehouseId: item.warehouseId,
       warehouse: item.warehouse
         ? {
@@ -365,6 +394,8 @@ export class SaleInvoiceService {
         .map((line) =>
           itemRepo.create({
             saleInvoiceId: invoice.id,
+            itemType: line.itemType ?? SaleItemType.PRODUCT,
+            serviceId: line.serviceId ?? null,
             warehouseId: line.warehouseId,
             productId: line.productId,
             uomId: line.uomId,
@@ -414,10 +445,7 @@ export class SaleInvoiceService {
       (line) => Number(line.deliveredQuantity) > 0,
     );
     const dnItemByKey = new Map(
-      dnItems.map((line) => [
-        `${line.productId}:${line.uomId}:${line.productFlavourId ?? ''}:${line.warehouseId}`,
-        line,
-      ]),
+      dnItems.map((line) => [this.invoiceLineKey(line), line]),
     );
 
     await invoiceRepo.update(invoice.id, {
@@ -429,7 +457,7 @@ export class SaleInvoiceService {
 
     const itemRepo = manager.getRepository(SaleInvoiceItem);
     for (const invoiceItem of invoice.items ?? []) {
-      const key = `${invoiceItem.productId}:${invoiceItem.uomId}:${invoiceItem.productFlavourId ?? ''}:${invoiceItem.warehouseId}`;
+      const key = this.invoiceLineKey(invoiceItem);
       const dnLine = dnItemByKey.get(key);
       if (!dnLine) {
         continue;
@@ -484,6 +512,7 @@ export class SaleInvoiceService {
       .leftJoinAndSelect('invoice.saleOrder', 'saleOrder')
       .leftJoinAndSelect('invoice.items', 'items')
       .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.service', 'service')
       .leftJoinAndSelect('items.productFlavour', 'productFlavour')
       .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .leftJoinAndSelect('items.uom', 'uom')
@@ -593,6 +622,7 @@ export class SaleInvoiceService {
       .leftJoinAndSelect('invoice.saleOrder', 'saleOrder')
       .leftJoinAndSelect('invoice.items', 'items')
       .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.service', 'service')
       .leftJoinAndSelect('items.productFlavour', 'productFlavour')
       .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .leftJoinAndSelect('items.uom', 'uom')
@@ -646,6 +676,7 @@ export class SaleInvoiceService {
       .leftJoinAndSelect('invoice.saleOrder', 'saleOrder')
       .leftJoinAndSelect('invoice.items', 'items')
       .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.service', 'service')
       .leftJoinAndSelect('items.productFlavour', 'productFlavour')
       .leftJoinAndSelect('productFlavour.flavour', 'flavour')
       .leftJoinAndSelect('items.uom', 'uom')
@@ -736,12 +767,23 @@ export class SaleInvoiceService {
 
         return {
           ...item,
-          product_id: item.product?.skuCode || item.productId || item.product?.id || '',
-          product_name: item.product?.name || '',
+          product_id:
+            item.service?.code ||
+            item.product?.skuCode ||
+            item.productId ||
+            item.product?.id ||
+            item.serviceId ||
+            '',
+          product_name: item.service?.name || item.product?.name || '',
           product: {
             ...item.product,
-            id: item.product?.skuCode || item.productId || '',
-            title: item.product?.name || '',
+            id:
+              item.service?.code ||
+              item.product?.skuCode ||
+              item.productId ||
+              item.serviceId ||
+              '',
+            title: item.service?.name || item.product?.name || '',
           },
           measurement_unit: item.uom?.name || '',
           unit_price: unitPrice,

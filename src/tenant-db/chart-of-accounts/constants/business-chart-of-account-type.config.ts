@@ -13,6 +13,7 @@ export const BUSINESS_CHART_OF_ACCOUNT_TYPE_CONFIG: Record<
   [ChartOfAccountType.CASH]: { parentCode: '1-1-1', label: 'Cash' },
   [ChartOfAccountType.BANK]: { parentCode: '1-1-2', label: 'Bank' },
   [ChartOfAccountType.INVENTORY]: { parentCode: '1-1-4', label: 'Inventory' },
+  [ChartOfAccountType.SERVICES]: { parentCode: '1-1-5', label: 'Services' },
   [ChartOfAccountType.BUSINESS_EXPENSE]: {
     parentCode: '5',
     label: 'Expense',

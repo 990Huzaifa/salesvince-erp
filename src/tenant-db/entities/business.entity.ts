@@ -13,6 +13,7 @@ import { Party } from './party.entity';
 import { ChartOfAccount } from './chart-of-account.entity';
 import { Transaction as TransactionEntity } from './transaction.entity';
 import { ProductBrand, Product, ProductCategory, ProductPricing, ProductPricingJob, ProductSubCategory, Uom, Flavour } from './product.entity';
+import { Service } from './service.entity';
 import { Warehouse } from './warehouse.entity';
 import { Grn } from './grn.entity';
 import { Batch, StockMovement } from './stock.entity';
@@ -116,6 +117,9 @@ export class Business {
 
     @OneToMany(() => ProductBrand, (productBrand) => productBrand.business, { onDelete: 'CASCADE' })
     productBrands: ProductBrand[];
+
+    @OneToMany(() => Service, (service) => service.business, { onDelete: 'CASCADE' })
+    services: Service[];
 
     @OneToMany(() => Product, (product) => product.business, { onDelete: 'CASCADE' })
     products: Product[];

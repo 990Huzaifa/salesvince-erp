@@ -6,6 +6,8 @@ import { DeliveryNote } from "./delivery-note.entity";
 import { Party } from "./party.entity";
 import { SaleInvoice } from "./sale-invoice.entity";
 import { Warehouse } from "./warehouse.entity";
+import { Service } from "./service.entity";
+import { SALE_ITEM_TYPE_ENUM_NAME, SaleItemType } from "./sale-item-type";
 
 
 export enum OrderStatus {
@@ -107,12 +109,27 @@ export class SaleOrderItem {
     @JoinColumn({ name: 'saleOrderId' })
     saleOrder: SaleOrder;
 
-    @Column()
-    productId: string;
+    @Column({
+        type: 'enum',
+        enum: SaleItemType,
+        enumName: SALE_ITEM_TYPE_ENUM_NAME,
+        default: SaleItemType.PRODUCT,
+    })
+    itemType: SaleItemType;
 
-    @ManyToOne(() => Product, (product) => product.saleOrderItems, { onDelete: 'CASCADE' })
+    @Column({ type: 'uuid', nullable: true })
+    serviceId: string | null;
+
+    @ManyToOne(() => Service, { nullable: true, onDelete: 'RESTRICT' })
+    @JoinColumn({ name: 'serviceId' })
+    service: Service | null;
+
+    @Column({ type: 'uuid', nullable: true })
+    productId: string | null;
+
+    @ManyToOne(() => Product, (product) => product.saleOrderItems, { nullable: true, onDelete: 'CASCADE' })
     @JoinColumn({ name: 'productId' })
-    product: Product;
+    product: Product | null;
 
     @Column({nullable: true})
     productFlavourId: string;
@@ -121,19 +138,19 @@ export class SaleOrderItem {
     @JoinColumn({ name: 'productFlavourId' })
     productFlavour: ProductFlavour;
 
-    @Column()
-    uomId: string;
+    @Column({ type: 'uuid', nullable: true })
+    uomId: string | null;
 
-    @ManyToOne(() => Uom, { onDelete: 'RESTRICT' })
+    @ManyToOne(() => Uom, { nullable: true, onDelete: 'RESTRICT' })
     @JoinColumn({ name: 'uomId' })
-    uom: Uom;
+    uom: Uom | null;
 
-    @Column()
-    warehouseId: string;
+    @Column({ type: 'uuid', nullable: true })
+    warehouseId: string | null;
 
-    @ManyToOne(() => Warehouse, { onDelete: 'RESTRICT' })
+    @ManyToOne(() => Warehouse, { nullable: true, onDelete: 'RESTRICT' })
     @JoinColumn({ name: 'warehouseId' })
-    warehouse: Warehouse;
+    warehouse: Warehouse | null;
 
     @Column({type: 'decimal', precision: 18, scale: 2})
     purchaseUnitPrice: number;
