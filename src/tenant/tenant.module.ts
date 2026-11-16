@@ -142,12 +142,14 @@ import { LoanService } from './service/loan.service';
 import { InventoryController } from './controller/inventory.controller';
 import { StockTransferController } from './controller/stock-transfer.controller';
 import { OpeningStockController } from './controller/opening-stock.controller';
+import { StockAdjustmentController } from './controller/stock-adjustment.controller';
 import { InventoryBalanceService } from './service/inventory/inventory-balance.service';
 import { InventoryBatchService } from './service/inventory/inventory-batch.service';
 import { InventoryMovementService } from './service/inventory/inventory-movement.service';
 import { ProductMergeService } from './service/inventory/product-merge.service';
 import { StockTransferService } from './service/inventory/stock-transfer.service';
 import { OpeningStockService } from './service/inventory/opening-stock.service';
+import { StockAdjustmentService } from './service/inventory/stock-adjustment.service';
 import { WarehouseSlipPdfService } from './service/warehouse-slip-pdf.service';
 import { BatchPurchaseLinkBackfillService } from './service/inventory/batch-purchase-link-backfill.service';
 import { MissingTradingLedgerBackfillService } from './service/missing-trading-ledger-backfill.service';
@@ -278,6 +280,7 @@ import { DocumentTemplateRendererService } from './service/document-template-ren
     InventoryController,
     StockTransferController,
     OpeningStockController,
+    StockAdjustmentController,
     InventoryForecastController,
     ActivityLogController,
     DepartmentController,
@@ -384,6 +387,7 @@ import { DocumentTemplateRendererService } from './service/document-template-ren
     ProductMergeService,
     StockTransferService,
     OpeningStockService,
+    StockAdjustmentService,
     BusinessSettingsService,
     WarehouseSlipPdfService,
     BatchPurchaseLinkBackfillService,

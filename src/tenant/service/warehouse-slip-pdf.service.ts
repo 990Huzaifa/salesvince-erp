@@ -11,6 +11,10 @@ import { PurchaseInvoice } from 'src/tenant-db/entities/purchase-invoice.entity'
 import { StockTransfer } from 'src/tenant-db/entities/stock-transfer.entity';
 import { OpeningStock } from 'src/tenant-db/entities/opening-stock.entity';
 import {
+  StockAdjustment,
+  StockAdjustmentDirection,
+} from 'src/tenant-db/entities/stock-adjustment.entity';
+import {
   PdfLogoService,
   PdfRendererService,
   safePdfFilenamePart,
@@ -381,6 +385,84 @@ export class WarehouseSlipPdfService {
       action: 'OPENING_STOCK_WAREHOUSE_SLIP_PDF_DOWNLOADED',
       description: `Warehouse slip PDF downloaded for opening stock ${opening.openingNumber}`,
       metadata: { openingStockId: opening.id },
+    });
+
+    return result;
+  }
+
+  async generateForStockAdjustment(
+    tenantDb: DataSource,
+    businessId: string | undefined,
+    adjustmentId: string,
+    actorUserId: string,
+    tenantId?: string,
+    clientIp?: string,
+  ): Promise<{ buffer: Buffer; filename: string }> {
+    const scopedBusinessId = this.assertBusinessId(businessId);
+
+    const adjustment = await tenantDb
+      .getRepository(StockAdjustment)
+      .createQueryBuilder('sa')
+      .leftJoinAndSelect('sa.warehouse', 'warehouse')
+      .leftJoinAndSelect('sa.items', 'items')
+      .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
+      .leftJoinAndSelect('items.uom', 'uom')
+      .where('sa.id = :adjustmentId', { adjustmentId })
+      .andWhere('sa.businessId = :businessId', {
+        businessId: scopedBusinessId,
+      })
+      .andWhere('sa.deletedAt IS NULL')
+      .getOne();
+
+    if (!adjustment) {
+      throw new NotFoundException('Stock adjustment not found');
+    }
+
+    const items = (adjustment.items ?? []).map((item) => {
+      const mapped = this.mapLineItem(item);
+      const prefix =
+        item.direction === StockAdjustmentDirection.INCREASE
+          ? '[+]'
+          : item.direction === StockAdjustmentDirection.DECREASE
+            ? '[-]'
+            : '';
+      return {
+        ...mapped,
+        productName: prefix
+          ? `${prefix} ${mapped.productName}`
+          : mapped.productName,
+      };
+    });
+
+    const slip: WarehouseSlipDto = {
+      documentTypeLabel: 'Stock Adjustment',
+      documentNumber: adjustment.adjustmentNumber,
+      documentDate: adjustment.adjustmentDate,
+      warehouseLabel: this.formatWarehouseLabel(adjustment.warehouse),
+      notes: adjustment.notes,
+      totalQuantity: items.reduce(
+        (sum, item) => sum + Number(item.quantity || 0),
+        0,
+      ),
+      items,
+    };
+
+    const result = await this.renderSlipPdf(
+      tenantDb,
+      scopedBusinessId,
+      slip,
+      tenantId,
+      clientIp,
+    );
+
+    await this.activityLogService.recordActivityLog(tenantDb, {
+      actorId: actorUserId,
+      businessId: scopedBusinessId,
+      action: 'STOCK_ADJUSTMENT_WAREHOUSE_SLIP_PDF_DOWNLOADED',
+      description: `Warehouse slip PDF downloaded for stock adjustment ${adjustment.adjustmentNumber}`,
+      metadata: { stockAdjustmentId: adjustment.id },
     });
 
     return result;

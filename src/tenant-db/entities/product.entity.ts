@@ -29,6 +29,7 @@ import { SaleReturnItem } from './sale-return.entity';
 import { ClaimVendorShipmentItem } from './claim/claim-vendor-shipments.entity';
 import { StockTransferItem } from './stock-transfer.entity';
 import { OpeningStockItem } from './opening-stock.entity';
+import { StockAdjustmentItem } from './stock-adjustment.entity';
 
 export enum BatchPickStrategy {
     FIFO = 'FIFO',
@@ -226,6 +227,9 @@ export class Uom {
     @OneToMany(() => OpeningStockItem, (openingStockItem) => openingStockItem.uom)
     openingStockItems: OpeningStockItem[];
 
+    @OneToMany(() => StockAdjustmentItem, (stockAdjustmentItem) => stockAdjustmentItem.uom)
+    stockAdjustmentItems: StockAdjustmentItem[];
+
     @OneToMany(() => ClaimVendorShipmentItem, (shipmentItem) => shipmentItem.uom)
     claimVendorShipmentItems: ClaimVendorShipmentItem[];
 }
@@ -379,6 +383,9 @@ export class Product {
     @OneToMany(() => OpeningStockItem, (openingStockItem) => openingStockItem.product)
     openingStockItems: OpeningStockItem[];
 
+    @OneToMany(() => StockAdjustmentItem, (stockAdjustmentItem) => stockAdjustmentItem.product)
+    stockAdjustmentItems: StockAdjustmentItem[];
+
     @OneToMany(() => Batch, (batch) => batch.product, { onDelete: 'CASCADE' })
     batches: Batch[];
 
@@ -452,6 +459,12 @@ export class ProductFlavour {
         (openingStockItem) => openingStockItem.productFlavour,
     )
     openingStockItems: OpeningStockItem[];
+
+    @OneToMany(
+        () => StockAdjustmentItem,
+        (stockAdjustmentItem) => stockAdjustmentItem.productFlavour,
+    )
+    stockAdjustmentItems: StockAdjustmentItem[];
 
     @OneToMany(() => SaleReturnItem, (saleReturnItem) => saleReturnItem.productFlavour)
     saleReturnItems: SaleReturnItem[];
