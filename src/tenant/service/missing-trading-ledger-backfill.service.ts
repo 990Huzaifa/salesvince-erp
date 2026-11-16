@@ -22,9 +22,8 @@ import {
 import { PurchaseInvoiceItem } from 'src/tenant-db/entities/purchase-invoice.entity';
 import { SaleInvoiceItem } from 'src/tenant-db/entities/sale-invoice.entity';
 import {
-  resolveCogsAccount,
   resolveInventoryControlAccount,
-  resolveSalesRevenueAccount,
+  resolveSaleLedgerSystemAccounts,
 } from 'src/tenant-db/helpers/sales-revenue-chart-of-account.helper';
 import { recalculateAccountLedgerBalances } from 'src/tenant-db/helpers/ledger-balance-recalculation.helper';
 import {
@@ -138,11 +137,7 @@ export class MissingTradingLedgerBackfillService {
     const { dryRun, forceRepost, documentTypes } = this.resolveModes(dto);
 
     await tenantDb.transaction(async (manager) => {
-      await Promise.all([
-        resolveInventoryControlAccount(manager, businessId),
-        resolveSalesRevenueAccount(manager, businessId),
-        resolveCogsAccount(manager, businessId),
-      ]);
+      await resolveSaleLedgerSystemAccounts(manager, businessId);
     });
 
     const candidates = await this.collectCandidates(
@@ -788,11 +783,8 @@ export class MissingTradingLedgerBackfillService {
     }
     cogsAmount = this.roundAmount(cogsAmount);
 
-    const [salesRevenue, cogs, inventory] = await Promise.all([
-      resolveSalesRevenueAccount(manager, businessId),
-      resolveCogsAccount(manager, businessId),
-      resolveInventoryControlAccount(manager, businessId),
-    ]);
+    const { salesRevenue, cogs, inventory } =
+      await resolveSaleLedgerSystemAccounts(manager, businessId);
 
     const orderNumber =
       deliveryNote.saleOrder?.orderNumber?.trim() ||
@@ -898,11 +890,8 @@ export class MissingTradingLedgerBackfillService {
       );
     }
 
-    const [salesRevenue, cogs, inventory] = await Promise.all([
-      resolveSalesRevenueAccount(manager, businessId),
-      resolveCogsAccount(manager, businessId),
-      resolveInventoryControlAccount(manager, businessId),
-    ]);
+    const { salesRevenue, cogs, inventory } =
+      await resolveSaleLedgerSystemAccounts(manager, businessId);
 
     const description = `Sale return ${saleReturn.returnNumber} - customer receivable reduced`;
     const lines: JournalLineInput[] = [
@@ -956,11 +945,8 @@ export class MissingTradingLedgerBackfillService {
     affectedAccountIds: Set<string>,
   ) {
     return tenantDb.transaction(async (manager) => {
-      const [inventory, salesRevenue, cogs] = await Promise.all([
-        resolveInventoryControlAccount(manager, businessId),
-        resolveSalesRevenueAccount(manager, businessId),
-        resolveCogsAccount(manager, businessId),
-      ]);
+      const { inventory, salesRevenue, cogs } =
+        await resolveSaleLedgerSystemAccounts(manager, businessId);
 
       const accountIds = new Set<string>([
         inventory.id,

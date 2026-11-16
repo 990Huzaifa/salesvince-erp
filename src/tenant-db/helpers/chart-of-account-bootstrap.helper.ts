@@ -89,6 +89,7 @@ export async function seedDefaultChartOfAccountsForBusiness(
 /**
  * Inserts any default COA nodes missing for a business (e.g. after chart template updates).
  * Also syncs name / isPostable / parentCode for existing system template codes.
+ * Safe under concurrent callers (e.g. Promise.all of ledger resolvers) via ON CONFLICT DO NOTHING.
  */
 export async function ensureDefaultChartOfAccountNodes(
   tenantDb: TenantDb,
@@ -97,12 +98,15 @@ export async function ensureDefaultChartOfAccountNodes(
   const coaRepo = tenantDb.getRepository(ChartOfAccount);
 
   for (const item of DEFAULT_CHART_OF_ACCOUNTS) {
+    // Unique index is on (businessId, code) including soft-deleted rows.
     const exists = await coaRepo.findOne({
-      where: { businessId, code: item.code, deletedAt: IsNull() },
-      select: ['id', 'isPostable', 'name', 'parentCode'],
+      where: { businessId, code: item.code },
+      select: ['id', 'isPostable', 'name', 'parentCode', 'deletedAt'],
+      withDeleted: true,
     });
     if (exists) {
       const needsSync =
+        exists.deletedAt != null ||
         exists.isPostable !== item.isPostable ||
         exists.name !== item.name ||
         exists.parentCode !== item.parentCode;
@@ -111,14 +115,20 @@ export async function ensureDefaultChartOfAccountNodes(
           isPostable: item.isPostable,
           name: item.name,
           parentCode: item.parentCode,
+          deletedAt: null,
         });
       }
       continue;
     }
 
     const levels = parseAccountCodeLevels(item.code);
-    await coaRepo.save(
-      coaRepo.create({
+    // orIgnore keeps the surrounding DB transaction alive if another
+    // concurrent ensure already inserted the same (businessId, code).
+    await coaRepo
+      .createQueryBuilder()
+      .insert()
+      .into(ChartOfAccount)
+      .values({
         businessId,
         code: item.code,
         parentCode: item.parentCode,
@@ -128,7 +138,8 @@ export async function ensureDefaultChartOfAccountNodes(
         partyId: null,
         employeeId: null,
         ...levels,
-      }),
-    );
+      })
+      .orIgnore()
+      .execute();
   }
 }

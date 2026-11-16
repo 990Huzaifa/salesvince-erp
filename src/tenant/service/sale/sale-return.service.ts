@@ -55,11 +55,7 @@ import { NotificationService } from '../notification.service';
 import { TenantJob, TenantJobService } from '../tenant-job.service';
 import { StockService } from '../stock.service';
 import { TransactionService } from '../transaction.service';
-import {
-  resolveCogsAccount,
-  resolveInventoryControlAccount,
-  resolveSalesRevenueAccount,
-} from 'src/tenant-db/helpers/sales-revenue-chart-of-account.helper';
+import { resolveSaleLedgerSystemAccounts } from 'src/tenant-db/helpers/sales-revenue-chart-of-account.helper';
 
 const RETURN_NUMBER_PREFIX = 'SRT';
 
@@ -575,11 +571,8 @@ export class SaleReturnService {
       lines,
     );
 
-    const [salesRevenue, cogs, inventory] = await Promise.all([
-      resolveSalesRevenueAccount(manager, businessId),
-      resolveCogsAccount(manager, businessId),
-      resolveInventoryControlAccount(manager, businessId),
-    ]);
+    const { salesRevenue, cogs, inventory } =
+      await resolveSaleLedgerSystemAccounts(manager, businessId);
     const description = `Sale return ${saleReturn.returnNumber} - customer receivable reduced`;
     const cogsAmount = this.roundAmount(
       this.productLinesOnly(lines).reduce(
@@ -864,11 +857,8 @@ export class SaleReturnService {
     if (totalAmount > 0) {
       await this.consumeStockForReturnReversal(manager, businessId, lines);
 
-      const [salesRevenue, cogs, inventory] = await Promise.all([
-        resolveSalesRevenueAccount(manager, businessId),
-        resolveCogsAccount(manager, businessId),
-        resolveInventoryControlAccount(manager, businessId),
-      ]);
+      const { salesRevenue, cogs, inventory } =
+        await resolveSaleLedgerSystemAccounts(manager, businessId);
       const description = `Sale return ${saleReturn.returnNumber} reversal`;
       const cogsAmount = this.roundAmount(
         this.productLinesOnly(lines).reduce(

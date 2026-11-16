@@ -35,11 +35,7 @@ import {
 import { StockService } from '../stock.service';
 import { TransactionService } from '../transaction.service';
 import { SaleInvoiceService } from './sale-invoice.service';
-import {
-  resolveCogsAccount,
-  resolveInventoryControlAccount,
-  resolveSalesRevenueAccount,
-} from 'src/tenant-db/helpers/sales-revenue-chart-of-account.helper';
+import { resolveSaleLedgerSystemAccounts } from 'src/tenant-db/helpers/sales-revenue-chart-of-account.helper';
 import { BatchAllocation } from '../../utils/stock-batch.util';
 import {
   allocateDiscountAmount,
@@ -141,12 +137,7 @@ export class DeliveryNoteService {
     manager: EntityManager,
     businessId: string,
   ) {
-    const [salesRevenue, cogs, inventory] = await Promise.all([
-      resolveSalesRevenueAccount(manager, businessId),
-      resolveCogsAccount(manager, businessId),
-      resolveInventoryControlAccount(manager, businessId),
-    ]);
-    return { salesRevenue, cogs, inventory };
+    return resolveSaleLedgerSystemAccounts(manager, businessId);
   }
 
   private buildSaleJournalLines(params: {
