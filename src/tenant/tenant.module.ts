@@ -110,6 +110,7 @@ import { SaleInvoiceController } from './controller/sale/sale-invoice.controller
 import { SaleInvoiceService } from './service/sale/sale-invoice.service';
 import { SaleReturnController } from './controller/sale/sale-return.controller';
 import { SaleReturnService } from './service/sale/sale-return.service';
+import { SaleReturnDeleteService } from './service/sale/sale-return-delete.service';
 import { ReportController } from './controller/report.controller';
 import { ReportService } from './service/report.service';
 import { ReportLedgerService } from './service/report/report-ledger.service';
@@ -342,6 +343,7 @@ import { DocumentTemplateRendererService } from './service/document-template-ren
     DeliveryNoteService,
     SaleInvoiceService,
     SaleReturnService,
+    SaleReturnDeleteService,
     WarehouseService,
     WarehousePurgeService,
     PurchaseOrderService,

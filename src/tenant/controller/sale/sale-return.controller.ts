@@ -33,6 +33,7 @@ import {
   SaleReturnStatus,
 } from 'src/tenant-db/entities/sale-return.entity';
 import { SaleReturnService } from '../../service/sale/sale-return.service';
+import { SaleReturnDeleteService } from '../../service/sale/sale-return-delete.service';
 import { CreateSaleReturnDto } from '../../dto/sale-return/create-sale-return.dto';
 import { UpdateSaleReturnDto } from '../../dto/sale-return/update-sale-return.dto';
 import { BulkApproveSaleReturnsDto } from '../../dto/sale-return/bulk-approve-sale-returns.dto';
@@ -52,7 +53,10 @@ import { loadUserPermissionKeys } from '../../helpers/load-user-permission-keys.
   TenantPermissionGuard,
 )
 export class SaleReturnController {
-  constructor(private readonly saleReturnService: SaleReturnService) {}
+  constructor(
+    private readonly saleReturnService: SaleReturnService,
+    private readonly saleReturnDeleteService: SaleReturnDeleteService,
+  ) {}
 
   private async assertCreateMode(
     tenantDb: DataSource,
@@ -265,7 +269,7 @@ export class SaleReturnController {
     @Req() req: Request,
   ) {
     const user = req.user as TenantRequestUser;
-    return this.saleReturnService.delete(
+    return this.saleReturnDeleteService.delete(
       tenantDb,
       user.businessId,
       id,

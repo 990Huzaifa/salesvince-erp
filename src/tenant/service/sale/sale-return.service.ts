@@ -837,77 +837,6 @@ export class SaleReturnService {
     return { saleReturn, resolvedLines, customer };
   }
 
-  private async reverseReturnSideEffects(
-    manager: EntityManager,
-    businessId: string,
-    saleReturn: SaleReturn,
-    lines: ResolvedReturnLine[],
-    customer: Party,
-  ): Promise<void> {
-    if (!customer?.receivableAccountId) {
-      throw new BadRequestException(
-        'Customer receivable account is required to reverse a sale return',
-      );
-    }
-
-    const totalAmount = this.roundAmount(
-      lines.reduce((sum, line) => sum + line.lineAmount, 0),
-    );
-
-    if (totalAmount > 0) {
-      await this.consumeStockForReturnReversal(manager, businessId, lines);
-
-      const { salesRevenue, cogs, inventory } =
-        await resolveSaleLedgerSystemAccounts(manager, businessId);
-      const description = `Sale return ${saleReturn.returnNumber} reversal`;
-      const cogsAmount = this.roundAmount(
-        this.productLinesOnly(lines).reduce(
-          (sum, line) =>
-            sum + Number(line.quantity) * Number(line.purchaseUnitPrice ?? 0),
-          0,
-        ),
-      );
-
-      // Reverse the return journal (re-apply sale sides).
-      const journalLines = [
-        {
-          chartOfAccountId: customer.receivableAccountId,
-          debitAmount: totalAmount,
-          description,
-        },
-        {
-          chartOfAccountId: salesRevenue.id,
-          creditAmount: totalAmount,
-          description,
-        },
-      ];
-      if (cogsAmount > 0) {
-        journalLines.push(
-          {
-            chartOfAccountId: cogs.id,
-            debitAmount: cogsAmount,
-            description,
-          },
-          {
-            chartOfAccountId: inventory.id,
-            creditAmount: cogsAmount,
-            description,
-          },
-        );
-      }
-
-      await this.transactionService.postJournal(manager, {
-        businessId,
-        referenceType: AccountTransactionReferenceType.SALE_RETURN,
-        referenceId: saleReturn.id,
-        partyId: customer.id,
-        transactionDate: saleReturn.returnDate,
-        description,
-        lines: journalLines,
-      });
-    }
-  }
-
   async reverseApprovedEffects(
     manager: EntityManager,
     businessId: string,
@@ -1488,6 +1417,7 @@ export class SaleReturnService {
     return { data: this.mapSaleReturn(updated) };
   }
 
+  /** Reverses approved impacts then hard-deletes return + items. */
   async delete(
     tenantDb: DataSource,
     businessId: string | undefined,
@@ -1501,40 +1431,9 @@ export class SaleReturnService {
       returnId,
     );
 
-    if (saleReturn.status === SaleReturnStatus.APPROVED) {
-      const customer = await this.resolveCustomerForSaleReturn(
-        tenantDb,
-        scopedBusinessId,
-        saleReturn,
-      );
-      const resolvedLines = await this.resolvedLinesFromReturn(
-        tenantDb,
-        scopedBusinessId,
-        saleReturn,
-      );
-
-      await tenantDb.transaction(async (manager) => {
-        await this.reverseReturnSideEffects(
-          manager,
-          scopedBusinessId,
-          saleReturn,
-          resolvedLines,
-          customer,
-        );
-
-        await manager
-          .getRepository(SaleReturnItem)
-          .delete({ saleReturnId: saleReturn.id });
-        await manager.getRepository(SaleReturn).delete(saleReturn.id);
-      });
-    } else {
-      await tenantDb.transaction(async (manager) => {
-        await manager
-          .getRepository(SaleReturnItem)
-          .delete({ saleReturnId: saleReturn.id });
-        await manager.getRepository(SaleReturn).delete(saleReturn.id);
-      });
-    }
+    await tenantDb.transaction(async (manager) => {
+      await this.removeForOrderCascade(manager, scopedBusinessId, saleReturn);
+    });
 
     await this.activityLogService.recordActivityLog(tenantDb, {
       actorId: actorUserId,
