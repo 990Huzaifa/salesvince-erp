@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
-import type { Request } from 'express';
+import { Body, Controller, Get, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { DataSource } from 'typeorm';
 import { TenantJwtAuthGuard } from 'src/auth/tenant-jwt-auth.guard';
 import { TenantBusinessAccessGuard } from 'src/auth/tenant-business-access.guard';
@@ -21,6 +21,8 @@ import { InventoryBatchService } from '../service/inventory/inventory-batch.serv
 import { InventoryMovementService } from '../service/inventory/inventory-movement.service';
 import { ProductMergeService } from '../service/inventory/product-merge.service';
 import { BatchPurchaseLinkBackfillService } from '../service/inventory/batch-purchase-link-backfill.service';
+import { ReportPdfService } from '../service/report/report-pdf.service';
+import { getClientIp, sendPdf } from 'src/common/pdf';
 
 @Controller('tenant/inventory')
 @UseGuards(
@@ -37,6 +39,7 @@ export class InventoryController {
     private readonly inventoryMovementService: InventoryMovementService,
     private readonly productMergeService: ProductMergeService,
     private readonly batchPurchaseLinkBackfillService: BatchPurchaseLinkBackfillService,
+    private readonly reportPdfService: ReportPdfService,
   ) {}
 
   @Get('stock-balance')
@@ -48,6 +51,32 @@ export class InventoryController {
   ) {
     const user = req.user as TenantRequestUser;
     return this.inventoryBalanceService.list(tenantDb, user.businessId, query);
+  }
+
+  @Get('stock-balance/report')
+  @RequirePermissions('LIST_INVENTORY')
+  stockBalanceReport(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: GetStockBalanceDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportPdfService.getStockBalanceReport(tenantDb, user.businessId, query);
+  }
+
+  @Get('stock-balance/pdf')
+  @RequirePermissions('LIST_INVENTORY')
+  async downloadStockBalancePdf(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query() query: GetStockBalanceDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    const result = await this.reportPdfService.generateStockBalancePdf(
+      tenantDb, user.businessId, user.userId, query, user.tenantId, getClientIp(req),
+    );
+    sendPdf(res, result);
   }
 
   @Get('batches')

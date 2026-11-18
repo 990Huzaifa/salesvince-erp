@@ -11,6 +11,8 @@ import {
 import { Business } from 'src/tenant-db/entities/business.entity';
 import { User } from 'src/tenant-db/entities/user.entity';
 import { Party } from 'src/tenant-db/entities/party.entity';
+import { GetStockBalanceDto } from 'src/tenant/dto/inventory/get-stock-balance.dto';
+import { InventoryBalanceService } from '../inventory/inventory-balance.service';
 import { ReportService } from '../report.service';
 import { ReportFinancialTransactionService } from './report-financial-transaction.service';
 import { ReportReceivablePayableService } from './report-receivable-payable.service';
@@ -47,7 +49,43 @@ export class ReportPdfService {
     private readonly pdfRendererService: PdfRendererService,
     private readonly pdfLogoService: PdfLogoService,
     private readonly documentTemplateRendererService: DocumentTemplateRendererService,
+    private readonly inventoryBalanceService: InventoryBalanceService,
   ) {}
+
+  async getStockBalanceReport(db: DataSource, businessId: string, query: GetStockBalanceDto): Promise<ReportDocumentInput> {
+    const data = await this.inventoryBalanceService.list(db, businessId, query, true);
+    const rows = data.data.map((row, index) => ({
+      ...row,
+      serial: index + 1,
+      updatedAt: row.updatedAt ? formatDocumentDate(row.updatedAt) : '-',
+    }));
+    const columns: ReportPdfColumn[] = [
+      { key: 'serial', label: 'S No.', width: '4%', align: 'center' },
+      { key: 'productName', label: 'Product', width: '18%' },
+      { key: 'productSkuCode', label: 'SKU', width: '9%' },
+      { key: 'warehouseName', label: 'Warehouse', width: '12%' },
+      { key: 'uomName', label: 'UOM', width: '5%' },
+      { key: 'quantityAvailable', label: 'Available Qty', width: '8%', align: 'right', format: 'amount' },
+      { key: 'quantityOnHand', label: 'On Hand Qty', width: '8%', align: 'right', format: 'amount' },
+      { key: 'quantityReserved', label: 'Reserved Qty', width: '8%', align: 'right', format: 'amount' },
+      { key: 'quantityDamaged', label: 'Damaged Qty', width: '8%', align: 'right', format: 'amount' },
+      { key: 'lastPurchaseQty', label: 'Last Purchase Qty', width: '8%', align: 'right', format: 'amount' },
+      { key: 'updatedAt', label: 'Last Movement', width: '12%', align: 'center' },
+    ];
+    return {
+      layout: 'balance',
+      title: 'Stock Balance',
+      filters: [],
+      summary: [],
+      minimumRows: 0,
+      sections: [{ columns, rows: asRows(rows), emptyMessage: 'No stock balance records found' }],
+    };
+  }
+
+  async generateStockBalancePdf(db: DataSource, businessId: string, actorUserId: string, query: GetStockBalanceDto, tenantId?: string, clientIp?: string) {
+    const report = await this.getStockBalanceReport(db, businessId, query);
+    return this.render(db, businessId, actorUserId, report, 'Stock-Balance-Report', tenantId, clientIp);
+  }
 
   async generateCustomerBalancesPdf(
     db: DataSource,

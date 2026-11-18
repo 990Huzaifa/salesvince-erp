@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import { InventoryScopeDto } from './inventory-scope.dto';
 
 export class GetStockBalanceDto extends InventoryScopeDto {
@@ -11,6 +11,14 @@ export class GetStockBalanceDto extends InventoryScopeDto {
   @IsOptional()
   @IsUUID()
   brandId?: string;
+
+  @IsOptional()
+  @IsDateString()
+  fromDate?: string;
+
+  @IsOptional()
+  @IsDateString()
+  toDate?: string;
 
   @IsOptional()
   @Type(() => Number)

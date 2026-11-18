@@ -13,6 +13,7 @@ import { InventoryScope } from 'src/tenant/dto/inventory/inventory-scope.dto';
 import {
   applyWarehouseFilter,
   assertBusinessId,
+  assertDateRange,
   createCountQuery,
   resolveInventoryScope,
 } from './inventory-query.helper';
@@ -38,8 +39,18 @@ export class InventoryBalanceService {
     if (dto.uomId) {
       qb.andWhere('balance.uomId = :uomId', { uomId: dto.uomId });
     }
+    if (dto.fromDate) {
+      qb.andWhere('balance.updatedAt >= CAST(:fromDate AS date)', {
+        fromDate: dto.fromDate,
+      });
+    }
+    if (dto.toDate) {
+      qb.andWhere("balance.updatedAt < CAST(:toDate AS date) + INTERVAL '1 day'", {
+        toDate: dto.toDate,
+      });
+    }
     if (dto.search?.trim()) {
-      qb.andWhere('product.name ILIKE :search', {
+      qb.andWhere('(product.name ILIKE :search OR product.skuCode ILIKE :search)', {
         search: `%${dto.search.trim()}%`,
       });
     }
@@ -76,6 +87,18 @@ export class InventoryBalanceService {
   ): Promise<Map<string, number>> {
     if (!keys.length) {
       return new Map();
+    }
+
+    // Keep export lookups within the same bounds as paginated stock requests.
+    if (keys.length > 100) {
+      const quantities = new Map<string, number>();
+      for (let index = 0; index < keys.length; index += 100) {
+        const chunk = await this.loadLastPurchaseQuantities(
+          tenantDb, businessId, keys.slice(index, index + 100), vendorId,
+        );
+        chunk.forEach((quantity, key) => quantities.set(key, quantity));
+      }
+      return quantities;
     }
 
     const includeWarehouse = keys.some((key) => key.warehouseId);
@@ -221,12 +244,15 @@ export class InventoryBalanceService {
     tenantDb: DataSource,
     businessId: string | undefined,
     dto: GetStockBalanceDto,
+    allRows = false,
   ) {
     const scopedBusinessId = assertBusinessId(businessId);
     const { scope, warehouseId } = resolveInventoryScope(dto);
+    assertDateRange(dto.fromDate, dto.toDate);
     const page = Math.max(1, Number(dto.page ?? 1));
     const limit = Math.max(1, Number(dto.limit ?? 10));
-    const skip = (page - 1) * limit;
+    const skip = allRows ? undefined : (page - 1) * limit;
+    const queryLimit = allRows ? undefined : limit;
 
     if (scope === InventoryScope.AUTO) {
       const baseQb = tenantDb
@@ -257,6 +283,7 @@ export class InventoryBalanceService {
         .addSelect('COALESCE(SUM(balance.quantityOnHand), 0)', 'quantityOnHand')
         .addSelect('COALESCE(SUM(balance.quantityReserved), 0)', 'quantityReserved')
         .addSelect('COALESCE(SUM(balance.quantityDamaged), 0)', 'quantityDamaged')
+        .addSelect('MAX(balance.updatedAt)', 'updatedAt')
         .groupBy('balance.productId')
         .addGroupBy('product.name')
         .addGroupBy('product.skuCode')
@@ -264,8 +291,10 @@ export class InventoryBalanceService {
         .addGroupBy('uom.name')
         .orderBy('product.name', 'ASC')
         .addOrderBy('uom.name', 'ASC')
+        .addOrderBy('balance.productId', 'ASC')
+        .addOrderBy('balance.uomId', 'ASC')
         .offset(skip)
-        .limit(limit)
+        .limit(queryLimit)
         .getRawMany<{
           productId: string;
           productName: string;
@@ -276,6 +305,7 @@ export class InventoryBalanceService {
           quantityOnHand: string;
           quantityReserved: string;
           quantityDamaged: string;
+          updatedAt: Date;
         }>();
 
       const lastPurchaseMap = await this.loadLastPurchaseQuantities(
@@ -299,6 +329,7 @@ export class InventoryBalanceService {
           quantityOnHand: Number(row.quantityOnHand),
           quantityReserved: Number(row.quantityReserved),
           quantityDamaged: Number(row.quantityDamaged),
+          updatedAt: row.updatedAt,
           lastPurchaseQty:
             lastPurchaseMap.get(
               this.buildLineKey({
@@ -354,8 +385,9 @@ export class InventoryBalanceService {
       .addSelect('balance.createdAt', 'createdAt')
       .addSelect('balance.updatedAt', 'updatedAt')
       .orderBy('balance.updatedAt', 'DESC')
+      .addOrderBy('balance.id', 'ASC')
       .offset(skip)
-      .limit(limit)
+      .limit(queryLimit)
       .getRawMany<{
         id: string;
         warehouseId: string;
