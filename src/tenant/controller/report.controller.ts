@@ -31,6 +31,7 @@ import { ReportPrebookingService } from '../service/report/report-prebooking.ser
 import { ReportCustomerLowPaymentService } from '../service/report/report-customer-low-payment.service';
 import { ReportReceivablePayableService } from '../service/report/report-receivable-payable.service';
 import { ReportReceivingService } from '../service/report/report-receiving.service';
+import { ReportProductSaleHistoryService } from '../service/report/report-product-sale-history.service';
 import { ReportGeneralLedgerQueryDto } from '../dto/report/report-ledger.query.dto';
 import { ReportTrialBalanceQueryDto } from '../dto/report/report-ledger.query.dto';
 import { ReportOutstandingDocumentsQueryDto } from '../dto/report/report-outstanding.query.dto';
@@ -62,6 +63,7 @@ import { ReportProfitQueryDto } from '../dto/report/report-profit.query.dto';
 import { ReportReceivableQueryDto } from '../dto/report/report-receivable.query.dto';
 import { ReportPayableQueryDto } from '../dto/report/report-payable.query.dto';
 import { ReportReceivingQueryDto } from '../dto/report/report-receiving.query.dto';
+import { ReportProductSaleHistoryQueryDto } from '../dto/report/report-product-sale-history.query.dto';
 import { ReportPdfService } from '../service/report/report-pdf.service';
 
 @Controller('tenant/reports')
@@ -88,6 +90,7 @@ export class ReportController {
     private readonly reportCustomerLowPaymentService: ReportCustomerLowPaymentService,
     private readonly reportReceivablePayableService: ReportReceivablePayableService,
     private readonly reportReceivingService: ReportReceivingService,
+    private readonly reportProductSaleHistoryService: ReportProductSaleHistoryService,
     private readonly reportPdfService: ReportPdfService,
   ) {}
 
@@ -367,6 +370,29 @@ export class ReportController {
         year: query.year,
         partyId: query.partyId,
         cityId: query.cityId,
+      },
+      user.userId,
+    );
+  }
+
+  @Get('sales/product-history')
+  @RequirePermissions('VIEW_PRODUCT_SALE_HISTORY_REPORT')
+  getProductSaleHistoryReport(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportProductSaleHistoryQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportProductSaleHistoryService.getProductSaleHistory(
+      tenantDb,
+      user.businessId,
+      {
+        productId: query.productId,
+        customerId: query.customerId,
+        startDate: query.startDate,
+        endDate: query.endDate,
+        page: query.page ?? 1,
+        limit: query.limit ?? 50,
       },
       user.userId,
     );
