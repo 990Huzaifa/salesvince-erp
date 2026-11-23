@@ -128,6 +128,7 @@ import { ReportReceivablePayableService } from './service/report/report-receivab
 import { ReportReceivingService } from './service/report/report-receiving.service';
 import { ReportProductSaleHistoryService } from './service/report/report-product-sale-history.service';
 import { ReportProfitByInvoiceService } from './service/report/report-profit-by-invoice.service';
+import { ReportProfitByCustomerService } from './service/report/report-profit-by-customer.service';
 import { ReportPdfService } from './service/report/report-pdf.service';
 import { OpeningBalancePdfService } from './service/report/opening-balance-pdf.service';
 import { GrnPdfService } from './service/purchase/grn-pdf.service';
@@ -380,6 +381,7 @@ import { DocumentTemplateRendererService } from './service/document-template-ren
     ReportReceivingService,
     ReportProductSaleHistoryService,
     ReportProfitByInvoiceService,
+    ReportProfitByCustomerService,
     ReportPdfService,
     OpeningBalancePdfService,
     GrnPdfService,

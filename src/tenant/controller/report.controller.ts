@@ -33,6 +33,7 @@ import { ReportReceivablePayableService } from '../service/report/report-receiva
 import { ReportReceivingService } from '../service/report/report-receiving.service';
 import { ReportProductSaleHistoryService } from '../service/report/report-product-sale-history.service';
 import { ReportProfitByInvoiceService } from '../service/report/report-profit-by-invoice.service';
+import { ReportProfitByCustomerService } from '../service/report/report-profit-by-customer.service';
 import { ReportGeneralLedgerQueryDto } from '../dto/report/report-ledger.query.dto';
 import { ReportTrialBalanceQueryDto } from '../dto/report/report-ledger.query.dto';
 import { ReportOutstandingDocumentsQueryDto } from '../dto/report/report-outstanding.query.dto';
@@ -66,6 +67,7 @@ import { ReportPayableQueryDto } from '../dto/report/report-payable.query.dto';
 import { ReportReceivingQueryDto } from '../dto/report/report-receiving.query.dto';
 import { ReportProductSaleHistoryQueryDto } from '../dto/report/report-product-sale-history.query.dto';
 import { ReportProfitByInvoiceQueryDto } from '../dto/report/report-profit-by-invoice.query.dto';
+import { ReportProfitByCustomerQueryDto } from '../dto/report/report-profit-by-customer.query.dto';
 import { ReportPdfService } from '../service/report/report-pdf.service';
 
 @Controller('tenant/reports')
@@ -94,6 +96,7 @@ export class ReportController {
     private readonly reportReceivingService: ReportReceivingService,
     private readonly reportProductSaleHistoryService: ReportProductSaleHistoryService,
     private readonly reportProfitByInvoiceService: ReportProfitByInvoiceService,
+    private readonly reportProfitByCustomerService: ReportProfitByCustomerService,
     private readonly reportPdfService: ReportPdfService,
   ) {}
 
@@ -367,6 +370,28 @@ export class ReportController {
   ) {
     const user = req.user as TenantRequestUser;
     return this.reportProfitByInvoiceService.getProfitByInvoice(
+      tenantDb,
+      user.businessId,
+      {
+        customerId: query.customerId,
+        startDate: query.startDate,
+        endDate: query.endDate,
+        page: query.page ?? 1,
+        limit: query.limit ?? 50,
+      },
+      user.userId,
+    );
+  }
+
+  @Get('profit/by-customer')
+  @RequirePermissions('VIEW_PROFIT_REPORT')
+  getProfitByCustomerReport(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportProfitByCustomerQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportProfitByCustomerService.getProfitByCustomer(
       tenantDb,
       user.businessId,
       {
