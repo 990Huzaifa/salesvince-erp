@@ -1,4 +1,11 @@
-import { Between, DataSource, FindOptionsWhere, LessThanOrEqual, MoreThanOrEqual } from 'typeorm';
+import {
+  Between,
+  DataSource,
+  FindOptionsWhere,
+  In,
+  LessThanOrEqual,
+  MoreThanOrEqual,
+} from 'typeorm';
 import {
   SaleReturn,
   SaleReturnStatus,
@@ -12,6 +19,9 @@ import { endOfDay, roundAmount, startOfDay } from './report-query.helper';
 export type MatchedReturnLine = {
   returnId: string;
   returnDate: Date;
+  /** Original sale/purchase invoice id when linked. */
+  saleInvoiceId?: string | null;
+  purchaseInvoiceId?: string | null;
   partyId: string;
   cityId: string | null;
   brandId: string | null;
@@ -45,6 +55,8 @@ type ReturnDateFilters = {
   partyId?: string;
   cityId?: string;
   brandId?: string;
+  /** When set, only returns linked to these sale invoices are loaded. */
+  saleInvoiceIds?: string[];
 };
 
 function matchesInvoiceItem(
@@ -147,13 +159,21 @@ export async function loadApprovedSaleReturnLines(
   businessId: string,
   filters: ReturnDateFilters = {},
 ): Promise<MatchedReturnLine[]> {
+  if (filters.saleInvoiceIds && filters.saleInvoiceIds.length === 0) {
+    return [];
+  }
+
   const where: FindOptionsWhere<SaleReturn> = {
     businessId,
     status: SaleReturnStatus.APPROVED,
   };
-  const returnDate = buildReturnDateWhere(filters);
-  if (returnDate) {
-    where.returnDate = returnDate;
+  if (filters.saleInvoiceIds?.length) {
+    where.saleInvoiceId = In(filters.saleInvoiceIds);
+  } else {
+    const returnDate = buildReturnDateWhere(filters);
+    if (returnDate) {
+      where.returnDate = returnDate;
+    }
   }
 
   const returns = await tenantDb.getRepository(SaleReturn).find({
@@ -203,6 +223,7 @@ export async function loadApprovedSaleReturnLines(
       lines.push({
         returnId: saleReturn.id,
         returnDate: saleReturn.returnDate,
+        saleInvoiceId: saleReturn.saleInvoiceId ?? saleReturn.saleInvoice?.id ?? null,
         partyId: partyId ?? '',
         cityId,
         brandId,
@@ -296,6 +317,10 @@ export async function loadApprovedPurchaseReturnLines(
       lines.push({
         returnId: purchaseReturn.id,
         returnDate: purchaseReturn.returnDate,
+        purchaseInvoiceId:
+          purchaseReturn.purchaseInvoiceId ??
+          purchaseReturn.purchaseInvoice?.id ??
+          null,
         partyId: partyId ?? '',
         cityId,
         brandId,

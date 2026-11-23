@@ -32,6 +32,7 @@ import { ReportCustomerLowPaymentService } from '../service/report/report-custom
 import { ReportReceivablePayableService } from '../service/report/report-receivable-payable.service';
 import { ReportReceivingService } from '../service/report/report-receiving.service';
 import { ReportProductSaleHistoryService } from '../service/report/report-product-sale-history.service';
+import { ReportProfitByInvoiceService } from '../service/report/report-profit-by-invoice.service';
 import { ReportGeneralLedgerQueryDto } from '../dto/report/report-ledger.query.dto';
 import { ReportTrialBalanceQueryDto } from '../dto/report/report-ledger.query.dto';
 import { ReportOutstandingDocumentsQueryDto } from '../dto/report/report-outstanding.query.dto';
@@ -64,6 +65,7 @@ import { ReportReceivableQueryDto } from '../dto/report/report-receivable.query.
 import { ReportPayableQueryDto } from '../dto/report/report-payable.query.dto';
 import { ReportReceivingQueryDto } from '../dto/report/report-receiving.query.dto';
 import { ReportProductSaleHistoryQueryDto } from '../dto/report/report-product-sale-history.query.dto';
+import { ReportProfitByInvoiceQueryDto } from '../dto/report/report-profit-by-invoice.query.dto';
 import { ReportPdfService } from '../service/report/report-pdf.service';
 
 @Controller('tenant/reports')
@@ -91,6 +93,7 @@ export class ReportController {
     private readonly reportReceivablePayableService: ReportReceivablePayableService,
     private readonly reportReceivingService: ReportReceivingService,
     private readonly reportProductSaleHistoryService: ReportProductSaleHistoryService,
+    private readonly reportProfitByInvoiceService: ReportProfitByInvoiceService,
     private readonly reportPdfService: ReportPdfService,
   ) {}
 
@@ -350,6 +353,28 @@ export class ReportController {
         endDate: query.endDate,
         page: query.page ?? 1,
         limit: query.limit ?? 20,
+      },
+      user.userId,
+    );
+  }
+
+  @Get('profit/by-invoice')
+  @RequirePermissions('VIEW_PROFIT_REPORT')
+  getProfitByInvoiceReport(
+    @TenantConnection() tenantDb: DataSource,
+    @Req() req: Request,
+    @Query() query: ReportProfitByInvoiceQueryDto,
+  ) {
+    const user = req.user as TenantRequestUser;
+    return this.reportProfitByInvoiceService.getProfitByInvoice(
+      tenantDb,
+      user.businessId,
+      {
+        customerId: query.customerId,
+        startDate: query.startDate,
+        endDate: query.endDate,
+        page: query.page ?? 1,
+        limit: query.limit ?? 50,
       },
       user.userId,
     );
