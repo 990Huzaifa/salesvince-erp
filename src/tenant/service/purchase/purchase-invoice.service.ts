@@ -694,6 +694,7 @@ export class PurchaseInvoiceService {
       },
       tenantId,
       clientIp,
+      actorUserId,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

@@ -87,6 +87,7 @@ const DOCUMENT_TEMPLATE_BRAND_RGB = [
 export function applyPrintThemeToHtml(
   html: string,
   colors: PrintThemeColors,
+  useDocumentAccent = false,
 ): string {
   const primaryRgb = parseHex(colors.primary) || parseHex(FALLBACK_PRIMARY)!;
   let themed = html;
@@ -116,7 +117,18 @@ export function applyPrintThemeToHtml(
     .replace(/--row-a\s*:\s*[^;}]+/gi, `--row-a:${colors.rowA}`)
     .replace(/--row-b\s*:\s*[^;}]+/gi, `--row-b:${colors.rowB}`);
 
-  const style = `<style id="print-theme-vars">:root{${printThemeCssVars(colors)}}</style>`;
+  const linear = (channel: number) => {
+    const value = channel / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = 0.2126 * linear(primaryRgb.r) + 0.7152 * linear(primaryRgb.g) + 0.0722 * linear(primaryRgb.b);
+  const lightAccent = luminance >= 0.179;
+  const accent = useDocumentAccent ? `
+    .sheet{--accent:var(--primary);--panel:var(--row-a)}
+    .sheet :is(.total.filled,.total.filled h2,.total.filled strong,.balance,.balance h2){color:${lightAccent ? '#000' : '#fff'}}
+    ${lightAccent ? '.sheet :is(.brand-logo,.document-number,.total:not(.filled) strong){color:color-mix(in srgb,var(--accent) 45%,black)}' : ''}
+  ` : '';
+  const style = `<style id="print-theme-vars">:root{${printThemeCssVars(colors)}}${accent}</style>`;
   if (/<\/html\s*>/i.test(themed)) {
     return themed.replace(/<\/html\s*>/i, `${style}</html>`);
   }

@@ -81,6 +81,7 @@ export class WarehouseSlipPdfService {
     tenantDb: DataSource,
     businessId: string,
     slip: WarehouseSlipDto,
+    actorUserId: string,
     tenantId?: string,
     clientIp?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
@@ -106,6 +107,7 @@ export class WarehouseSlipPdfService {
       { slip, warehouseSlip: slip, companyInfo, ...slip },
       tenantId,
       clientIp,
+      actorUserId,
     );
 
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
@@ -179,6 +181,7 @@ export class WarehouseSlipPdfService {
       tenantDb,
       scopedBusinessId,
       slip,
+      actorUserId,
       tenantId,
       clientIp,
     );
@@ -248,6 +251,7 @@ export class WarehouseSlipPdfService {
       tenantDb,
       scopedBusinessId,
       slip,
+      actorUserId,
       tenantId,
       clientIp,
     );
@@ -312,6 +316,7 @@ export class WarehouseSlipPdfService {
       tenantDb,
       scopedBusinessId,
       slip,
+      actorUserId,
       tenantId,
       clientIp,
     );
@@ -375,6 +380,7 @@ export class WarehouseSlipPdfService {
       tenantDb,
       scopedBusinessId,
       slip,
+      actorUserId,
       tenantId,
       clientIp,
     );
@@ -453,6 +459,7 @@ export class WarehouseSlipPdfService {
       tenantDb,
       scopedBusinessId,
       slip,
+      actorUserId,
       tenantId,
       clientIp,
     );

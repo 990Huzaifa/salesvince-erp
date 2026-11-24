@@ -7,14 +7,26 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { extname } from 'path';
+import { getDocumentLayoutNamespace } from 'src/common/pdf/document-template-layout';
 import { S3Service } from 'src/common/s3/s3.service';
 import { ActivityLogActorType } from 'src/master-db/entities/activity-log.entity';
 import {
   DocumentTemplate,
   DocumentTemplateStatus,
 } from 'src/master-db/entities/document-template.entity';
+import {
+  DocumentTemplateEngine,
+  DocumentTemplateItem,
+  DocumentTemplateSourceType,
+} from 'src/master-db/entities/document-template-item.entity';
 import { TenantDocumentTemplate } from 'src/master-db/entities/tenant-document-template.entity';
 import { Not, Repository } from 'typeorm';
+import {
+  buildDefaultDocumentLayouts,
+  buildDocumentTemplateVerification,
+  DEFAULT_DOCUMENT_VERIFICATION_URL,
+  replaceDocumentTemplateVerification,
+} from '../document-templates/default-document-layouts';
 import { CreateDocumentTemplateDto } from '../dto/document-template/create-document-template.dto';
 import { UpdateDocumentTemplateDto } from '../dto/document-template/update-document-template.dto';
 import { UpdateDocumentTemplateStatusDto } from '../dto/document-template/update-document-template-status.dto';
@@ -175,8 +187,8 @@ export class DocumentTemplateService {
     return template;
   }
 
-  private async assertUniqueCode(code: string, excludeId?: string) {
-    const existing = await this.documentTemplateRepository.findOne({
+  private async assertUniqueCode(code: string, excludeId?: string, repository = this.documentTemplateRepository) {
+    const existing = await repository.findOne({
       where: excludeId
         ? { code, id: Not(excludeId) }
         : { code },
@@ -186,8 +198,8 @@ export class DocumentTemplateService {
     }
   }
 
-  private async clearOtherDefaults(exceptId?: string) {
-    const qb = this.documentTemplateRepository
+  private async clearOtherDefaults(exceptId?: string, repository = this.documentTemplateRepository) {
+    const qb = repository
       .createQueryBuilder()
       .update(DocumentTemplate)
       .set({ isDefault: false })
@@ -310,14 +322,8 @@ export class DocumentTemplateService {
     return template;
   }
 
-  async create(data: CreateDocumentTemplateDto, user: { id: string }) {
-    await this.assertUniqueCode(data.code);
-
-    if (data.isDefault) {
-      await this.clearOtherDefaults();
-    }
-
-    const template = this.documentTemplateRepository.create({
+  private packFields(data: CreateDocumentTemplateDto) {
+    return {
       code: data.code.trim(),
       name: data.name.trim(),
       description: data.description?.trim() || null,
@@ -326,8 +332,19 @@ export class DocumentTemplateService {
       status: data.status ?? DocumentTemplateStatus.ACTIVE,
       sortOrder: data.sortOrder ?? 0,
       metadata: data.metadata ?? null,
-    });
+    };
+  }
 
+  async create(data: CreateDocumentTemplateDto, user: { id: string }) {
+    if (data.includeDefaultLayouts) return this.createWithDefaultLayouts(data, user);
+    if (data.verificationUrl !== undefined) {
+      throw new BadRequestException('Add document layouts to set a verification URL.');
+    }
+
+    await this.assertUniqueCode(data.code);
+    if (data.isDefault) await this.clearOtherDefaults();
+
+    const template = this.documentTemplateRepository.create(this.packFields(data));
     const saved = await this.documentTemplateRepository.save(template);
 
     await this.recordAction(
@@ -340,11 +357,52 @@ export class DocumentTemplateService {
     return this.findPackOrFail(saved.id);
   }
 
-  async update(id: string, data: UpdateDocumentTemplateDto, user: { id: string }) {
-    const template = await this.findPackOrFail(id);
+  private async createWithDefaultLayouts(data: CreateDocumentTemplateDto, user: { id: string }) {
+    const fields = this.packFields(data);
+    const verification = await buildDocumentTemplateVerification(data.verificationUrl ?? DEFAULT_DOCUMENT_VERIFICATION_URL);
+    const { id, created } = await this.documentTemplateRepository.manager.transaction(async (manager) => {
+      const packs = manager.getRepository(DocumentTemplate);
+      const inserted = await packs.createQueryBuilder().insert().values({
+        ...fields,
+        metadata: { ...fields.metadata, standardLayouts: true, verificationUrl: verification.url },
+      }).orIgnore().returning('id').execute();
+      const pack = await packs.findOneOrFail({ where: { code: fields.code }, lock: { mode: 'pessimistic_write' } });
+      if (!inserted.raw.length) {
+        if (pack.metadata?.standardLayouts === true && pack.name === fields.name) {
+          return { id: pack.id, created: false };
+        }
+        throw new ConflictException('Document template code already exists.');
+      }
+
+      if (fields.isDefault) await this.clearOtherDefaults(pack.id, packs);
+      await manager.getRepository(DocumentTemplateItem).insert(buildDefaultDocumentLayouts(verification.markup).map((item) => ({
+        ...item,
+        templateId: pack.id,
+        sourceType: DocumentTemplateSourceType.INLINE,
+        engine: DocumentTemplateEngine.HTML,
+        isActive: true,
+      })));
+      return { id: pack.id, created: true };
+    });
+
+    if (created) {
+      await this.recordAction('DOCUMENT_TEMPLATE_CREATE', 'Document template pack created with layouts', user.id, {
+        templateId: id,
+        code: fields.code,
+      });
+    }
+    return this.findPackOrFail(id);
+  }
+
+  private async applyPackUpdate(
+    template: DocumentTemplate,
+    data: UpdateDocumentTemplateDto,
+    repository = this.documentTemplateRepository,
+  ) {
+    const id = template.id;
 
     if (data.code && data.code.trim() !== template.code) {
-      await this.assertUniqueCode(data.code.trim(), id);
+      await this.assertUniqueCode(data.code.trim(), id, repository);
       template.code = data.code.trim();
     }
 
@@ -357,16 +415,30 @@ export class DocumentTemplateService {
     }
     if (data.status !== undefined) template.status = data.status;
     if (data.sortOrder !== undefined) template.sortOrder = data.sortOrder;
-    if (data.metadata !== undefined) template.metadata = data.metadata ?? null;
+    if (data.metadata !== undefined) {
+      template.metadata = template.metadata?.standardLayouts === true ? {
+        ...data.metadata,
+        standardLayouts: true,
+        verificationUrl: template.metadata.verificationUrl,
+      } : data.metadata ?? null;
+    }
 
     if (data.isDefault === true) {
-      await this.clearOtherDefaults(id);
+      await this.clearOtherDefaults(id, repository);
       template.isDefault = true;
     } else if (data.isDefault === false) {
       template.isDefault = false;
     }
+  }
 
-    await this.documentTemplateRepository.save(template);
+  async update(id: string, data: UpdateDocumentTemplateDto, user: { id: string }) {
+    if (data.verificationUrl === undefined) {
+      const template = await this.findPackOrFail(id);
+      await this.applyPackUpdate(template, data);
+      await this.documentTemplateRepository.save(template);
+    } else {
+      await this.updateWithVerification(id, data, data.verificationUrl);
+    }
 
     await this.recordAction(
       'DOCUMENT_TEMPLATE_UPDATE',
@@ -376,6 +448,46 @@ export class DocumentTemplateService {
     );
 
     return this.findPackOrFail(id);
+  }
+
+  private async updateWithVerification(id: string, data: UpdateDocumentTemplateDto, verificationUrl: string) {
+    const verification = await buildDocumentTemplateVerification(verificationUrl);
+    await this.documentTemplateRepository.manager.transaction(async (manager) => {
+      const packs = manager.getRepository(DocumentTemplate);
+      const template = await packs.findOne({ where: { id }, lock: { mode: 'pessimistic_write' } });
+      if (!template) throw new NotFoundException('Document template not found');
+
+      if (typeof template.metadata?.verificationUrl !== 'string') {
+        throw new BadRequestException('This pack has no shared verification URL.');
+      }
+      const items = manager.getRepository(DocumentTemplateItem);
+      const rows = await items.createQueryBuilder('item')
+        .where('item.templateId = :id', { id })
+        .orderBy('item.id')
+        .setLock('pessimistic_write')
+        .getMany();
+      if (!rows.length) throw new ConflictException('Add sub-templates with a verification QR block first.');
+      if (template.metadata.standardLayouts !== true && !rows.some((item) =>
+        item.sourceType === DocumentTemplateSourceType.INLINE && getDocumentLayoutNamespace(item.content ?? ''),
+      )) {
+        throw new BadRequestException('This pack has no shared verification URL.');
+      }
+      const updates = rows.flatMap((item) => {
+        const content = item.sourceType === DocumentTemplateSourceType.INLINE
+          ? replaceDocumentTemplateVerification(item.content, verification.markup)
+          : null;
+        if (!content) {
+          const type = item.documentType.replaceAll('_', ' ').toLowerCase();
+          throw new ConflictException(`The ${type} sub-template needs a verification QR block.`);
+        }
+        return content === item.content ? [] : [{ ...item, content }];
+      });
+      if (updates.length) await items.save(updates);
+
+      await this.applyPackUpdate(template, data, packs);
+      template.metadata = { ...template.metadata, verificationUrl: verification.url };
+      await packs.save(template);
+    });
   }
 
   async updateStatus(

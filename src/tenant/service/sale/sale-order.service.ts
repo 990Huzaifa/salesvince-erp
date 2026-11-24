@@ -1790,6 +1790,7 @@ export class SaleOrderService {
       },
       tenantId,
       clientIp,
+      actorUserId,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

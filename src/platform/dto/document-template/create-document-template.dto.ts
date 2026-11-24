@@ -6,6 +6,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { DocumentTemplateStatus } from 'src/master-db/entities/document-template.entity';
@@ -43,4 +44,13 @@ export class CreateDocumentTemplateDto {
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown>;
+
+  @IsOptional()
+  @IsBoolean()
+  includeDefaultLayouts?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  verificationUrl?: string;
 }

@@ -816,6 +816,7 @@ export class SaleInvoiceService {
       },
       tenantId,
       clientIp,
+      actorUserId,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

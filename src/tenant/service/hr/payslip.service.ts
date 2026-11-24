@@ -102,6 +102,7 @@ export class PayslipService {
       },
       tenantId,
       clientIp,
+      actorUserId,
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

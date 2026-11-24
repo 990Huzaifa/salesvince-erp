@@ -16,9 +16,12 @@ import {
   DocumentTemplateSourceType,
 } from 'src/master-db/entities/document-template-item.entity';
 import { BusinessSettings } from 'src/tenant-db/entities/business-settings.entity';
+import { User } from 'src/tenant-db/entities/user.entity';
 import { MasterTenantDataService } from './master-tenant-data.service';
 import { PrintThemeService } from './print-theme.service';
 import { buildClassicDocumentPdfHtml } from './classic-document-template';
+import { getDocumentLayoutNamespace } from 'src/common/pdf/document-template-layout';
+import { prepareDocumentTemplateData, readDocumentTemplateValue } from './document-template-values';
 
 @Injectable()
 export class DocumentTemplateRendererService {
@@ -36,6 +39,7 @@ export class DocumentTemplateRendererService {
     data: Record<string, unknown>,
     tenantId?: string | null,
     clientIp?: string | null,
+    actorUserId?: string,
   ): Promise<string> {
     const settings = await tenantDb.getRepository(BusinessSettings).findOne({
       where: { businessId },
@@ -93,13 +97,20 @@ export class DocumentTemplateRendererService {
 
     const printedOn = formatDocumentDate(new Date(), timeZone);
     const printedAt = formatPrintedAt(new Date(), timeZone);
+    const namespace = getDocumentLayoutNamespace(content);
+    const actor = namespace && actorUserId && !data.preparedBy
+      ? await tenantDb.getRepository(User).findOne({ where: { id: actorUserId }, select: { name: true } })
+      : null;
+    const templateData = namespace
+      ? prepareDocumentTemplateData({ ...data, preparedBy: data.preparedBy || actor?.name }, namespace)
+      : data;
 
     return applyPrintThemeToHtml(
       applyPrintedOn(
         renderDocumentTemplate(
           content,
           {
-            ...data,
+            ...templateData,
             theme: themeColors,
             primaryColor: themeColors.primary,
             primary_color: themeColors.primary,
@@ -109,10 +120,12 @@ export class DocumentTemplateRendererService {
             printed_at: printedAt,
           },
           timeZone,
+          namespace,
         ),
         printedOn,
       ),
       themeColors,
+      Boolean(namespace),
     );
   }
 
@@ -274,6 +287,7 @@ const renderDocumentTemplate = (
   content: string,
   data: Record<string, unknown>,
   timeZone: string,
+  namespace: string | null,
 ): string => {
   const logoMarkup = getCompanyLogoMarkup(data);
   const hasExplicitLogoBinding = /\{\{\s*(?:companyInfo\.)?(?:logo|businessLogo|business_logo|logoUrl)\s*\}\}/i.test(content);
@@ -307,7 +321,10 @@ const renderDocumentTemplate = (
     /\{\{\s*(@index|[a-zA-Z0-9_.]+)\s*\}\}/g,
     (_match, path: string) => {
       if (path === '@index') return itemIndex == null ? '' : String(itemIndex);
-      const value = readPath(path.startsWith('this.') ? path.slice(5) : path, scope);
+      const key = path.startsWith('this.') ? path.slice(5) : path;
+      const value = namespace
+        ? readDocumentTemplateValue(key, (field) => readPath(field, scope), namespace, timeZone)
+        : readPath(key, scope);
       return value == null ? '' : escapeHtml(formatTemplateValue(value, timeZone));
     },
   );
