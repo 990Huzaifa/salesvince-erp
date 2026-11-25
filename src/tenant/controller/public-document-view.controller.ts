@@ -1,5 +1,14 @@
-import { Controller, Get, Param, ParseUUIDPipe, Req } from '@nestjs/common';
-import type { Request } from 'express';
+import {
+  Controller,
+  Get,
+  Header,
+  Param,
+  ParseUUIDPipe,
+  Req,
+  Res,
+} from '@nestjs/common';
+import type { Request, Response } from 'express';
+import { getClientIp } from 'src/common/pdf';
 import { PublicDocumentViewService } from '../service/public-document-view.service';
 
 const getRequestHeader = (req: Request, names: string[]): string | undefined => {
@@ -36,7 +45,7 @@ const resolveTenantHost = (
 
 /**
  * Unauthenticated document views for QR / share links.
- * Tenant is resolved from the request subdomain; document by UUID.
+ * Tenant from subdomain; HTML uses the business's connected document template pack.
  */
 @Controller('public')
 export class PublicDocumentViewController {
@@ -46,18 +55,43 @@ export class PublicDocumentViewController {
 
   @Get('sale-orders/:id')
   getSaleOrder(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
-    return this.publicDocumentViewService.getSaleOrder(
-      this.tenantHostFrom(req),
+    return this.publicDocumentViewService.getSaleOrder(id, this.optionsFrom(req));
+  }
+
+  @Get('sale-orders/:id/html')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  async getSaleOrderHtml(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const result = await this.publicDocumentViewService.getSaleOrder(
       id,
+      this.optionsFrom(req),
     );
+    res.type('html').send(result.html);
   }
 
   @Get('sale-invoices/:id')
   getSaleInvoice(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
     return this.publicDocumentViewService.getSaleInvoice(
-      this.tenantHostFrom(req),
       id,
+      this.optionsFrom(req),
     );
+  }
+
+  @Get('sale-invoices/:id/html')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  async getSaleInvoiceHtml(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const result = await this.publicDocumentViewService.getSaleInvoice(
+      id,
+      this.optionsFrom(req),
+    );
+    res.type('html').send(result.html);
   }
 
   @Get('purchase-orders/:id')
@@ -66,9 +100,23 @@ export class PublicDocumentViewController {
     @Req() req: Request,
   ) {
     return this.publicDocumentViewService.getPurchaseOrder(
-      this.tenantHostFrom(req),
       id,
+      this.optionsFrom(req),
     );
+  }
+
+  @Get('purchase-orders/:id/html')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  async getPurchaseOrderHtml(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const result = await this.publicDocumentViewService.getPurchaseOrder(
+      id,
+      this.optionsFrom(req),
+    );
+    res.type('html').send(result.html);
   }
 
   @Get('purchase-invoices/:id')
@@ -77,9 +125,30 @@ export class PublicDocumentViewController {
     @Req() req: Request,
   ) {
     return this.publicDocumentViewService.getPurchaseInvoice(
-      this.tenantHostFrom(req),
       id,
+      this.optionsFrom(req),
     );
+  }
+
+  @Get('purchase-invoices/:id/html')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  async getPurchaseInvoiceHtml(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const result = await this.publicDocumentViewService.getPurchaseInvoice(
+      id,
+      this.optionsFrom(req),
+    );
+    res.type('html').send(result.html);
+  }
+
+  private optionsFrom(req: Request) {
+    return {
+      tenantHost: this.tenantHostFrom(req),
+      clientIp: getClientIp(req),
+    };
   }
 
   private tenantHostFrom(req: Request): string | undefined {
