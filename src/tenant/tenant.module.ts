@@ -108,6 +108,8 @@ import { DeliveryNoteController } from './controller/sale/delivery-note.controll
 import { DeliveryNoteService } from './service/sale/delivery-note.service';
 import { SaleInvoiceController } from './controller/sale/sale-invoice.controller';
 import { SaleInvoiceService } from './service/sale/sale-invoice.service';
+import { PublicDocumentViewController } from './controller/public-document-view.controller';
+import { PublicDocumentViewService } from './service/public-document-view.service';
 import { SaleReturnController } from './controller/sale/sale-return.controller';
 import { SaleReturnService } from './service/sale/sale-return.service';
 import { SaleReturnDeleteService } from './service/sale/sale-return-delete.service';
@@ -261,6 +263,7 @@ import { DocumentTemplateRendererService } from './service/document-template-ren
     SaleOrderController,
     DeliveryNoteController,
     SaleInvoiceController,
+    PublicDocumentViewController,
     SaleReturnController,
     WarehouseController,
     PurchaseOrderController,
@@ -345,6 +348,7 @@ import { DocumentTemplateRendererService } from './service/document-template-ren
     PurchaseOrderReverseService,
     DeliveryNoteService,
     SaleInvoiceService,
+    PublicDocumentViewService,
     SaleReturnService,
     SaleReturnDeleteService,
     WarehouseService,
