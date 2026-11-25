@@ -1,3 +1,23 @@
+export type WarehouseSlipSourceType =
+  | 'sale-invoice'
+  | 'purchase-invoice'
+  | 'stock-transfer'
+  | 'opening-stock'
+  | 'stock-adjustment';
+
+export const WAREHOUSE_SLIP_SOURCE_TYPES: WarehouseSlipSourceType[] = [
+  'sale-invoice',
+  'purchase-invoice',
+  'stock-transfer',
+  'opening-stock',
+  'stock-adjustment',
+];
+
+export const isWarehouseSlipSourceType = (
+  value: string,
+): value is WarehouseSlipSourceType =>
+  (WAREHOUSE_SLIP_SOURCE_TYPES as string[]).includes(value);
+
 export type WarehouseSlipItemDto = {
   productName: string;
   skuCode?: string;

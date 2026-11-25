@@ -32,6 +32,7 @@ import { SaleOrder } from 'src/tenant-db/entities/sale-order.entity';
 import { TenantConnectionManager } from 'src/tenant-db/services/tenant-connection-manager.service';
 import { DocumentTemplateRendererService } from './document-template-renderer.service';
 import { MasterTenantDataService } from './master-tenant-data.service';
+import { WarehouseSlipPdfService } from './warehouse-slip-pdf.service';
 
 type PublicBusiness = {
   id: string;
@@ -77,6 +78,7 @@ export class PublicDocumentViewService {
     private readonly documentTemplateRendererService: DocumentTemplateRendererService,
     private readonly pdfLogoService: PdfLogoService,
     private readonly masterTenantDataService: MasterTenantDataService,
+    private readonly warehouseSlipPdfService: WarehouseSlipPdfService,
   ) {}
 
   async getSaleOrder(id: string, options: PublicViewOptions) {
@@ -233,6 +235,14 @@ export class PublicDocumentViewService {
         0,
     );
 
+    const lineDiscountTotal = activeItems.reduce(
+      (sum, item) => sum + Number(item.discountAmount ?? 0),
+      0,
+    );
+    // Stored totalDiscountAmount is header-only; templates expect header + line discounts.
+    const totalDiscountAmount =
+      Number(invoice.totalDiscountAmount ?? 0) + lineDiscountTotal;
+
     const publicData = {
       id: invoice.id,
       invoiceNumber: invoice.invoiceNumber,
@@ -240,7 +250,7 @@ export class PublicDocumentViewService {
       saleOrderNumber: invoice.saleOrder?.orderNumber ?? null,
       deliveryCost,
       totalTaxAmount: Number(invoice.totalTaxAmount ?? 0),
-      totalDiscountAmount: Number(invoice.totalDiscountAmount ?? 0),
+      totalDiscountAmount,
       totalAmount: Number(invoice.totalAmount ?? 0),
       customer: this.mapParty(invoice.customer),
       items: activeItems.map((item) => ({
@@ -274,7 +284,7 @@ export class PublicDocumentViewService {
       vendor_city: '',
       total: publicData.totalAmount,
       total_tax: publicData.totalTaxAmount,
-      total_discount: publicData.totalDiscountAmount,
+      total_discount: totalDiscountAmount,
       delivery_cost: deliveryCost,
       previous_balance: '',
       current_balance: '',
@@ -572,12 +582,59 @@ export class PublicDocumentViewService {
     );
   }
 
+  async getWarehouseSlip(
+    sourceType: string,
+    sourceId: string,
+    options: PublicViewOptions,
+  ) {
+    const { tenant, tenantDb } = await this.resolveTenantDb(options.tenantHost);
+    const built = await this.warehouseSlipPdfService.buildSlipBySource(
+      tenantDb,
+      sourceType,
+      sourceId,
+    );
+    const business = await this.loadBusiness(tenantDb, built.businessId);
+    const design = await this.resolveDesign(tenantDb, business.id, tenant.id);
+    const logoDataUri = await this.pdfLogoService.fetchLogoDataUri(business.logo);
+
+    const slip = {
+      ...built.slip,
+      documentDate: formatDocumentDate(built.slip.documentDate),
+      sourceType: built.sourceType,
+      sourceId: built.sourceId,
+    };
+
+    const html = await this.documentTemplateRendererService.render(
+      tenantDb,
+      business.id,
+      DocumentTemplateDocumentType.WAREHOUSE_SLIP,
+      {
+        slip,
+        warehouseSlip: slip,
+        companyInfo: this.companyInfo(business, logoDataUri),
+        ...slip,
+      },
+      tenant.id,
+      options.clientIp,
+    );
+
+    return this.wrapResponse(
+      'WAREHOUSE_SLIP',
+      tenant,
+      business,
+      design,
+      slip,
+      html,
+    );
+  }
+
   private wrapResponse(
     documentType:
       | 'SALE_ORDER'
       | 'SALE_INVOICE'
       | 'PURCHASE_ORDER'
-      | 'PURCHASE_INVOICE',
+      | 'PURCHASE_INVOICE'
+      | 'WAREHOUSE_SLIP',
     tenant: Pick<Tenant, 'code' | 'name'>,
     business: PublicBusiness,
     design: PublicDesign,

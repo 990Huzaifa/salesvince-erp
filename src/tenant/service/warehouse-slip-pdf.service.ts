@@ -22,8 +22,10 @@ import {
 import { ActivityLogService } from './activity-log.service';
 import { DocumentTemplateRendererService } from './document-template-renderer.service';
 import {
+  isWarehouseSlipSourceType,
   type WarehouseSlipDto,
   type WarehouseSlipItemDto,
+  type WarehouseSlipSourceType,
 } from './warehouse-slip.types';
 
 @Injectable()
@@ -473,5 +475,274 @@ export class WarehouseSlipPdfService {
     });
 
     return result;
+  }
+
+  /**
+   * Build warehouse-slip DTO for public / shared views (no business scope filter).
+   */
+  async buildSlipBySource(
+    tenantDb: DataSource,
+    sourceType: string,
+    sourceId: string,
+  ): Promise<{
+    slip: WarehouseSlipDto;
+    businessId: string;
+    sourceType: WarehouseSlipSourceType;
+    sourceId: string;
+  }> {
+    if (!isWarehouseSlipSourceType(sourceType)) {
+      throw new NotFoundException('Warehouse slip source type is invalid');
+    }
+
+    switch (sourceType) {
+      case 'sale-invoice':
+        return this.buildFromSaleInvoice(tenantDb, sourceId);
+      case 'purchase-invoice':
+        return this.buildFromPurchaseInvoice(tenantDb, sourceId);
+      case 'stock-transfer':
+        return this.buildFromStockTransfer(tenantDb, sourceId);
+      case 'opening-stock':
+        return this.buildFromOpeningStock(tenantDb, sourceId);
+      case 'stock-adjustment':
+        return this.buildFromStockAdjustment(tenantDb, sourceId);
+      default:
+        throw new NotFoundException('Warehouse slip source type is invalid');
+    }
+  }
+
+  private async buildFromSaleInvoice(tenantDb: DataSource, invoiceId: string) {
+    const invoice = await tenantDb
+      .getRepository(SaleInvoice)
+      .createQueryBuilder('invoice')
+      .leftJoinAndSelect('invoice.customer', 'customer')
+      .leftJoinAndSelect('invoice.items', 'items')
+      .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
+      .leftJoinAndSelect('items.uom', 'uom')
+      .leftJoinAndSelect('items.warehouse', 'warehouse')
+      .where('invoice.id = :invoiceId', { invoiceId })
+      .andWhere('invoice.deletedAt IS NULL')
+      .getOne();
+
+    if (!invoice) {
+      throw new NotFoundException('Sale invoice not found');
+    }
+
+    const items = (invoice.items ?? []).map((item) => this.mapLineItem(item));
+    const warehouseLabels = [
+      ...new Set(
+        (invoice.items ?? [])
+          .map((item) => this.formatWarehouseLabel(item.warehouse))
+          .filter((label): label is string => Boolean(label)),
+      ),
+    ];
+
+    return {
+      sourceType: 'sale-invoice' as const,
+      sourceId: invoice.id,
+      businessId: invoice.businessId,
+      slip: {
+        documentTypeLabel: 'Sale Invoice',
+        documentNumber: invoice.invoiceNumber,
+        documentDate: invoice.invoiceDate,
+        partyLabel: 'Customer',
+        partyName: invoice.customer?.name,
+        partyCode: invoice.customer?.code,
+        warehouseLabel: warehouseLabels.join(', ') || undefined,
+        notes: null,
+        totalQuantity: items.reduce(
+          (sum, item) => sum + Number(item.quantity || 0),
+          0,
+        ),
+        items,
+      },
+    };
+  }
+
+  private async buildFromPurchaseInvoice(
+    tenantDb: DataSource,
+    invoiceId: string,
+  ) {
+    const invoice = await tenantDb
+      .getRepository(PurchaseInvoice)
+      .createQueryBuilder('invoice')
+      .leftJoinAndSelect('invoice.vendor', 'vendor')
+      .leftJoinAndSelect('invoice.grn', 'grn')
+      .leftJoinAndSelect('grn.warehouse', 'warehouse')
+      .leftJoinAndSelect('invoice.items', 'items')
+      .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
+      .leftJoinAndSelect('items.uom', 'uom')
+      .where('invoice.id = :invoiceId', { invoiceId })
+      .andWhere('invoice.deletedAt IS NULL')
+      .getOne();
+
+    if (!invoice) {
+      throw new NotFoundException('Purchase invoice not found');
+    }
+
+    const items = (invoice.items ?? []).map((item) => this.mapLineItem(item));
+    return {
+      sourceType: 'purchase-invoice' as const,
+      sourceId: invoice.id,
+      businessId: invoice.businessId,
+      slip: {
+        documentTypeLabel: 'Purchase Invoice',
+        documentNumber: invoice.invoiceNumber,
+        documentDate: invoice.invoiceDate,
+        partyLabel: 'Vendor',
+        partyName: invoice.vendor?.name,
+        partyCode: invoice.vendor?.code,
+        warehouseLabel: this.formatWarehouseLabel(invoice.grn?.warehouse),
+        notes: null,
+        totalQuantity: items.reduce(
+          (sum, item) => sum + Number(item.quantity || 0),
+          0,
+        ),
+        items,
+      },
+    };
+  }
+
+  private async buildFromStockTransfer(
+    tenantDb: DataSource,
+    transferId: string,
+  ) {
+    const transfer = await tenantDb
+      .getRepository(StockTransfer)
+      .createQueryBuilder('st')
+      .leftJoinAndSelect('st.fromWarehouse', 'fromWarehouse')
+      .leftJoinAndSelect('st.toWarehouse', 'toWarehouse')
+      .leftJoinAndSelect('st.items', 'items')
+      .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
+      .leftJoinAndSelect('items.uom', 'uom')
+      .where('st.id = :transferId', { transferId })
+      .andWhere('st.deletedAt IS NULL')
+      .getOne();
+
+    if (!transfer) {
+      throw new NotFoundException('Stock transfer not found');
+    }
+
+    const items = (transfer.items ?? []).map((item) => this.mapLineItem(item));
+    return {
+      sourceType: 'stock-transfer' as const,
+      sourceId: transfer.id,
+      businessId: transfer.businessId,
+      slip: {
+        documentTypeLabel: 'Stock Transfer',
+        documentNumber: transfer.transferNumber,
+        documentDate: transfer.transferDate,
+        fromWarehouse: this.formatWarehouseLabel(transfer.fromWarehouse),
+        toWarehouse: this.formatWarehouseLabel(transfer.toWarehouse),
+        notes: transfer.notes,
+        totalQuantity: items.reduce(
+          (sum, item) => sum + Number(item.quantity || 0),
+          0,
+        ),
+        items,
+      },
+    };
+  }
+
+  private async buildFromOpeningStock(
+    tenantDb: DataSource,
+    openingStockId: string,
+  ) {
+    const opening = await tenantDb
+      .getRepository(OpeningStock)
+      .createQueryBuilder('opening')
+      .leftJoinAndSelect('opening.warehouse', 'warehouse')
+      .leftJoinAndSelect('opening.items', 'items')
+      .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
+      .leftJoinAndSelect('items.uom', 'uom')
+      .where('opening.id = :openingStockId', { openingStockId })
+      .andWhere('opening.deletedAt IS NULL')
+      .getOne();
+
+    if (!opening) {
+      throw new NotFoundException('Opening stock not found');
+    }
+
+    const items = (opening.items ?? []).map((item) => this.mapLineItem(item));
+    return {
+      sourceType: 'opening-stock' as const,
+      sourceId: opening.id,
+      businessId: opening.businessId,
+      slip: {
+        documentTypeLabel: 'Opening Stock',
+        documentNumber: opening.openingNumber,
+        documentDate: opening.openingDate,
+        warehouseLabel: this.formatWarehouseLabel(opening.warehouse),
+        notes: opening.notes,
+        totalQuantity: items.reduce(
+          (sum, item) => sum + Number(item.quantity || 0),
+          0,
+        ),
+        items,
+      },
+    };
+  }
+
+  private async buildFromStockAdjustment(
+    tenantDb: DataSource,
+    adjustmentId: string,
+  ) {
+    const adjustment = await tenantDb
+      .getRepository(StockAdjustment)
+      .createQueryBuilder('sa')
+      .leftJoinAndSelect('sa.warehouse', 'warehouse')
+      .leftJoinAndSelect('sa.items', 'items')
+      .leftJoinAndSelect('items.product', 'product')
+      .leftJoinAndSelect('items.productFlavour', 'productFlavour')
+      .leftJoinAndSelect('productFlavour.flavour', 'flavour')
+      .leftJoinAndSelect('items.uom', 'uom')
+      .where('sa.id = :adjustmentId', { adjustmentId })
+      .andWhere('sa.deletedAt IS NULL')
+      .getOne();
+
+    if (!adjustment) {
+      throw new NotFoundException('Stock adjustment not found');
+    }
+
+    const items = (adjustment.items ?? []).map((item) => {
+      const mapped = this.mapLineItem(item);
+      const prefix =
+        item.direction === StockAdjustmentDirection.INCREASE
+          ? '[+]'
+          : item.direction === StockAdjustmentDirection.DECREASE
+            ? '[-]'
+            : '';
+      return {
+        ...mapped,
+        productName: prefix
+          ? `${prefix} ${mapped.productName}`
+          : mapped.productName,
+      };
+    });
+
+    return {
+      sourceType: 'stock-adjustment' as const,
+      sourceId: adjustment.id,
+      businessId: adjustment.businessId,
+      slip: {
+        documentTypeLabel: 'Stock Adjustment',
+        documentNumber: adjustment.adjustmentNumber,
+        documentDate: adjustment.adjustmentDate,
+        warehouseLabel: this.formatWarehouseLabel(adjustment.warehouse),
+        notes: adjustment.notes,
+        totalQuantity: items.reduce(
+          (sum, item) => sum + Number(item.quantity || 0),
+          0,
+        ),
+        items,
+      },
+    };
   }
 }

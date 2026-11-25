@@ -727,6 +727,16 @@ export class SaleInvoiceService {
           account_balance: '',
           balance: '',
         };
+    // Stored totalDiscountAmount is header-only; print templates expect header + line discounts.
+    const lineDiscountTotal = this.roundAmount(
+      (mappedInvoice.items ?? []).reduce(
+        (sum, item) => sum + Number(item.discountAmount ?? 0),
+        0,
+      ),
+    );
+    const totalDiscountForTemplate = this.roundAmount(
+      Number(mappedInvoice.totalDiscountAmount ?? 0) + lineDiscountTotal,
+    );
     const templateInvoice = {
       ...mappedInvoice,
       customer: mappedInvoice.customer
@@ -744,7 +754,8 @@ export class SaleInvoiceService {
       vendor_city: mappedInvoice.customer?.cityName ?? '',
       total: mappedInvoice.totalAmount,
       total_tax: mappedInvoice.totalTaxAmount,
-      total_discount: mappedInvoice.totalDiscountAmount,
+      totalDiscountAmount: totalDiscountForTemplate,
+      total_discount: totalDiscountForTemplate,
       delivery_cost: mappedInvoice.deliveryCost,
       previous_balance: showBalanceDetails
         ? mappedInvoice.customerBalance?.previousBalance ?? 0

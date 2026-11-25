@@ -144,6 +144,35 @@ export class PublicDocumentViewController {
     res.type('html').send(result.html);
   }
 
+  @Get('warehouse-slips/:sourceType/:id')
+  getWarehouseSlip(
+    @Param('sourceType') sourceType: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    return this.publicDocumentViewService.getWarehouseSlip(
+      sourceType,
+      id,
+      this.optionsFrom(req),
+    );
+  }
+
+  @Get('warehouse-slips/:sourceType/:id/html')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  async getWarehouseSlipHtml(
+    @Param('sourceType') sourceType: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const result = await this.publicDocumentViewService.getWarehouseSlip(
+      sourceType,
+      id,
+      this.optionsFrom(req),
+    );
+    res.type('html').send(result.html);
+  }
+
   private optionsFrom(req: Request) {
     return {
       tenantHost: this.tenantHostFrom(req),
