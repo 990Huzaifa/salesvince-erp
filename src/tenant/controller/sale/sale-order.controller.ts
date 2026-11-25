@@ -310,6 +310,7 @@ export class SaleOrderController {
       showBalanceDetails,
       user.tenantId,
       getClientIp(req),
+      user.tenantName,
     );
     sendPdf(res, { buffer, filename });
   }

@@ -15,9 +15,11 @@ import {
   StockAdjustmentDirection,
 } from 'src/tenant-db/entities/stock-adjustment.entity';
 import {
+  buildPublicDocumentViewUrl,
   PdfLogoService,
   PdfRendererService,
   safePdfFilenamePart,
+  type PublicDocumentViewKind,
 } from 'src/common/pdf';
 import { ActivityLogService } from './activity-log.service';
 import { DocumentTemplateRendererService } from './document-template-renderer.service';
@@ -27,6 +29,10 @@ import {
   type WarehouseSlipItemDto,
   type WarehouseSlipSourceType,
 } from './warehouse-slip.types';
+
+const warehouseSlipPublicKind = (
+  sourceType: WarehouseSlipSourceType,
+): PublicDocumentViewKind => `warehouse-slip/${sourceType}`;
 
 @Injectable()
 export class WarehouseSlipPdfService {
@@ -86,6 +92,7 @@ export class WarehouseSlipPdfService {
     actorUserId: string,
     tenantId?: string,
     clientIp?: string,
+    publicViewUrl?: string | null,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const business = await tenantDb.getRepository(Business).findOne({
       where: { id: businessId, deletedAt: IsNull() },
@@ -110,6 +117,7 @@ export class WarehouseSlipPdfService {
       tenantId,
       clientIp,
       actorUserId,
+      publicViewUrl,
     );
 
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
@@ -130,6 +138,7 @@ export class WarehouseSlipPdfService {
     actorUserId: string,
     tenantId?: string,
     clientIp?: string,
+    tenantName?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
 
@@ -186,6 +195,11 @@ export class WarehouseSlipPdfService {
       actorUserId,
       tenantId,
       clientIp,
+      buildPublicDocumentViewUrl(
+        warehouseSlipPublicKind('sale-invoice'),
+        invoice.id,
+        tenantName,
+      ),
     );
 
     await this.activityLogService.recordActivityLog(tenantDb, {
@@ -206,6 +220,7 @@ export class WarehouseSlipPdfService {
     actorUserId: string,
     tenantId?: string,
     clientIp?: string,
+    tenantName?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
 
@@ -256,6 +271,11 @@ export class WarehouseSlipPdfService {
       actorUserId,
       tenantId,
       clientIp,
+      buildPublicDocumentViewUrl(
+        warehouseSlipPublicKind('purchase-invoice'),
+        invoice.id,
+        tenantName,
+      ),
     );
 
     await this.activityLogService.recordActivityLog(tenantDb, {
@@ -276,6 +296,7 @@ export class WarehouseSlipPdfService {
     actorUserId: string,
     tenantId?: string,
     clientIp?: string,
+    tenantName?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
 
@@ -321,6 +342,11 @@ export class WarehouseSlipPdfService {
       actorUserId,
       tenantId,
       clientIp,
+      buildPublicDocumentViewUrl(
+        warehouseSlipPublicKind('stock-transfer'),
+        transfer.id,
+        tenantName,
+      ),
     );
 
     await this.activityLogService.recordActivityLog(tenantDb, {
@@ -341,6 +367,7 @@ export class WarehouseSlipPdfService {
     actorUserId: string,
     tenantId?: string,
     clientIp?: string,
+    tenantName?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
 
@@ -385,6 +412,11 @@ export class WarehouseSlipPdfService {
       actorUserId,
       tenantId,
       clientIp,
+      buildPublicDocumentViewUrl(
+        warehouseSlipPublicKind('opening-stock'),
+        opening.id,
+        tenantName,
+      ),
     );
 
     await this.activityLogService.recordActivityLog(tenantDb, {
@@ -405,6 +437,7 @@ export class WarehouseSlipPdfService {
     actorUserId: string,
     tenantId?: string,
     clientIp?: string,
+    tenantName?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
 
@@ -464,6 +497,11 @@ export class WarehouseSlipPdfService {
       actorUserId,
       tenantId,
       clientIp,
+      buildPublicDocumentViewUrl(
+        warehouseSlipPublicKind('stock-adjustment'),
+        adjustment.id,
+        tenantName,
+      ),
     );
 
     await this.activityLogService.recordActivityLog(tenantDb, {

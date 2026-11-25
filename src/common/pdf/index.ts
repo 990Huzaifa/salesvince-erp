@@ -35,3 +35,8 @@ export {
   resolvePrintThemeColors,
 } from './print-theme-colors';
 export type { PrintThemeColors } from './print-theme-colors';
+export {
+  buildPublicDocumentViewUrl,
+  resolveFrontendDomain,
+} from './public-document-view-url';
+export type { PublicDocumentViewKind } from './public-document-view-url';

@@ -29,6 +29,7 @@ import {
 } from '../list-analytics.service';
 import { MasterGeoHelperService } from '../master-geo-helper.service';
 import {
+  buildPublicDocumentViewUrl,
   PdfLogoService,
   PdfRendererService,
   safePdfFilenamePart,
@@ -667,6 +668,7 @@ export class SaleInvoiceService {
     showBalanceDetails = true,
     tenantId?: string,
     clientIp?: string,
+    tenantName?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const invoice = await tenantDb
@@ -828,6 +830,7 @@ export class SaleInvoiceService {
       tenantId,
       clientIp,
       actorUserId,
+      buildPublicDocumentViewUrl('sale-invoice', invoice.id, tenantName),
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

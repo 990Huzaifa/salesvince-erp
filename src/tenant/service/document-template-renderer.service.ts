@@ -17,6 +17,10 @@ import {
 } from 'src/master-db/entities/document-template-item.entity';
 import { BusinessSettings } from 'src/tenant-db/entities/business-settings.entity';
 import { User } from 'src/tenant-db/entities/user.entity';
+import {
+  buildDocumentTemplateVerification,
+  replaceDocumentTemplateVerification,
+} from 'src/platform/document-templates/default-document-layouts';
 import { MasterTenantDataService } from './master-tenant-data.service';
 import { PrintThemeService } from './print-theme.service';
 import { buildClassicDocumentPdfHtml } from './classic-document-template';
@@ -40,6 +44,8 @@ export class DocumentTemplateRendererService {
     tenantId?: string | null,
     clientIp?: string | null,
     actorUserId?: string,
+    /** When set and the pack sub-template has a QR block, replace it with this document URL. */
+    publicViewUrl?: string | null,
   ): Promise<string> {
     const settings = await tenantDb.getRepository(BusinessSettings).findOne({
       where: { businessId },
@@ -90,10 +96,12 @@ export class DocumentTemplateRendererService {
       );
     }
 
-    const content = String(item.content ?? '').trim();
+    let content = String(item.content ?? '').trim();
     if (!content) {
       throw new NotFoundException(`The ${documentType} sub-template content is empty`);
     }
+
+    content = await this.applyPublicViewQr(content, publicViewUrl);
 
     const printedOn = formatDocumentDate(new Date(), timeZone);
     const printedAt = formatPrintedAt(new Date(), timeZone);
@@ -127,6 +135,31 @@ export class DocumentTemplateRendererService {
       themeColors,
       Boolean(namespace),
     );
+  }
+
+  /**
+   * If the layout has a verification QR block and a public view URL is provided,
+   * swap the baked-in pack QR for a document-specific QR pointing at the FE public page.
+   */
+  private async applyPublicViewQr(
+    content: string,
+    publicViewUrl?: string | null,
+  ): Promise<string> {
+    const url = publicViewUrl?.trim();
+    if (!url) {
+      return content;
+    }
+    try {
+      const verification = await buildDocumentTemplateVerification(url);
+      const replaced = replaceDocumentTemplateVerification(
+        content,
+        verification.markup,
+      );
+      return replaced ?? content;
+    } catch {
+      // Invalid URL or no single QR block — keep original template content.
+      return content;
+    }
   }
 
   private async resolveTimeZone(

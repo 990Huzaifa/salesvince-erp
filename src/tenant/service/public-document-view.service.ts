@@ -14,7 +14,12 @@ import {
   Tenant,
   TenantStatus,
 } from 'src/master-db/entities/tenant.entity';
-import { formatDocumentDate, PdfLogoService } from 'src/common/pdf';
+import {
+  buildPublicDocumentViewUrl,
+  formatDocumentDate,
+  PdfLogoService,
+  type PublicDocumentViewKind,
+} from 'src/common/pdf';
 import { Business } from 'src/tenant-db/entities/business.entity';
 import { BusinessSettings } from 'src/tenant-db/entities/business-settings.entity';
 import { Party } from 'src/tenant-db/entities/party.entity';
@@ -188,6 +193,8 @@ export class PublicDocumentViewService {
       },
       tenant.id,
       options.clientIp,
+      undefined,
+      buildPublicDocumentViewUrl('sale-order', order.id, tenant.name),
     );
 
     return this.wrapResponse(
@@ -348,6 +355,8 @@ export class PublicDocumentViewService {
       },
       tenant.id,
       options.clientIp,
+      undefined,
+      buildPublicDocumentViewUrl('sale-invoice', invoice.id, tenant.name),
     );
 
     return this.wrapResponse(
@@ -460,6 +469,8 @@ export class PublicDocumentViewService {
       },
       tenant.id,
       options.clientIp,
+      undefined,
+      buildPublicDocumentViewUrl('purchase-order', order.id, tenant.name),
     );
 
     return this.wrapResponse(
@@ -570,6 +581,8 @@ export class PublicDocumentViewService {
       },
       tenant.id,
       options.clientIp,
+      undefined,
+      buildPublicDocumentViewUrl('purchase-invoice', invoice.id, tenant.name),
     );
 
     return this.wrapResponse(
@@ -604,6 +617,8 @@ export class PublicDocumentViewService {
       sourceId: built.sourceId,
     };
 
+    const warehouseKind =
+      `warehouse-slip/${built.sourceType}` as PublicDocumentViewKind;
     const html = await this.documentTemplateRendererService.render(
       tenantDb,
       business.id,
@@ -616,6 +631,8 @@ export class PublicDocumentViewService {
       },
       tenant.id,
       options.clientIp,
+      undefined,
+      buildPublicDocumentViewUrl(warehouseKind, built.sourceId, tenant.name),
     );
 
     return this.wrapResponse(

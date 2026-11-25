@@ -68,6 +68,7 @@ import {
 } from 'src/common/discount/resolve-discount';
 import { SaleReturnVoucherService } from '../vouchers/sale-return-voucher.service';
 import {
+  buildPublicDocumentViewUrl,
   PdfLogoService,
   PdfRendererService,
   safePdfFilenamePart,
@@ -1692,6 +1693,7 @@ export class SaleOrderService {
     showBalanceDetails = true,
     tenantId?: string,
     clientIp?: string,
+    tenantName?: string,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const scopedBusinessId = this.assertBusinessId(businessId);
     const order = await this.findOrderForBusiness(
@@ -1791,6 +1793,7 @@ export class SaleOrderService {
       tenantId,
       clientIp,
       actorUserId,
+      buildPublicDocumentViewUrl('sale-order', order.id, tenantName),
     );
     const buffer = await this.pdfRendererService.renderHtmlToPdf({
       html,

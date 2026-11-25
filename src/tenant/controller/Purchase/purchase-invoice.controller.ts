@@ -96,6 +96,7 @@ export class PurchaseInvoiceController {
       showBalanceDetails,
       user.tenantId,
       getClientIp(req),
+      user.tenantName,
     );
     sendPdf(res, { buffer, filename });
   }
@@ -117,6 +118,7 @@ export class PurchaseInvoiceController {
         user.userId,
         user.tenantId,
         getClientIp(req),
+        user.tenantName,
       );
     sendPdf(res, { buffer, filename });
   }

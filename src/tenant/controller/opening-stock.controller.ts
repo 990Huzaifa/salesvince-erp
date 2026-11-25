@@ -152,6 +152,7 @@ export class OpeningStockController {
         user.userId,
         user.tenantId,
         getClientIp(req),
+        user.tenantName,
       );
     sendPdf(res, { buffer, filename });
   }
